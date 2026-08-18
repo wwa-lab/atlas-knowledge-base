@@ -1,0 +1,5 @@
+# Atlas Knowledge Base SDD skill source lock
+repository=https://github.com/wwa-lab/Agentic-SDLC-Control-Tower.git
+branch=main
+subdirectory=.claude/skills
+commit=8bed9dbf13ae4aa4307e3b4344fa3f64873554cd

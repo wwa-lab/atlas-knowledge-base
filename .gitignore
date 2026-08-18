@@ -1,0 +1,40 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and virtual environments
+node_modules/
+.venv/
+venv/
+
+# Build, test, and tool output
+dist/
+build/
+coverage/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.turbo/
+.next/
+playwright-report/
+test-results/
+
+# Runtime data: never commit generated artifacts, backups, private data, or logs
+.local-data/
+artifacts/
+backups/
+staging/
+*.log
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
