@@ -130,5 +130,7 @@ components, protocols, schemas, persistence, provider credential storage,
 deployment topology, retrieval fusion details, evidence-cache isolation, and
 historical revocation behavior require Architecture Spikes and accepted ADRs.
 
-The existing MVP requirements document still cites the earlier v0.3 baseline
-and must be rebased and re-reviewed before it can gate downstream v0.4 SDD work.
+The `mvp` requirements document is rebased to this v0.4 baseline. User stories
+and later SDD stages still need to be generated from that rebased artifact after
+its quality review and product-owner acceptance. Connector Architecture Spikes
+and ADRs remain blockers for architecture acceptance and implementation.
