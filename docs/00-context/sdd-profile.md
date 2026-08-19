@@ -19,7 +19,8 @@ implementation and code-review stages are conditional.
 For an active slice, use this precedence:
 
 1. The accepted specification under `docs/03-spec/`
-2. The constitution and approved product/content decisions
+2. The constitution and approved product/content decisions, including the
+   current baseline under `docs/product/`
 3. Accepted ADRs
 4. Architecture, information architecture, design, contracts, and standards
 5. Sources, prototypes, notes, and generated material as evidence
@@ -103,6 +104,7 @@ locked Control Tower mirror. ADR-0001 records this decision.
 - `AGENTS.md`
 - `PROJECT_RULES.md`
 - `docs/00-context/constitution.md`
+- `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md`
 - `docs/SDD-BOOTSTRAP.md`
 - `docs/00-context/checklists/sdd-generation-gate.md`
 - `docs/architecture/decisions/ADR-0001-adopt-sdd-workflow-and-control-tower-skills.md`

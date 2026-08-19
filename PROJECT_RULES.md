@@ -8,7 +8,9 @@ this file remains concise and enforceable.
 Use this precedence when documents disagree:
 
 1. Accepted specification under `docs/03-spec/` for the active slice
-2. Approved product and content-governance decisions
+2. Approved product decisions, with
+   `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md` as the current
+   MVP product baseline
 3. ADRs under `docs/architecture/decisions/`
 4. Accepted architecture, information architecture, design, and contracts
 5. Source notes, prototypes, exploratory drafts, and generated material

@@ -1,0 +1,337 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1200" role="img" aria-labelledby="title description">
+  <title id="title">Atlas Knowledge Base 高层知识运转模式</title>
+  <desc id="description">面向产品负责人的概念架构海报，展示 Dify、Git Markdown 和 Confluence 三类权威知识源如何经过 Atlas 的授权、治理、检索融合和证据层，为员工提供可验证的 Chat、Browse 和 Evidence 体验。</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="0.52" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="atlasPanel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e7490" stop-opacity="0.17"/>
+      <stop offset="0.5" stop-color="#2563eb" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0.16"/>
+    </linearGradient>
+    <linearGradient id="cyanLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.45"/>
+      <stop offset="0.55" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="answerGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0.22"/>
+    </linearGradient>
+    <radialGradient id="topGlow" cx="50%" cy="0%" r="75%">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.14"/>
+      <stop offset="0.55" stop-color="#3b82f6" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#334155" stroke-width="1" stroke-opacity="0.16"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#020617" flood-opacity="0.45"/>
+    </filter>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrowCyan" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrowRose" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#fb7185"/>
+    </marker>
+    <style>
+      text { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+      .eyebrow { fill:#67e8f9; font-size:13px; font-weight:700; letter-spacing:2.4px; }
+      .title { fill:#f8fafc; font-size:43px; font-weight:760; letter-spacing:-1.2px; }
+      .subtitle { fill:#94a3b8; font-size:17px; font-weight:450; }
+      .section-kicker { fill:#94a3b8; font-size:11px; font-weight:750; letter-spacing:1.7px; }
+      .section-title { fill:#f1f5f9; font-size:18px; font-weight:720; }
+      .card-title { fill:#f8fafc; font-size:17px; font-weight:700; }
+      .card-sub { fill:#cbd5e1; font-size:13px; font-weight:550; }
+      .body { fill:#94a3b8; font-size:13px; font-weight:430; }
+      .micro { fill:#94a3b8; font-size:11px; font-weight:500; }
+      .chip { fill:#dbeafe; font-size:11px; font-weight:700; letter-spacing:.5px; }
+      .chip-cyan { fill:#a5f3fc; font-size:11px; font-weight:700; letter-spacing:.5px; }
+      .mono { font-family:"SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      .num { fill:#07111f; font-size:12px; font-weight:800; }
+      .principle-num { fill:#64748b; font-size:12px; font-weight:750; letter-spacing:1px; }
+      .principle-title { fill:#f8fafc; font-size:20px; font-weight:720; }
+      .principle-body { fill:#94a3b8; font-size:13px; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1800" height="1200" fill="url(#bg)"/>
+  <rect width="1800" height="1200" fill="url(#grid)"/>
+  <ellipse cx="900" cy="0" rx="760" ry="390" fill="url(#topGlow)"/>
+  <circle cx="1640" cy="104" r="170" fill="#7c3aed" opacity="0.035"/>
+  <circle cx="130" cy="930" r="230" fill="#06b6d4" opacity="0.025"/>
+
+  <!-- Header -->
+  <text x="52" y="47" class="eyebrow">ATLAS KNOWLEDGE BASE · HIGH-LEVEL PRODUCT OPERATING MODEL</text>
+  <text x="52" y="98" class="title">知识不搬家，答案可验证</text>
+  <text x="52" y="136" class="subtitle">让 Dify、Git Markdown 与 Confluence 在统一权限与证据边界下协同</text>
+
+  <g transform="translate(1320 45)">
+    <rect x="0" y="0" width="188" height="34" rx="17" fill="#083344" stroke="#155e75"/>
+    <circle cx="19" cy="17" r="4" fill="#22d3ee" filter="url(#softGlow)"/>
+    <text x="33" y="22" class="chip-cyan">FOR PO ALIGNMENT</text>
+    <rect x="202" y="0" width="226" height="34" rx="17" fill="#1e1b4b" stroke="#4338ca"/>
+    <path d="M221 11v12M215 17h12" stroke="#a5b4fc" stroke-width="1.7" stroke-linecap="round"/>
+    <text x="237" y="22" class="chip">CONCEPTUAL · NOT ADR</text>
+  </g>
+
+  <!-- Journey band -->
+  <rect x="40" y="170" width="1720" height="122" rx="22" fill="#0b1220" stroke="#243246" filter="url(#shadow)"/>
+  <text x="68" y="199" class="section-kicker">ONE USER JOURNEY · 一次提问的主路径</text>
+
+  <g>
+    <rect x="68" y="216" width="210" height="52" rx="13" fill="#111827" stroke="#334155"/>
+    <circle cx="94" cy="242" r="15" fill="#22d3ee"/>
+    <path d="M89 245c1.5-4 8.5-4 10 0M94 237a3 3 0 1 0 0-6 3 3 0 0 0 0 6" fill="none" stroke="#07111f" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="118" y="239" class="card-sub">员工提出跨系统问题</text>
+    <text x="118" y="256" class="micro">无需先判断知识在哪里</text>
+
+    <path d="M292 242H318" stroke="#475569" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <rect x="332" y="216" width="244" height="52" rx="13" fill="#111827" stroke="#334155"/>
+    <circle cx="358" cy="242" r="15" fill="#60a5fa"/><text x="354" y="246" class="num">1</text>
+    <text x="382" y="239" class="card-sub">登录并选择 1–5 个 KB</text>
+    <text x="382" y="256" class="micro">统一 Scope，来源可混合</text>
+
+    <path d="M590 242H616" stroke="#475569" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <rect x="630" y="216" width="210" height="52" rx="13" fill="#111827" stroke="#334155"/>
+    <circle cx="656" cy="242" r="15" fill="#34d399"/><text x="652" y="246" class="num">2</text>
+    <text x="680" y="239" class="card-sub">实时身份与来源授权</text>
+    <text x="680" y="256" class="micro">权限不确定即拒绝</text>
+
+    <path d="M854 242H880" stroke="#475569" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <rect x="894" y="216" width="210" height="52" rx="13" fill="#111827" stroke="#334155"/>
+    <circle cx="920" cy="242" r="15" fill="#fb923c"/><text x="916" y="246" class="num">3</text>
+    <text x="944" y="239" class="card-sub">多来源并行检索</text>
+    <text x="944" y="256" class="micro">独立 Timeout / Quota</text>
+
+    <path d="M1118 242H1144" stroke="#475569" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <rect x="1158" y="216" width="210" height="52" rx="13" fill="#111827" stroke="#334155"/>
+    <circle cx="1184" cy="242" r="15" fill="#a78bfa"/><text x="1180" y="246" class="num">4</text>
+    <text x="1208" y="239" class="card-sub">融合、去重与冲突呈现</text>
+    <text x="1208" y="256" class="micro">保留全部 Provenance</text>
+
+    <path d="M1382 242H1408" stroke="#475569" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <rect x="1422" y="216" width="310" height="52" rx="13" fill="url(#answerGradient)" stroke="#3b82f6"/>
+    <circle cx="1448" cy="242" r="15" fill="#38bdf8"/><text x="1444" y="246" class="num">5</text>
+    <text x="1472" y="239" class="card-sub">生成可引用、可回溯的回答</text>
+    <text x="1472" y="256" class="micro">Evidence Drawer → 原始版本</text>
+  </g>
+
+  <!-- Main regions -->
+  <rect x="40" y="316" width="420" height="548" rx="22" fill="#0b1220" stroke="#334155"/>
+  <rect x="500" y="316" width="820" height="548" rx="22" fill="url(#atlasPanel)" stroke="#0891b2" stroke-opacity="0.75" filter="url(#shadow)"/>
+  <rect x="1360" y="316" width="400" height="548" rx="22" fill="#0b1220" stroke="#334155"/>
+
+  <!-- Connectors behind cards -->
+  <path d="M430 438H478M430 578H478M430 718H478M478 438V718" fill="none" stroke="#fb923c" stroke-width="2" stroke-opacity="0.72"/>
+  <circle cx="478" cy="438" r="4" fill="#fb923c"/><circle cx="478" cy="578" r="4" fill="#fb923c"/><circle cx="478" cy="718" r="4" fill="#fb923c"/>
+  <path d="M478 548H526" fill="none" stroke="#fb923c" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+
+  <path d="M910 466V486" fill="none" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrowCyan)"/>
+  <path d="M910 588V596H710V607M910 596H1110V607" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M710 705V722M1110 705V714H950V722" fill="none" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M1030 772H1050" fill="none" stroke="#a78bfa" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+
+  <path d="M1320 435H1388M1320 558H1388M1320 680H1388" fill="none" stroke="url(#cyanLine)" stroke-width="2.4" marker-end="url(#arrowBlue)"/>
+
+  <!-- Left: authoritative sources -->
+  <text x="68" y="347" class="section-kicker">AUTHORITATIVE KNOWLEDGE SOURCES</text>
+  <text x="68" y="373" class="section-title">内容留在团队原有系统</text>
+
+  <g>
+    <rect x="68" y="392" width="362" height="92" rx="16" fill="#101826" stroke="#4338ca" stroke-opacity="0.82"/>
+    <rect x="84" y="408" width="52" height="52" rx="13" fill="#312e81"/>
+    <path d="M98 420h7c4 0 6 3 6 6v16H98zM122 420h-7c-4 0-6 3-6 6v16h13z" fill="none" stroke="#c7d2fe" stroke-width="2" stroke-linejoin="round"/>
+    <text x="152" y="419" class="micro" fill="#a5b4fc">AMH · EXISTING PIPELINE</text>
+    <text x="152" y="442" class="card-title">Dify Retrieval</text>
+    <text x="152" y="462" class="body">约 14,000 份文档 · 已切片 / 向量化 / 索引</text>
+    <rect x="331" y="408" width="82" height="22" rx="11" fill="#1e1b4b" stroke="#4338ca"/>
+    <text x="343" y="423" class="chip">READ ONLY</text>
+
+    <rect x="68" y="532" width="362" height="92" rx="16" fill="#101826" stroke="#059669" stroke-opacity="0.78"/>
+    <rect x="84" y="548" width="52" height="52" rx="13" fill="#064e3b"/>
+    <path d="M99 560l11-6 11 6v18l-11 6-11-6zM110 554v30M99 560l11 6 11-6" fill="none" stroke="#6ee7b7" stroke-width="1.8" stroke-linejoin="round"/>
+    <text x="152" y="559" class="micro" fill="#6ee7b7">HASE · GIT AS SOURCE OF TRUTH</text>
+    <text x="152" y="582" class="card-title">Git Markdown</text>
+    <text x="152" y="602" class="body"><tspan class="mono">.kb</tspan> Contract → Chat · 普通 Markdown → Browse</text>
+    <rect x="331" y="548" width="82" height="22" rx="11" fill="#052e2b" stroke="#047857"/>
+    <text x="343" y="563" class="chip-cyan" fill="#6ee7b7">READ ONLY</text>
+
+    <rect x="68" y="672" width="362" height="92" rx="16" fill="#101826" stroke="#d97706" stroke-opacity="0.78"/>
+    <rect x="84" y="688" width="52" height="52" rx="13" fill="#451a03"/>
+    <path d="M98 705c0-6 5-10 11-10h12v24h-12c-6 0-11-4-11-10zM109 695v24" fill="none" stroke="#fbbf24" stroke-width="2"/>
+    <text x="152" y="699" class="micro" fill="#fbbf24">ENTERPRISE KNOWLEDGE</text>
+    <text x="152" y="722" class="card-title">Confluence</text>
+    <text x="152" y="742" class="body">受控 Space / Page · 原生权限 · 精确版本</text>
+    <rect x="331" y="688" width="82" height="22" rx="11" fill="#422006" stroke="#b45309"/>
+    <text x="343" y="703" class="chip" fill="#fde68a">READ ONLY</text>
+  </g>
+
+  <rect x="68" y="793" width="362" height="45" rx="12" fill="#0f172a" stroke="#334155" stroke-dasharray="5 5"/>
+  <path d="M86 814h11l4-5 5 10 4-5h11" fill="none" stroke="#94a3b8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="133" y="818" class="card-sub">原系统始终保留内容与版本权威</text>
+
+  <!-- Center: Atlas -->
+  <text x="528" y="347" class="section-kicker" fill="#67e8f9">ATLAS · GOVERNED ACCESS &amp; ORCHESTRATION</text>
+  <text x="528" y="373" class="section-title">统一体验，保留每个来源的真实边界</text>
+  <rect x="1160" y="337" width="130" height="26" rx="13" fill="#083344" stroke="#0e7490"/>
+  <circle cx="1177" cy="350" r="4" fill="#34d399"/>
+  <text x="1188" y="354" class="chip-cyan">POLICY-AWARE</text>
+
+  <g>
+    <rect x="528" y="392" width="764" height="74" rx="15" fill="#0b1b2a" stroke="#0891b2"/>
+    <circle cx="556" cy="429" r="16" fill="#22d3ee"/><text x="549" y="433" class="num">01</text>
+    <text x="584" y="421" class="card-title">身份与授权闸门</text>
+    <text x="584" y="443" class="body">公司 SSO · Delegated Provider Identity · 每轮 Retrieval / Evidence Open 重新授权</text>
+    <rect x="1117" y="414" width="150" height="28" rx="14" fill="#052e2b" stroke="#047857"/>
+    <path d="M1135 429l5 5 9-12" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="1156" y="433" class="chip-cyan" fill="#6ee7b7">FAIL CLOSED</text>
+
+    <rect x="528" y="486" width="764" height="102" rx="15" fill="#0f172a" stroke="#fb923c" stroke-opacity="0.75"/>
+    <circle cx="556" cy="510" r="16" fill="#fb923c"/><text x="549" y="514" class="num">02</text>
+    <text x="584" y="516" class="card-title">只读 Connector Profiles</text>
+    <rect x="552" y="532" width="214" height="38" rx="11" fill="#1e1b4b" stroke="#4338ca"/>
+    <circle cx="571" cy="551" r="5" fill="#818cf8"/><text x="585" y="556" class="card-sub">Dify Retrieval</text>
+    <rect x="778" y="532" width="214" height="38" rx="11" fill="#052e2b" stroke="#047857"/>
+    <circle cx="797" cy="551" r="5" fill="#34d399"/><text x="811" y="556" class="card-sub">Git Markdown</text>
+    <rect x="1004" y="532" width="264" height="38" rx="11" fill="#422006" stroke="#b45309"/>
+    <circle cx="1023" cy="551" r="5" fill="#fbbf24"/><text x="1037" y="556" class="card-sub">Confluence Space / Page</text>
+
+    <rect x="528" y="607" width="362" height="98" rx="15" fill="#0f172a" stroke="#34d399" stroke-opacity="0.72"/>
+    <circle cx="556" cy="633" r="16" fill="#34d399"/><text x="549" y="637" class="num">03</text>
+    <text x="584" y="639" class="card-title">策略与安全门禁</text>
+    <text x="552" y="668" class="body">Access · Classification · Model Eligibility</text>
+    <text x="552" y="688" class="body">Freshness · Stable Version · Least Context</text>
+
+    <rect x="930" y="607" width="362" height="98" rx="15" fill="#0f172a" stroke="#60a5fa" stroke-opacity="0.8"/>
+    <circle cx="958" cy="633" r="16" fill="#60a5fa"/><text x="951" y="637" class="num">04</text>
+    <text x="986" y="639" class="card-title">检索与证据编排</text>
+    <text x="954" y="668" class="body">Parallel Retrieval · RRF · Dedup</text>
+    <text x="954" y="688" class="body">Coverage · Timeout · Conflict Visibility</text>
+
+    <rect x="528" y="722" width="502" height="96" rx="15" fill="#0f172a" stroke="#a78bfa" stroke-opacity="0.8"/>
+    <circle cx="556" cy="748" r="16" fill="#a78bfa"/><text x="549" y="752" class="num">05</text>
+    <text x="584" y="754" class="card-title">Evidence Layer · 证据是共同语言</text>
+    <text x="552" y="782" class="body">Immutable Locator · Exact Version · Provenance · Citation</text>
+    <text x="552" y="802" class="body">冲突不静默裁决 · 删除 / 移动 / 撤权状态可见</text>
+
+    <rect x="1050" y="722" width="242" height="96" rx="15" fill="url(#answerGradient)" stroke="#3b82f6"/>
+    <circle cx="1078" cy="748" r="16" fill="#38bdf8"/><text x="1071" y="752" class="num">06</text>
+    <text x="1106" y="754" class="card-title">Approved Model</text>
+    <text x="1074" y="782" class="body">只接收最小授权证据</text>
+    <text x="1074" y="802" class="body">生成 Grounded Answer</text>
+  </g>
+
+  <rect x="528" y="831" width="764" height="22" rx="11" fill="#083344" fill-opacity="0.78" stroke="#155e75"/>
+  <text x="548" y="846" class="micro" fill="#a5f3fc">AUDIT</text>
+  <circle cx="610" cy="842" r="2" fill="#22d3ee"/>
+  <text x="622" y="846" class="micro" fill="#a5f3fc">HEALTH</text>
+  <circle cx="690" cy="842" r="2" fill="#22d3ee"/>
+  <text x="702" y="846" class="micro" fill="#a5f3fc">FRESHNESS</text>
+  <circle cx="792" cy="842" r="2" fill="#22d3ee"/>
+  <text x="804" y="846" class="micro" fill="#a5f3fc">COVERAGE</text>
+  <circle cx="901" cy="842" r="2" fill="#22d3ee"/>
+  <text x="913" y="846" class="micro" fill="#a5f3fc">KILL SWITCH</text>
+  <circle cx="1023" cy="842" r="2" fill="#22d3ee"/>
+  <text x="1035" y="846" class="micro" fill="#a5f3fc">CONFIG ROLLBACK</text>
+
+  <!-- Right: user outcomes -->
+  <text x="1388" y="347" class="section-kicker">UNIFIED USER EXPERIENCE</text>
+  <text x="1388" y="373" class="section-title">同一个入口，三种可信体验</text>
+
+  <g>
+    <rect x="1388" y="392" width="344" height="92" rx="16" fill="url(#answerGradient)" stroke="#3b82f6"/>
+    <rect x="1404" y="408" width="52" height="52" rx="13" fill="#172554"/>
+    <path d="M1417 423h26v17h-14l-7 6v-6h-5z" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linejoin="round"/>
+    <text x="1472" y="420" class="micro" fill="#93c5fd">DEFAULT ENTRY</text>
+    <text x="1472" y="443" class="card-title">Chat · 有引用回答</text>
+    <text x="1472" y="463" class="body">跨 1–5 个 KB；每个关键结论绑定证据</text>
+
+    <rect x="1388" y="514" width="344" height="92" rx="16" fill="#101826" stroke="#34d399" stroke-opacity="0.75"/>
+    <rect x="1404" y="530" width="52" height="52" rx="13" fill="#052e2b"/>
+    <path d="M1418 542h24v28h-24zM1418 550h24M1426 542v28" fill="none" stroke="#6ee7b7" stroke-width="1.8"/>
+    <text x="1472" y="542" class="micro" fill="#6ee7b7">DISCOVER &amp; PREVIEW</text>
+    <text x="1472" y="565" class="card-title">Browse · 浏览知识</text>
+    <text x="1472" y="585" class="body">Catalog、目录、预览、能力与 Health 可见</text>
+
+    <rect x="1388" y="636" width="344" height="92" rx="16" fill="#101826" stroke="#a78bfa" stroke-opacity="0.8"/>
+    <rect x="1404" y="652" width="52" height="52" rx="13" fill="#2e1065"/>
+    <path d="M1419 663h18l5 5v24h-23zM1437 663v6h5M1424 676h13M1424 682h10" fill="none" stroke="#c4b5fd" stroke-width="1.8" stroke-linejoin="round"/>
+    <text x="1472" y="664" class="micro" fill="#c4b5fd">VERIFY BEFORE TRUST</text>
+    <text x="1472" y="687" class="card-title">Evidence Drawer</text>
+    <text x="1472" y="707" class="body">Excerpt · Version · Owner · 打开原始版本</text>
+
+    <rect x="1388" y="758" width="344" height="68" rx="15" fill="#1f111b" stroke="#be123c" stroke-opacity="0.78"/>
+    <path d="M1410 781a11 11 0 1 1 5 12M1410 781v10h10" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="1440" y="784" class="card-title">纠错回到 Source</text>
+    <text x="1440" y="806" class="body">Owner Flow · kb-correct · Confluence Page</text>
+  </g>
+
+  <!-- Correction / source-of-truth loop -->
+  <path d="M1388 792H1350V886H250V840" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="8 7" stroke-opacity="0.9" marker-end="url(#arrowRose)"/>
+  <rect x="640" y="872" width="520" height="28" rx="14" fill="#1f111b" stroke="#881337"/>
+  <text x="900" y="891" text-anchor="middle" class="micro" fill="#fda4af">反馈、纠错与内容更新均回到权威来源；Atlas 不直接改写原文</text>
+
+  <!-- Bottom principles -->
+  <text x="40" y="941" class="section-kicker">FIVE OPERATING RULES · PO 需要记住的五条原则</text>
+
+  <g>
+    <rect x="40" y="961" width="320" height="174" rx="18" fill="#0b1220" stroke="#4338ca" stroke-opacity="0.7"/>
+    <text x="64" y="990" class="principle-num">01 · SOURCE AUTHORITY</text>
+    <text x="64" y="1025" class="principle-title">知识不搬家</text>
+    <text x="64" y="1054" class="principle-body">内容、版本、权限与纠错</text>
+    <text x="64" y="1075" class="principle-body">始终由原系统及 Owner 负责</text>
+    <rect x="64" y="1096" width="142" height="24" rx="12" fill="#1e1b4b"/>
+    <text x="77" y="1112" class="chip">ATLAS = ORCHESTRATOR</text>
+
+    <rect x="390" y="961" width="320" height="174" rx="18" fill="#0b1220" stroke="#047857" stroke-opacity="0.7"/>
+    <text x="414" y="990" class="principle-num">02 · AUTHORIZATION</text>
+    <text x="414" y="1025" class="principle-title">先授权，再检索</text>
+    <text x="414" y="1054" class="principle-body">选择、每轮问答、打开证据</text>
+    <text x="414" y="1075" class="principle-body">都按当前用户重新校验</text>
+    <rect x="414" y="1096" width="116" height="24" rx="12" fill="#052e2b"/>
+    <text x="427" y="1112" class="chip-cyan" fill="#6ee7b7">LEAST PRIVILEGE</text>
+
+    <rect x="740" y="961" width="320" height="174" rx="18" fill="#0b1220" stroke="#7c3aed" stroke-opacity="0.75"/>
+    <text x="764" y="990" class="principle-num">03 · EVIDENCE FIRST</text>
+    <text x="764" y="1025" class="principle-title">证据优先于流畅</text>
+    <text x="764" y="1054" class="principle-body">关键事实绑定 Citation</text>
+    <text x="764" y="1075" class="principle-body">精确回到当时版本与来源</text>
+    <rect x="764" y="1096" width="132" height="24" rx="12" fill="#2e1065"/>
+    <text x="777" y="1112" class="chip" fill="#ddd6fe">TRACEABLE ANSWER</text>
+
+    <rect x="1090" y="961" width="320" height="174" rx="18" fill="#0b1220" stroke="#be123c" stroke-opacity="0.72"/>
+    <text x="1114" y="990" class="principle-num">04 · SAFE DEGRADATION</text>
+    <text x="1114" y="1025" class="principle-title">安全失败，透明降级</text>
+    <text x="1114" y="1054" class="principle-body">权限 / 安全问题 Fail Closed</text>
+    <text x="1114" y="1075" class="principle-body">普通故障明确披露 Partial</text>
+    <rect x="1114" y="1096" width="146" height="24" rx="12" fill="#1f111b"/>
+    <text x="1127" y="1112" class="chip" fill="#fda4af">NO SILENT FAILURE</text>
+
+    <rect x="1440" y="961" width="320" height="174" rx="18" fill="#0b1220" stroke="#0891b2" stroke-opacity="0.72"/>
+    <text x="1464" y="990" class="principle-num">05 · CONTINUOUS CONTROL</text>
+    <text x="1464" y="1025" class="principle-title">持续治理全链路</text>
+    <text x="1464" y="1054" class="principle-body">Health · Freshness · Audit</text>
+    <text x="1464" y="1075" class="principle-body">Kill Switch · Config Rollback</text>
+    <rect x="1464" y="1096" width="134" height="24" rx="12" fill="#083344"/>
+    <text x="1477" y="1112" class="chip-cyan">OPERABLE BY DESIGN</text>
+  </g>
+
+  <!-- Footer -->
+  <line x1="40" y1="1162" x2="1760" y2="1162" stroke="#334155" stroke-opacity="0.7"/>
+  <text x="40" y="1184" class="micro">ATLAS KNOWLEDGE BASE · PRODUCT SPEC v0.4 · 2026-08-19</text>
+  <text x="1760" y="1184" text-anchor="end" class="micro">概念产品运转模型 · 组件、协议、存储与部署拓扑须由后续 Architecture / ADR 决定</text>
+</svg>

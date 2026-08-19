@@ -10,9 +10,11 @@ Before non-trivial work, read in this order:
 1. `PROJECT_RULES.md`
 2. `docs/00-context/constitution.md`
 3. `docs/00-context/sdd-profile.md` and `docs/SDD-BOOTSTRAP.md`
-4. Relevant slice documents under `docs/01-requirements/` through
+4. `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md` when work
+   affects product scope, actors, acceptance, or non-goals
+5. Relevant slice documents under `docs/01-requirements/` through
    `docs/06-tasks/`
-5. Relevant ADRs under `docs/architecture/decisions/`
+6. Relevant ADRs under `docs/architecture/decisions/`
 
 When the repository later adds product boundaries, a glossary, content model,
 source policy, or runtime standards, read the documents affected by the change
@@ -130,7 +132,10 @@ Application build commands are intentionally not invented before runtime and
 stack ADRs exist. Until then, use:
 
 ```sh
-git diff --check -- . ':(exclude).agents/skills/**'
+# Exact upstream/source mirrors retain their original Markdown hard breaks.
+git diff --check -- . \
+  ':(exclude).agents/skills/**' \
+  ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'
 ```
 
 When `.agents/skills/` or `docs/00-context/sdd-skills.lock` changes, also run

@@ -45,10 +45,12 @@ Read, in this order:
 2. `PROJECT_RULES.md`
 3. `docs/00-context/constitution.md`
 4. `docs/00-context/sdd-profile.md`
-5. Relevant slice documents under `docs/01-requirements/` through
+5. `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md` for the `mvp`
+   slice or whenever product scope is affected
+6. Relevant slice documents under `docs/01-requirements/` through
    `docs/06-tasks/`
-6. Relevant ADRs under `docs/architecture/decisions/`
-7. Relevant source policy, glossary, taxonomy, content model, product, and
+7. Relevant ADRs under `docs/architecture/decisions/`
+8. Relevant source policy, glossary, taxonomy, content model, product, and
    runtime standards once those documents exist
 
 ## Slice Document Set

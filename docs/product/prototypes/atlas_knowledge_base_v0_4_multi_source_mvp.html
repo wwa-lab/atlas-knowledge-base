@@ -1,0 +1,4606 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0a0c10" id="themeColor">
+  <title>Atlas Knowledge Base — v0.4 Multi-Source MVP 原型</title>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --panel: #11151b;
+      --panel-2: #151a22;
+      --panel-3: #1a2029;
+      --text: #f6f7fb;
+      --muted: #9aa5b4;
+      --subtle: #737f90;
+      --line: #242b35;
+      --line-strong: #333c49;
+      --accent: #8ea2ff;
+      --accent-2: #b59cff;
+      --accent-soft: rgba(142, 162, 255, .11);
+      --green: #67d7a6;
+      --green-soft: rgba(103, 215, 166, .10);
+      --amber: #f4c56e;
+      --amber-soft: rgba(244, 197, 110, .10);
+      --red: #ff8f9c;
+      --red-soft: rgba(255, 143, 156, .10);
+      --blue: #79b8ff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .34);
+      --sidebar: 252px;
+      --prototype-bar: 34px;
+      --header: 70px;
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-xl: 22px;
+    }
+
+    html[data-theme="light"] {
+      --bg: #f2f4f7;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --panel-3: #f0f3f8;
+      --text: #151922;
+      --muted: #667085;
+      --subtle: #8690a0;
+      --line: #e4e7ec;
+      --line-strong: #d0d5dd;
+      --accent: #6d7dff;
+      --accent-2: #9d8cff;
+      --accent-soft: rgba(109, 125, 255, .09);
+      --green: #238662;
+      --green-soft: rgba(35, 134, 98, .09);
+      --amber: #9b6b18;
+      --amber-soft: rgba(180, 120, 16, .09);
+      --red: #c43d52;
+      --red-soft: rgba(196, 61, 82, .08);
+      --blue: #3276c7;
+      --shadow: 0 18px 44px rgba(16, 24, 40, .10);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+    }
+
+    html {
+      color-scheme: dark;
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 42% -12%, rgba(142, 162, 255, .10), transparent 29%),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: rgba(142, 162, 255, .15);
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      color: inherit;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    label {
+      touch-action: manipulation;
+    }
+
+    button:disabled,
+    input:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    ::selection {
+      color: var(--text);
+      background: rgba(142, 162, 255, .28);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 12px;
+      z-index: 200;
+      padding: 8px 11px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      box-shadow: var(--shadow);
+      font-size: 11px;
+      font-weight: 750;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-140%);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+
+    .skip-link:focus {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .prototype-bar {
+      position: relative;
+      z-index: 90;
+      min-height: var(--prototype-bar);
+      padding: 5px max(12px, env(safe-area-inset-right)) 5px max(12px, env(safe-area-inset-left));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      color: #c7d0dd;
+      background: #0c0f14;
+      border-bottom: 1px solid rgba(255, 255, 255, .07);
+      font-size: 11px;
+    }
+
+    html[data-theme="light"] .prototype-bar {
+      color: #475467;
+      background: #eef1f6;
+      border-color: rgba(15, 23, 42, .08);
+    }
+
+    .prototype-note,
+    .prototype-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .prototype-dot {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(142, 162, 255, .10);
+    }
+
+    .prototype-note span:last-child {
+      color: var(--subtle);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .prototype-controls label {
+      color: var(--subtle);
+    }
+
+    .prototype-controls select {
+      height: 24px;
+      max-width: 180px;
+      padding: 0 26px 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--text);
+      background: var(--panel);
+      font-size: 11px;
+    }
+
+    .app-shell {
+      height: calc(100vh - var(--prototype-bar));
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 50;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: rgba(13, 16, 21, .92);
+      border-right: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+    }
+
+    html[data-theme="light"] .sidebar {
+      background: rgba(255, 255, 255, .88);
+    }
+
+    .brand {
+      height: var(--header);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      color: #d9deff;
+      background: linear-gradient(145deg, rgba(142, 162, 255, .16), rgba(181, 156, 255, .06));
+      border: 1px solid rgba(142, 162, 255, .28);
+      border-radius: 11px;
+    }
+
+    html[data-theme="light"] .brand-mark {
+      color: #4f60d2;
+    }
+
+    .brand-mark svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .brand-name {
+      min-width: 0;
+    }
+
+    .brand-name strong,
+    .brand-name span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-name strong {
+      letter-spacing: -.02em;
+    }
+
+    .brand-name span {
+      margin-top: 1px;
+      color: var(--subtle);
+      font-size: 10px;
+    }
+
+    .icon-button,
+    .tiny-button {
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+    }
+
+    .icon-button {
+      width: 38px;
+      height: 38px;
+    }
+
+    .tiny-button {
+      width: 30px;
+      height: 30px;
+      border-color: var(--line);
+      background: var(--panel);
+    }
+
+    .icon-button:hover,
+    .tiny-button:hover {
+      color: var(--text);
+      background: var(--panel-2);
+      border-color: var(--line);
+    }
+
+    .new-chat {
+      min-height: 42px;
+      margin: 0 12px 12px;
+      padding: 0 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #11151b;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border: 0;
+      border-radius: 12px;
+      box-shadow: 0 10px 24px rgba(142, 162, 255, .14);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .new-chat span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .new-chat kbd {
+      color: rgba(17, 21, 27, .58);
+      font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .primary-nav {
+      padding: 0 8px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav-item {
+      width: 100%;
+      min-height: 38px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, .025);
+    }
+
+    html[data-theme="light"] .nav-item:hover {
+      background: rgba(15, 23, 42, .035);
+    }
+
+    .nav-item.active {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .10);
+    }
+
+    .nav-item .nav-badge {
+      min-width: 20px;
+      height: 20px;
+      margin-left: auto;
+      padding: 0 6px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+      background: var(--panel-3);
+      border-radius: 999px;
+      font-size: 9px;
+    }
+
+    .history {
+      min-height: 0;
+      padding: 14px 8px;
+      flex: 1;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .section-label {
+      padding: 0 10px 7px;
+      color: var(--subtle);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    .history-item {
+      width: 100%;
+      min-height: 38px;
+      margin-bottom: 2px;
+      padding: 6px 9px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      text-align: left;
+      font-size: 11px;
+    }
+
+    .history-item:hover,
+    .history-item.active {
+      color: var(--text);
+      background: var(--panel-2);
+      border-color: var(--line);
+    }
+
+    .history-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-time {
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .sidebar-footer {
+      padding: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .user-card {
+      width: 100%;
+      min-height: 48px;
+      padding: 6px 7px;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 11px;
+      text-align: left;
+    }
+
+    .user-card:hover {
+      background: var(--panel-2);
+      border-color: var(--line);
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      color: #11151b;
+      background: linear-gradient(145deg, var(--green), #91e7c2);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .user-meta {
+      min-width: 0;
+    }
+
+    .user-meta strong,
+    .user-meta span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-meta strong {
+      font-size: 11px;
+    }
+
+    .user-meta span {
+      margin-top: 1px;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .online-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 3px var(--green-soft);
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 0;
+      background: rgba(10, 12, 16, .30);
+    }
+
+    html[data-theme="light"] .workspace {
+      background: rgba(242, 244, 247, .42);
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+
+    .screen.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      min-height: var(--header);
+      padding: 0 18px 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(10, 12, 16, .74);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+    }
+
+    html[data-theme="light"] .topbar {
+      background: rgba(255, 255, 255, .78);
+    }
+
+    .topbar-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .topbar-copy {
+      min-width: 0;
+    }
+
+    .topbar-copy h1 {
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 760;
+      letter-spacing: -.02em;
+    }
+
+    .topbar-copy p {
+      margin: 2px 0 0;
+      overflow: hidden;
+      color: var(--subtle);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 10px;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .button {
+      min-height: 36px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .button:hover {
+      background: var(--panel-2);
+      border-color: var(--line-strong);
+    }
+
+    .button.primary {
+      color: #11151b;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-color: transparent;
+      box-shadow: 0 9px 22px rgba(142, 162, 255, .14);
+    }
+
+    .button.ghost {
+      background: transparent;
+    }
+
+    .button.danger {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: rgba(255, 143, 156, .18);
+    }
+
+    .button svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .mobile-only {
+      display: none;
+    }
+
+    .chat-layout {
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(520px, 1fr) 370px;
+    }
+
+    .chat-layout.drawer-closed {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .conversation-pane {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(circle at 50% 0, rgba(142, 162, 255, .045), transparent 28%),
+        transparent;
+    }
+
+    .scope-strip {
+      min-height: 46px;
+      padding: 7px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(17, 21, 27, .58);
+      border-bottom: 1px solid var(--line);
+    }
+
+    html[data-theme="light"] .scope-strip {
+      background: rgba(248, 250, 252, .82);
+    }
+
+    .scope-summary,
+    .scope-security {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .scope-label {
+      color: var(--subtle);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .scope-chips {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .scope-chip,
+    .pill,
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .scope-chip {
+      max-width: 158px;
+      padding: 4px 8px;
+      overflow: hidden;
+      color: #c7d0ff;
+      background: var(--accent-soft);
+      border: 1px solid rgba(142, 162, 255, .12);
+      text-overflow: ellipsis;
+      font-size: 9px;
+      font-weight: 680;
+    }
+
+    html[data-theme="light"] .scope-chip {
+      color: #4b5dcc;
+    }
+
+    .scope-security {
+      color: var(--subtle);
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .scope-security svg {
+      width: 13px;
+      height: 13px;
+      color: var(--green);
+    }
+
+    .chat-scroll {
+      min-height: 0;
+      flex: 1;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .chat-content {
+      width: min(820px, calc(100% - 42px));
+      margin: 0 auto;
+      padding: 34px 0 28px;
+    }
+
+    .scenario-panel {
+      display: none;
+    }
+
+    .scenario-panel.active {
+      display: block;
+    }
+
+    .user-message {
+      max-width: 73%;
+      margin: 0 0 30px auto;
+      padding: 13px 15px;
+      color: var(--text);
+      background: linear-gradient(145deg, rgba(142, 162, 255, .17), rgba(181, 156, 255, .10));
+      border: 1px solid rgba(142, 162, 255, .17);
+      border-radius: 16px 16px 5px 16px;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .assistant-message {
+      position: relative;
+      padding-left: 42px;
+    }
+
+    .assistant-avatar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      color: #dbe0ff;
+      background: linear-gradient(145deg, rgba(142, 162, 255, .18), rgba(181, 156, 255, .07));
+      border: 1px solid rgba(142, 162, 255, .20);
+      border-radius: 9px;
+    }
+
+    .assistant-avatar svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .message-heading {
+      min-height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .message-author {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .pill {
+      padding: 3px 7px;
+      color: var(--green);
+      background: var(--green-soft);
+      border: 1px solid rgba(103, 215, 166, .13);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .request-id {
+      color: var(--subtle);
+      font: 9px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .request-id,
+    .history-time,
+    .kb-cell,
+    .metadata-row dd,
+    .metric-card strong,
+    .progress-step b,
+    .source-panel-header span {
+      font-variant-numeric: tabular-nums;
+    }
+
+    h1,
+    h2,
+    h3 {
+      text-wrap: balance;
+    }
+
+    .retrieval-progress {
+      margin: 13px 0 20px;
+      padding: 11px 12px;
+      background: rgba(255, 255, 255, .018);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    html[data-theme="light"] .retrieval-progress {
+      background: rgba(15, 23, 42, .015);
+    }
+
+    .progress-title {
+      width: 100%;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      font-size: 10px;
+      text-align: left;
+    }
+
+    .progress-title span:first-child {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .progress-title svg {
+      width: 14px;
+      height: 14px;
+      color: var(--green);
+    }
+
+    .progress-steps {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .retrieval-progress.collapsed .progress-steps {
+      display: none;
+    }
+
+    .progress-step {
+      min-width: 0;
+      padding-top: 8px;
+      border-top: 2px solid var(--green);
+    }
+
+    .progress-step span,
+    .progress-step b {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-step span {
+      color: var(--subtle);
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .progress-step b {
+      margin-top: 3px;
+      font-size: 9px;
+      font-weight: 680;
+    }
+
+    .answer {
+      color: #dce1e9;
+      font-size: 13px;
+      line-height: 1.78;
+    }
+
+    html[data-theme="light"] .answer {
+      color: #344054;
+    }
+
+    .answer p {
+      margin: 0 0 14px;
+    }
+
+    .answer h2 {
+      margin: 23px 0 8px;
+      color: var(--text);
+      font-size: 14px;
+      letter-spacing: -.015em;
+    }
+
+    .answer ol,
+    .answer ul {
+      margin: 8px 0 16px;
+      padding-left: 20px;
+    }
+
+    .answer li {
+      margin: 8px 0;
+      padding-left: 3px;
+    }
+
+    .answer code {
+      padding: 2px 5px;
+      color: #ccd4ff;
+      background: var(--accent-soft);
+      border: 1px solid rgba(142, 162, 255, .10);
+      border-radius: 5px;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    html[data-theme="light"] .answer code {
+      color: #4354bf;
+    }
+
+    .citation {
+      min-width: 22px;
+      height: 20px;
+      margin: 0 2px;
+      padding: 0 6px;
+      display: inline-grid;
+      place-items: center;
+      vertical-align: 1px;
+      color: #cbd3ff;
+      background: var(--accent-soft);
+      border: 1px solid rgba(142, 162, 255, .17);
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    html[data-theme="light"] .citation {
+      color: #4c5ecb;
+    }
+
+    .citation:hover,
+    .citation.active {
+      color: var(--text);
+      background: rgba(142, 162, 255, .19);
+      border-color: rgba(142, 162, 255, .34);
+    }
+
+    .callout {
+      margin: 17px 0;
+      padding: 12px 13px;
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 9px;
+      color: var(--muted);
+      background: var(--amber-soft);
+      border: 1px solid rgba(244, 197, 110, .18);
+      border-radius: 12px;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .callout svg {
+      width: 16px;
+      height: 16px;
+      margin-top: 1px;
+      color: var(--amber);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 11px;
+    }
+
+    .partial-banner {
+      margin: 0 0 16px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      color: var(--muted);
+      background: var(--amber-soft);
+      border: 1px solid rgba(244, 197, 110, .18);
+      border-radius: 11px;
+      font-size: 10px;
+      line-height: 1.55;
+    }
+
+    .partial-banner svg {
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+      color: var(--amber);
+    }
+
+    .sources-summary {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .sources-summary h3 {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 760;
+    }
+
+    .source-row {
+      width: 100%;
+      min-height: 52px;
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      background: rgba(255, 255, 255, .018);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      text-align: left;
+    }
+
+    html[data-theme="light"] .source-row {
+      background: rgba(15, 23, 42, .014);
+    }
+
+    .source-row:hover {
+      background: var(--panel-2);
+      border-color: var(--line-strong);
+    }
+
+    .source-number {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      color: #c9d1ff;
+      background: var(--accent-soft);
+      border-radius: 7px;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .source-row-copy {
+      min-width: 0;
+    }
+
+    .source-row-copy strong,
+    .source-row-copy span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .source-row-copy strong {
+      font-size: 10px;
+    }
+
+    .source-row-copy span {
+      margin-top: 2px;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .source-row > svg {
+      width: 14px;
+      height: 14px;
+      color: var(--subtle);
+    }
+
+    .message-actions {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .message-actions .icon-button {
+      width: 30px;
+      height: 30px;
+    }
+
+    .message-actions svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .evidence-empty {
+      max-width: 620px;
+      padding: 22px;
+      color: var(--muted);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .evidence-empty .state-icon {
+      width: 38px;
+      height: 38px;
+      margin-bottom: 14px;
+      display: grid;
+      place-items: center;
+      color: var(--amber);
+      background: var(--amber-soft);
+      border: 1px solid rgba(244, 197, 110, .18);
+      border-radius: 12px;
+    }
+
+    .evidence-empty h2 {
+      margin: 0 0 7px;
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .evidence-empty p {
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.65;
+    }
+
+    .state-actions {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .empty-chat {
+      min-height: 52vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .empty-inner {
+      max-width: 540px;
+      padding: 20px;
+    }
+
+    .empty-mark {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 18px;
+      display: grid;
+      place-items: center;
+      color: #dbe0ff;
+      background: linear-gradient(145deg, rgba(142, 162, 255, .16), rgba(181, 156, 255, .06));
+      border: 1px solid rgba(142, 162, 255, .23);
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(142, 162, 255, .10);
+    }
+
+    .empty-mark svg {
+      width: 25px;
+      height: 25px;
+    }
+
+    .empty-inner h2 {
+      margin: 0;
+      font-size: clamp(24px, 3.2vw, 36px);
+      letter-spacing: -.045em;
+    }
+
+    .empty-inner p {
+      max-width: 470px;
+      margin: 12px auto 20px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .empty-scope {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .composer-wrap {
+      padding: 10px 18px 14px;
+      background: linear-gradient(180deg, rgba(10, 12, 16, 0), rgba(10, 12, 16, .86) 28%);
+    }
+
+    html[data-theme="light"] .composer-wrap {
+      background: linear-gradient(180deg, rgba(242, 244, 247, 0), rgba(242, 244, 247, .90) 28%);
+    }
+
+    .composer {
+      width: min(820px, 100%);
+      min-height: 86px;
+      margin: 0 auto;
+      padding: 11px 12px 9px;
+      display: flex;
+      flex-direction: column;
+      background: rgba(21, 26, 34, .96);
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      box-shadow: 0 16px 44px rgba(0, 0, 0, .22);
+    }
+
+    .composer:focus-within,
+    .search-field:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(142, 162, 255, .14);
+    }
+
+    html[data-theme="light"] .composer {
+      background: rgba(255, 255, 255, .96);
+      box-shadow: 0 12px 34px rgba(16, 24, 40, .08);
+    }
+
+    .composer textarea {
+      width: 100%;
+      min-height: 36px;
+      max-height: 120px;
+      padding: 2px 3px;
+      resize: none;
+      overflow-y: auto;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      outline: none;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .composer textarea::placeholder {
+      color: var(--subtle);
+    }
+
+    .composer-footer {
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .composer-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .composer-meta span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .composer-meta svg {
+      width: 12px;
+      height: 12px;
+      color: var(--green);
+    }
+
+    .send-button {
+      width: 31px;
+      height: 31px;
+      display: grid;
+      place-items: center;
+      color: #11151b;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border: 0;
+      border-radius: 9px;
+    }
+
+    .send-button:hover {
+      filter: brightness(1.06);
+    }
+
+    .send-button svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .composer-disclaimer {
+      width: min(820px, 100%);
+      margin: 6px auto 0;
+      color: var(--subtle);
+      font-size: 8px;
+      text-align: center;
+    }
+
+    .source-panel {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: rgba(17, 21, 27, .94);
+      border-left: 1px solid var(--line);
+    }
+
+    html[data-theme="light"] .source-panel {
+      background: rgba(255, 255, 255, .94);
+    }
+
+    .drawer-closed .source-panel {
+      display: none;
+    }
+
+    .source-panel-header {
+      min-height: 54px;
+      padding: 0 13px 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .source-panel-header strong {
+      font-size: 12px;
+      letter-spacing: -.01em;
+    }
+
+    .source-panel-header span {
+      margin-left: 5px;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .source-scroll {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .source-content {
+      padding: 17px 16px 24px;
+    }
+
+    .reauth-badge {
+      margin-bottom: 14px;
+      padding: 8px 9px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--green);
+      background: var(--green-soft);
+      border: 1px solid rgba(103, 215, 166, .14);
+      border-radius: 10px;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .reauth-badge svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+    }
+
+    .source-kicker {
+      color: var(--subtle);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .10em;
+      text-transform: uppercase;
+    }
+
+    .source-content h2 {
+      margin: 7px 0 5px;
+      font-size: 16px;
+      line-height: 1.35;
+      letter-spacing: -.025em;
+    }
+
+    .source-byline {
+      margin: 0 0 15px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .excerpt {
+      margin: 0;
+      padding: 14px;
+      color: #d8dee8;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    html[data-theme="light"] .excerpt {
+      color: #344054;
+    }
+
+    .excerpt mark {
+      padding: 1px 2px;
+      color: inherit;
+      background: rgba(142, 162, 255, .18);
+      border-radius: 3px;
+    }
+
+    .source-actions {
+      margin: 11px 0 18px;
+      display: grid;
+      grid-template-columns: 1fr 36px;
+      gap: 7px;
+    }
+
+    .metadata {
+      margin-top: 4px;
+      border-top: 1px solid var(--line);
+    }
+
+    .metadata-row {
+      min-height: 41px;
+      padding: 8px 0;
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 9px;
+    }
+
+    .metadata-row dt {
+      color: var(--subtle);
+    }
+
+    .metadata-row dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .classification {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--amber);
+    }
+
+    .other-sources {
+      margin-top: 22px;
+    }
+
+    .other-sources h3 {
+      margin: 0 0 9px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .mini-source {
+      width: 100%;
+      min-height: 52px;
+      margin-bottom: 6px;
+      padding: 8px 9px;
+      display: grid;
+      grid-template-columns: 23px minmax(0, 1fr);
+      gap: 8px;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .mini-source:hover,
+    .mini-source.active {
+      color: var(--text);
+      background: var(--panel-2);
+      border-color: var(--line-strong);
+    }
+
+    .mini-source .source-number {
+      width: 22px;
+      height: 22px;
+    }
+
+    .mini-source strong,
+    .mini-source span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-source strong {
+      font-size: 9px;
+    }
+
+    .mini-source span {
+      margin-top: 2px;
+      color: var(--subtle);
+      font-size: 8px;
+    }
+
+    .page-scroll {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 44px));
+      margin: 0 auto;
+      padding: 34px 0 60px;
+    }
+
+    .page-heading {
+      margin-bottom: 24px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .page-heading h1 {
+      margin: 0;
+      font-size: 27px;
+      letter-spacing: -.04em;
+    }
+
+    .page-heading p {
+      max-width: 620px;
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .toolbar {
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .search-field {
+      width: min(360px, 100%);
+      height: 38px;
+      padding: 0 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+
+    .search-field svg {
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+    }
+
+    .search-field input {
+      width: 100%;
+      min-width: 0;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      outline: none;
+      font-size: 11px;
+    }
+
+    .search-field input::placeholder {
+      color: var(--subtle);
+    }
+
+    .toolbar-meta {
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .kb-list {
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, .10);
+    }
+
+    .kb-table-head,
+    .kb-row {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.7fr) minmax(130px, .8fr) 80px 142px 96px 34px;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .kb-table-head {
+      min-height: 40px;
+      padding: 0 14px;
+      color: var(--subtle);
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .kb-row {
+      width: 100%;
+      min-height: 78px;
+      padding: 12px 14px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    .kb-row:last-child {
+      border-bottom: 0;
+    }
+
+    .kb-row:hover {
+      background: var(--panel-2);
+    }
+
+    .kb-name-cell {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .kb-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      color: #cdd4ff;
+      background: var(--accent-soft);
+      border: 1px solid rgba(142, 162, 255, .12);
+      border-radius: 11px;
+    }
+
+    .kb-icon.green {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(103, 215, 166, .12);
+    }
+
+    .kb-icon.amber {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(244, 197, 110, .14);
+    }
+
+    .kb-name-copy {
+      min-width: 0;
+    }
+
+    .kb-name-copy strong,
+    .kb-name-copy span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-name-copy strong {
+      font-size: 11px;
+    }
+
+    .kb-name-copy span {
+      margin-top: 3px;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .kb-cell {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 9px;
+    }
+
+    .status-chip {
+      width: fit-content;
+      padding: 4px 7px;
+      color: var(--green);
+      background: var(--green-soft);
+      border: 1px solid rgba(103, 215, 166, .12);
+      font-size: 8px;
+      font-weight: 780;
+    }
+
+    .status-chip.suspended {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(244, 197, 110, .14);
+    }
+
+    .status-chip .status-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .kb-row > svg {
+      width: 14px;
+      height: 14px;
+      color: var(--subtle);
+    }
+
+    .breadcrumb {
+      margin-bottom: 17px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .breadcrumb button {
+      padding: 0;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+    }
+
+    .breadcrumb button:hover {
+      color: var(--text);
+    }
+
+    .breadcrumb svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .detail-hero {
+      margin-bottom: 16px;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 15px;
+      background: linear-gradient(145deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .detail-hero .kb-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 15px;
+    }
+
+    .detail-hero .kb-icon svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .detail-copy h1 {
+      margin: 1px 0 4px;
+      font-size: 22px;
+      letter-spacing: -.035em;
+    }
+
+    .detail-copy p {
+      max-width: 690px;
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .detail-badges {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .detail-badge {
+      padding: 4px 7px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, .025);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 8px;
+    }
+
+    html[data-theme="light"] .detail-badge {
+      background: rgba(15, 23, 42, .02);
+    }
+
+    .tabs {
+      margin-bottom: 16px;
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      min-height: 38px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+    }
+
+    .info-card {
+      padding: 17px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 15px;
+    }
+
+    .info-card h2 {
+      margin: 0 0 12px;
+      font-size: 12px;
+    }
+
+    .info-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.65;
+    }
+
+    .boundary-list {
+      margin: 13px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .boundary-list li {
+      margin-top: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.5;
+    }
+
+    .boundary-list svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      color: var(--green);
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .metric-card {
+      min-height: 72px;
+      padding: 11px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+
+    .metric-card span,
+    .metric-card strong {
+      display: block;
+    }
+
+    .metric-card span {
+      color: var(--subtle);
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+
+    .metric-card strong {
+      margin-top: 7px;
+      font-size: 12px;
+    }
+
+    .document-list {
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 15px;
+    }
+
+    .document-head,
+    .document-row {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.6fr) 124px 132px 104px;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .document-head {
+      min-height: 38px;
+      padding: 0 13px;
+      color: var(--subtle);
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .document-row {
+      min-height: 58px;
+      padding: 10px 13px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .document-row:last-child {
+      border-bottom: 0;
+    }
+
+    .document-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .document-title svg {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      color: var(--accent);
+    }
+
+    .document-title span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 10px;
+      font-weight: 680;
+    }
+
+    .document-cell {
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 9px;
+    }
+
+    .document-row .button {
+      min-height: 31px;
+      padding: 0 9px;
+      justify-self: start;
+      font-size: 9px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .settings-card {
+      padding: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 15px;
+    }
+
+    .settings-card h2 {
+      margin: 0 0 4px;
+      font-size: 12px;
+    }
+
+    .settings-card > p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1.5;
+    }
+
+    .setting-row {
+      min-height: 50px;
+      padding: 9px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .setting-copy strong,
+    .setting-copy span {
+      display: block;
+    }
+
+    .setting-copy strong {
+      font-size: 10px;
+    }
+
+    .setting-copy span {
+      margin-top: 2px;
+      color: var(--subtle);
+      font-size: 8px;
+    }
+
+    .auth-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--green);
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .auth-status svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    dialog {
+      width: min(620px, calc(100% - 30px));
+      max-height: min(82vh, 760px);
+      padding: 0;
+      overflow: hidden;
+      color: var(--text);
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line-strong);
+      border-radius: 19px;
+      box-shadow: 0 30px 100px rgba(0, 0, 0, .54);
+      overscroll-behavior: contain;
+    }
+
+    dialog::backdrop {
+      background: rgba(4, 6, 10, .68);
+      backdrop-filter: blur(8px);
+    }
+
+    html[data-theme="light"] dialog::backdrop {
+      background: rgba(15, 23, 42, .30);
+    }
+
+    .dialog-header {
+      min-height: 66px;
+      padding: 14px 16px 13px 19px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .dialog-header h2 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -.02em;
+    }
+
+    .dialog-header p {
+      margin: 3px 0 0;
+      color: var(--subtle);
+      font-size: 9px;
+    }
+
+    .dialog-body {
+      max-height: calc(82vh - 132px);
+      padding: 16px 19px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line-strong) transparent;
+      overscroll-behavior: contain;
+    }
+
+    .dialog-footer {
+      min-height: 66px;
+      padding: 12px 19px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--line);
+    }
+
+    .selection-count {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .dialog-footer-actions {
+      display: flex;
+      gap: 7px;
+    }
+
+    .kb-options {
+      margin-top: 12px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .kb-option {
+      min-height: 61px;
+      padding: 10px 11px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, .018);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    html[data-theme="light"] .kb-option {
+      background: rgba(15, 23, 42, .014);
+    }
+
+    .kb-option:hover {
+      background: var(--panel-2);
+      border-color: var(--line-strong);
+    }
+
+    .kb-option:has(input:checked) {
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .22);
+    }
+
+    .kb-option input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    .kb-option-copy {
+      min-width: 0;
+    }
+
+    .kb-option-copy strong,
+    .kb-option-copy span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-option-copy strong {
+      font-size: 10px;
+    }
+
+    .kb-option-copy span {
+      margin-top: 3px;
+      color: var(--subtle);
+      font-size: 8px;
+    }
+
+    .option-meta {
+      color: var(--muted);
+      font-size: 8px;
+      white-space: nowrap;
+    }
+
+    .report-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .report-option {
+      min-height: 48px;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      font-size: 10px;
+    }
+
+    .report-option:has(input:checked) {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .23);
+    }
+
+    .report-option input {
+      accent-color: var(--accent);
+    }
+
+    .report-note {
+      margin-top: 13px;
+      padding: 10px;
+      color: var(--subtle);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 9px;
+      line-height: 1.55;
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 120;
+      max-width: min(360px, calc(100% - 36px));
+      padding: 11px 13px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      background: var(--panel-3);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      font-size: 10px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast svg {
+      width: 15px;
+      height: 15px;
+      color: var(--green);
+    }
+
+    .provider-stack,
+    .filter-chips,
+    .coverage-line,
+    .binding-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .provider-badge,
+    .capability-chip,
+    .health-chip,
+    .filter-chip {
+      min-height: 22px;
+      padding: 3px 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--panel-2);
+      font-size: 8px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .provider-badge::before,
+    .health-chip::before {
+      width: 5px;
+      height: 5px;
+      content: "";
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .provider-badge.dify {
+      color: #9baaff;
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .16);
+    }
+
+    .provider-badge.git {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(103, 215, 166, .16);
+    }
+
+    .provider-badge.confluence {
+      color: var(--blue);
+      background: rgba(121, 184, 255, .09);
+      border-color: rgba(121, 184, 255, .16);
+    }
+
+    .capability-chip.chat {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(103, 215, 166, .16);
+    }
+
+    .capability-chip.browse {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(244, 197, 110, .16);
+    }
+
+    .health-chip.healthy {
+      color: var(--green);
+    }
+
+    .health-chip.degraded {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(244, 197, 110, .16);
+    }
+
+    .health-chip.unavailable {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: rgba(255, 143, 156, .16);
+    }
+
+    .filter-chip {
+      min-height: 30px;
+      padding-inline: 10px;
+      cursor: pointer;
+    }
+
+    .filter-chip.active,
+    .filter-chip:hover {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .22);
+    }
+
+    .catalog-toolbar {
+      margin-bottom: 14px;
+      display: grid;
+      grid-template-columns: minmax(240px, 360px) minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .catalog-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .summary-card {
+      min-height: 78px;
+      padding: 12px;
+      background: linear-gradient(145deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 13px;
+    }
+
+    .summary-card span,
+    .summary-card strong,
+    .summary-card small {
+      display: block;
+    }
+
+    .summary-card span {
+      color: var(--subtle);
+      font-size: 8px;
+      font-weight: 760;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .summary-card strong {
+      margin-top: 5px;
+      font-size: 18px;
+      letter-spacing: -.03em;
+    }
+
+    .summary-card small {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 8px;
+    }
+
+    .kb-table-head.multi-source,
+    .kb-row.multi-source {
+      grid-template-columns: minmax(260px, 1.55fr) 150px 86px 112px 106px 92px 24px;
+      gap: 10px;
+    }
+
+    .kb-name-copy .provider-stack {
+      margin-top: 5px;
+    }
+
+    .freshness-cell strong,
+    .freshness-cell span {
+      display: block;
+    }
+
+    .freshness-cell strong {
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 650;
+    }
+
+    .freshness-cell span {
+      margin-top: 2px;
+      color: var(--subtle);
+      font-size: 8px;
+    }
+
+    .source-binding-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .binding-card {
+      min-width: 0;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .binding-card.degraded {
+      border-color: rgba(244, 197, 110, .22);
+      box-shadow: inset 0 3px 0 rgba(244, 197, 110, .30);
+    }
+
+    .binding-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .binding-head h3 {
+      margin: 8px 0 2px;
+      font-size: 11px;
+    }
+
+    .binding-head p {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 8px;
+    }
+
+    .binding-role {
+      padding: 3px 6px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      font: 8px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .binding-metrics {
+      margin-top: 12px;
+      padding-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    .binding-metrics span,
+    .binding-metrics strong {
+      display: block;
+    }
+
+    .binding-metrics span {
+      color: var(--subtle);
+      font-size: 7px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .binding-metrics strong {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .coverage-card {
+      margin: 12px 0 17px;
+      padding: 11px 12px;
+      color: var(--muted);
+      background: rgba(103, 215, 166, .055);
+      border: 1px solid rgba(103, 215, 166, .14);
+      border-radius: 12px;
+      font-size: 9px;
+    }
+
+    .coverage-card strong {
+      color: var(--text);
+    }
+
+    .coverage-line {
+      margin-top: 8px;
+    }
+
+    .coverage-item {
+      padding: 4px 7px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      font-size: 8px;
+    }
+
+    .coverage-item.ok {
+      color: var(--green);
+    }
+
+    .coverage-item.warn {
+      color: var(--amber);
+    }
+
+    .source-provider-line {
+      margin: 8px 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .source-provider-line code {
+      max-width: 52%;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 8px;
+    }
+
+    .connection-note {
+      margin-top: 10px;
+      padding: 9px 10px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 8px;
+      line-height: 1.5;
+    }
+
+    .auth-status.warning {
+      color: var(--amber);
+    }
+
+    .wizard-dialog {
+      width: min(820px, calc(100% - 30px));
+    }
+
+    .wizard-steps {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 5px;
+      margin-bottom: 16px;
+    }
+
+    .wizard-step {
+      min-height: 42px;
+      padding: 7px;
+      color: var(--subtle);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      font-size: 8px;
+      text-align: left;
+    }
+
+    .wizard-step strong {
+      display: block;
+      margin-bottom: 2px;
+      color: inherit;
+      font-size: 9px;
+    }
+
+    .wizard-step.active {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .24);
+    }
+
+    .wizard-panel {
+      display: none;
+    }
+
+    .wizard-panel.active {
+      display: block;
+    }
+
+    .wizard-panel h3 {
+      margin: 0 0 4px;
+      font-size: 14px;
+    }
+
+    .wizard-panel > p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .provider-choice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .provider-choice {
+      min-height: 118px;
+      padding: 13px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      text-align: left;
+    }
+
+    .provider-choice:hover,
+    .provider-choice.selected {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: rgba(142, 162, 255, .24);
+    }
+
+    .provider-choice strong,
+    .provider-choice span {
+      display: block;
+    }
+
+    .provider-choice strong {
+      margin-top: 10px;
+      font-size: 11px;
+    }
+
+    .provider-choice span {
+      margin-top: 4px;
+      color: var(--subtle);
+      font-size: 8px;
+      line-height: 1.5;
+    }
+
+    .wizard-checklist {
+      display: grid;
+      gap: 7px;
+    }
+
+    .wizard-check {
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .wizard-check span:last-child {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .sidebar-scrim {
+      display: none;
+    }
+
+    @media (max-width: 1180px) {
+      :root {
+        --sidebar: 226px;
+      }
+
+      .chat-layout {
+        grid-template-columns: minmax(480px, 1fr) 330px;
+      }
+
+      .scope-chip:nth-child(3) {
+        display: none;
+      }
+
+      .kb-table-head,
+      .kb-row {
+        grid-template-columns: minmax(230px, 1.6fr) minmax(110px, .8fr) 70px 116px 88px 26px;
+        gap: 10px;
+      }
+
+      .kb-table-head.multi-source,
+      .kb-row.multi-source {
+        grid-template-columns: minmax(240px, 1.4fr) 132px 80px 100px 96px 86px 22px;
+      }
+    }
+
+    @media (max-width: 960px) {
+      :root {
+        --sidebar: 238px;
+      }
+
+      .app-shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sidebar {
+        position: fixed;
+        top: var(--prototype-bar);
+        bottom: 0;
+        left: 0;
+        width: var(--sidebar);
+        transform: translateX(-102%);
+        transition: transform .2s ease;
+        box-shadow: var(--shadow);
+      }
+
+      body.sidebar-open .sidebar {
+        transform: translateX(0);
+      }
+
+      .sidebar-scrim {
+        position: fixed;
+        inset: var(--prototype-bar) 0 0;
+        z-index: 45;
+        display: block;
+        background: rgba(4, 6, 10, .56);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+      }
+
+      body.sidebar-open .sidebar-scrim {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .mobile-only {
+        display: inline-grid;
+      }
+
+      .source-panel {
+        position: fixed;
+        top: calc(var(--prototype-bar) + var(--header));
+        right: 0;
+        bottom: 0;
+        z-index: 60;
+        width: min(390px, calc(100vw - 34px));
+        border-top: 1px solid var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      .chat-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .kb-table-head,
+      .kb-row {
+        grid-template-columns: minmax(230px, 1fr) 120px 88px 26px;
+      }
+
+      .kb-table-head span:nth-child(3),
+      .kb-table-head span:nth-child(4),
+      .kb-row .kb-cell:nth-child(3),
+      .kb-row .kb-cell:nth-child(4) {
+        display: none;
+      }
+
+      .kb-table-head.multi-source,
+      .kb-row.multi-source {
+        grid-template-columns: minmax(240px, 1fr) 132px 82px 90px 22px;
+      }
+
+      .kb-table-head.multi-source span:nth-child(4),
+      .kb-table-head.multi-source span:nth-child(5),
+      .kb-row.multi-source > .kb-cell:nth-child(4),
+      .kb-row.multi-source > .freshness-cell {
+        display: none;
+      }
+
+      .catalog-toolbar {
+        grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+      }
+
+      .catalog-toolbar .toolbar-meta {
+        display: none;
+      }
+
+      .source-binding-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .prototype-note span:last-child,
+      .prototype-controls label {
+        display: none;
+      }
+
+      .prototype-controls select {
+        width: 128px;
+      }
+
+      .topbar {
+        padding: 0 10px;
+      }
+
+      .topbar-actions .button span,
+      .scope-security,
+      .scope-label {
+        display: none;
+      }
+
+      .topbar-actions .button {
+        width: 38px;
+        padding: 0;
+      }
+
+      .scope-strip {
+        padding: 7px 11px;
+      }
+
+      .scope-chip:nth-child(2) {
+        display: none;
+      }
+
+      .chat-content {
+        width: calc(100% - 24px);
+        padding-top: 24px;
+      }
+
+      .assistant-message {
+        padding-left: 36px;
+      }
+
+      .user-message {
+        max-width: 88%;
+      }
+
+      .progress-steps {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .composer-wrap {
+        padding: 8px 10px max(11px, env(safe-area-inset-bottom));
+      }
+
+      .page {
+        width: calc(100% - 24px);
+        padding-top: 24px;
+      }
+
+      .page-heading,
+      .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .catalog-toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .catalog-summary {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .source-binding-grid,
+      .provider-choice-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .wizard-steps {
+        display: flex;
+        overflow-x: auto;
+      }
+
+      .wizard-step {
+        min-width: 112px;
+      }
+
+      .search-field {
+        width: 100%;
+      }
+
+      .kb-table-head {
+        display: none;
+      }
+
+      .kb-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 9px;
+      }
+
+      .kb-row .kb-cell,
+      .kb-row .status-chip {
+        display: none;
+      }
+
+      .kb-row.multi-source {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .kb-row.multi-source > :not(.kb-name-cell):not(svg) {
+        display: none;
+      }
+
+      .detail-hero {
+        grid-template-columns: 46px minmax(0, 1fr);
+        padding: 15px;
+      }
+
+      .detail-hero .kb-icon {
+        width: 46px;
+        height: 46px;
+      }
+
+      .detail-hero > .button {
+        grid-column: 1 / -1;
+      }
+
+      .overview-grid,
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .document-head {
+        display: none;
+      }
+
+      .document-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .document-row .document-cell {
+        display: none;
+      }
+
+      .report-options {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#mainWorkspace">跳到主要内容</a>
+  <svg class="sr-only" aria-hidden="true">
+    <symbol id="i-atlas" viewBox="0 0 24 24">
+      <path d="M12 3 4.5 7.2 12 11.5l7.5-4.3L12 3Z"></path>
+      <path d="m4.5 11 7.5 4.3 7.5-4.3"></path>
+      <path d="m4.5 14.8 7.5 4.3 7.5-4.3"></path>
+    </symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24">
+      <path d="M20 15a4 4 0 0 1-4 4H8l-4 2V7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v8Z"></path>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24">
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"></path>
+      <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"></path>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.6v.2H10V21a1.8 1.8 0 0 0-1.1-1.6 1.8 1.8 0 0 0-2 .4l-.1.1L4 17.1l.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 3 13.9h-.2V10H3a1.8 1.8 0 0 0 1.6-1.1 1.8 1.8 0 0 0-.4-2l-.1-.1L6.9 4l.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10.1 3v-.2H14V3a1.8 1.8 0 0 0 1.1 1.6 1.8 1.8 0 0 0 2-.4l.1-.1L20 6.9l-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.1h.2V14h-.2a1.8 1.8 0 0 0-1.7 1Z"></path>
+    </symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+      <path d="M15 4v16"></path>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4"></circle>
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24">
+      <path d="M20.5 14.2A8 8 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"></path>
+    </symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"></path></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"></path>
+      <path d="m9 12 2 2 4-4"></path>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24">
+      <path d="M14 4h6v6M20 4l-9 9"></path>
+      <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24">
+      <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+    </symbol>
+    <symbol id="i-thumbs-up" viewBox="0 0 24 24">
+      <path d="M7 10v10H4a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h3ZM7 20h9.2a2 2 0 0 0 1.9-1.4l2-6A2 2 0 0 0 18.2 10H14l.7-3.5A2 2 0 0 0 12.8 4L7 10Z"></path>
+    </symbol>
+    <symbol id="i-thumbs-down" viewBox="0 0 24 24">
+      <path d="M17 14V4h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3ZM17 4H7.8a2 2 0 0 0-1.9 1.4l-2 6A2 2 0 0 0 5.8 14H10l-.7 3.5A2 2 0 0 0 11.2 20l5.8-6Z"></path>
+    </symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24">
+      <path d="M5 21V4"></path>
+      <path d="M5 5h11l-1 4 1 4H5"></path>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24">
+      <path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"></path>
+      <path d="M12 9v4M12 17h.01"></path>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m20 20-4-4"></path>
+    </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24">
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"></path>
+      <path d="M14 3v6h6M8 13h8M8 17h6"></path>
+    </symbol>
+    <symbol id="i-send" viewBox="0 0 24 24">
+      <path d="m22 2-7 20-4-9-9-4 20-7Z"></path>
+      <path d="M22 2 11 13"></path>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24">
+      <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 11v5M14 11v5"></path>
+    </symbol>
+  </svg>
+
+  <div class="prototype-bar" role="note">
+    <div class="prototype-note">
+      <span class="prototype-dot" aria-hidden="true"></span>
+      <strong>探索性原型</strong>
+      <span>基于产品说明 v0.4 的 Multi-Source 交互探索，不作为实现或架构基线</span>
+    </div>
+    <div class="prototype-controls">
+      <label for="scenarioSelect">演示场景</label>
+      <select id="scenarioSelect" name="prototype-scenario" autocomplete="off">
+        <option value="answer">跨来源回答 + Evidence</option>
+        <option value="empty">Empty Chat</option>
+        <option value="insufficient">证据不足</option>
+        <option value="partial">Connector 部分失败</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="主导航">
+      <div class="brand">
+        <div class="brand-lockup">
+          <span class="brand-mark"><svg aria-hidden="true"><use href="#i-atlas"></use></svg></span>
+          <div class="brand-name">
+            <strong>Atlas</strong>
+            <span>Knowledge Base</span>
+          </div>
+        </div>
+        <button class="icon-button" type="button" aria-label="收起侧栏" title="收起侧栏">
+          <svg aria-hidden="true"><use href="#i-panel"></use></svg>
+        </button>
+      </div>
+
+      <button class="new-chat" id="newChatButton" type="button">
+        <span><svg aria-hidden="true"><use href="#i-plus"></use></svg>新建对话</span>
+        <kbd>⌘ K</kbd>
+      </button>
+
+      <nav class="primary-nav" aria-label="产品导航">
+        <button class="nav-item active" type="button" data-view="chat">
+          <svg aria-hidden="true"><use href="#i-chat"></use></svg>
+          <span>Chat</span>
+        </button>
+        <button class="nav-item" type="button" data-view="kbs">
+          <svg aria-hidden="true"><use href="#i-book"></use></svg>
+          <span>Knowledge Bases</span>
+          <span class="nav-badge">7</span>
+        </button>
+        <button class="nav-item" type="button" data-view="settings">
+          <svg aria-hidden="true"><use href="#i-settings"></use></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+
+      <div class="history" aria-label="对话历史">
+        <div class="section-label">今天</div>
+        <button class="history-item active" type="button" data-history="migration">
+          <span class="history-title">Reward Plus 迁移约束</span>
+          <span class="history-time">10:42</span>
+        </button>
+        <button class="history-item" type="button" data-history="auth">
+          <span class="history-title">服务间授权标准</span>
+          <span class="history-time">09:18</span>
+        </button>
+        <div class="section-label" style="margin-top:14px">过去 7 天</div>
+        <button class="history-item" type="button" data-history="batch">
+          <span class="history-title">AS400 批处理窗口</span>
+          <span class="history-time">周二</span>
+        </button>
+        <button class="history-item" type="button" data-history="incident">
+          <span class="history-title">Payment Gateway 故障复盘</span>
+          <span class="history-time">周一</span>
+        </button>
+        <button class="history-item" type="button" data-history="deployment">
+          <span class="history-title">生产发布检查清单</span>
+          <span class="history-time">8月14日</span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="user-card" type="button" data-view="settings">
+          <span class="avatar">LZ</span>
+          <span class="user-meta">
+            <strong>Leo Zhang</strong>
+            <span>Company SSO · Engineering</span>
+          </span>
+          <span class="online-dot" aria-label="已登录"></span>
+        </button>
+      </div>
+    </aside>
+
+    <button class="sidebar-scrim" id="sidebarScrim" type="button" aria-label="关闭侧栏"></button>
+
+    <main class="workspace" id="mainWorkspace" tabindex="-1">
+      <section class="screen active" id="screen-chat" aria-labelledby="chatTitle">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button class="icon-button mobile-only" id="openSidebar" type="button" aria-label="打开侧栏">
+              <svg aria-hidden="true"><use href="#i-menu"></use></svg>
+            </button>
+            <div class="topbar-copy">
+              <h1 id="chatTitle">Reward Plus 迁移约束</h1>
+              <p>私有对话 · 当前 KB Scope 随回答保存</p>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button class="button" type="button" data-open-dialog="kbSelector">
+              <svg aria-hidden="true"><use href="#i-book"></use></svg>
+              <span id="scopeButtonLabel">3 个知识库</span>
+            </button>
+            <button class="button" id="sourceToggle" type="button" aria-controls="sourcePanel" aria-expanded="true">
+              <svg aria-hidden="true"><use href="#i-panel"></use></svg>
+              <span>Evidence</span>
+            </button>
+            <button class="icon-button" id="themeToggle" type="button" aria-label="切换明暗主题" title="切换明暗主题">
+              <svg class="theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
+              <svg class="theme-icon-moon" aria-hidden="true" style="display:none"><use href="#i-moon"></use></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="chat-layout" id="chatLayout">
+          <div class="conversation-pane">
+            <div class="scope-strip">
+              <div class="scope-summary">
+                <span class="scope-label">KB Scope</span>
+                <div class="scope-chips" id="scopeChips">
+                  <span class="scope-chip">Reward Plus Architecture</span>
+                  <span class="scope-chip">Integration Standards</span>
+                  <span class="scope-chip">AS400 Engineering</span>
+                </div>
+              </div>
+              <div class="scope-security">
+                <svg aria-hidden="true"><use href="#i-shield"></use></svg>
+                <span>3 KB · 4 Sources · 权限已验证</span>
+              </div>
+            </div>
+
+            <div class="chat-scroll" id="chatScroll">
+              <div class="chat-content">
+                <section class="scenario-panel active" data-scenario="answer" aria-label="有证据回答">
+                  <div class="user-message">
+                    Reward Plus 会员积分服务切换到新 Event Gateway 时，调用方需要做哪些改造？Legacy AS400 的兼容约束是什么？
+                  </div>
+
+                  <article class="assistant-message">
+                    <div class="assistant-avatar"><svg aria-hidden="true"><use href="#i-atlas"></use></svg></div>
+                    <div class="message-heading">
+                      <div class="message-author">
+                        Atlas
+                        <span class="pill"><svg aria-hidden="true" style="width:10px;height:10px"><use href="#i-check"></use></svg>有证据</span>
+                      </div>
+                      <span class="request-id">req_8f21c</span>
+                    </div>
+
+                    <div class="retrieval-progress">
+                      <button class="progress-title" type="button" aria-expanded="true">
+                        <span><svg aria-hidden="true"><use href="#i-check"></use></svg>已完成跨来源授权、检索与融合</span>
+                        <span>4.8s <svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></span>
+                      </button>
+                      <div class="progress-steps">
+                        <div class="progress-step"><span>授权</span><b>4 / 4 Sources</b></div>
+                        <div class="progress-step"><span>检索</span><b>3 Profiles</b></div>
+                        <div class="progress-step"><span>融合</span><b>RRF · 6 Evidence</b></div>
+                        <div class="progress-step"><span>生成</span><b>已完成</b></div>
+                      </div>
+                    </div>
+
+                    <div class="coverage-card">
+                      <strong>回答覆盖完整</strong> · 3 个 Logical Knowledge Base、4 个 Source Binding 均已授权并返回可引用证据。
+                      <div class="coverage-line">
+                        <span class="coverage-item ok">Dify · 2 evidence</span>
+                        <span class="coverage-item ok">Confluence · 2 evidence</span>
+                        <span class="coverage-item ok">Git Markdown · 2 evidence</span>
+                      </div>
+                    </div>
+
+                    <div class="answer">
+                      <p>根据当前选中的 3 个知识库，迁移可以分成 API 接入、幂等处理和 Legacy 兼容三部分。</p>
+
+                      <h2>1. 调用方需要完成的改造</h2>
+                      <ol>
+                        <li>新交易改用 <code>POST /v2/points/adjustments</code>，并使用公司 Workload Identity 获取短期 OIDC Token；旧的静态 Client Secret 不再接受。<button class="citation active" type="button" data-source="1" aria-label="查看来源 1">1</button></li>
+                        <li>每次请求必须携带稳定的 <code>Idempotency-Key</code>。重试时复用同一个 Key，避免 MQ Bridge 与 Event Gateway 双写期间重复记账。<button class="citation" type="button" data-source="2" aria-label="查看来源 2">2</button></li>
+                        <li>消费方需要接受异步状态：初始返回 <code>202 Accepted</code>，最终结果由 <code>points.adjustment.completed</code> 事件确认；同步成功响应不能再作为记账完成依据。<button class="citation" type="button" data-source="1" aria-label="查看来源 1">1</button></li>
+                      </ol>
+
+                      <h2>2. AS400 兼容约束</h2>
+                      <p>Legacy AS400 批处理在 MVP 迁移期继续通过 MQ Bridge 接入。固定长度字段和 EBCDIC 编码保持不变，由 Bridge 负责映射到新事件格式；调用方不要直接修改 AS400 Copybook。每日 02:00–02:30 的结算窗口内只允许查询，不接受积分调整。<button class="citation" type="button" data-source="3" aria-label="查看来源 3">3</button></p>
+
+                      <div class="callout">
+                        <svg aria-hidden="true"><use href="#i-alert"></use></svg>
+                        <div>
+                          <strong>来源存在发布窗口冲突，Atlas 未自动裁决</strong>
+                          Integration Standards 要求至少 14 天双写；AS400 Runbook 对低流量批任务写的是 7 天。请由 Reward Plus Owner 与 AS400 Owner 确认本次迁移窗口。<button class="citation" type="button" data-source="2" aria-label="查看来源 2">2</button><button class="citation" type="button" data-source="3" aria-label="查看来源 3">3</button>
+                        </div>
+                      </div>
+
+                      <p><strong>建议顺序：</strong>先完成 OIDC 与幂等改造，在预生产验证事件回调，再启用双写观察，最后由两个 Owner 共同确认切流。当前证据没有给出本次上线的最终日期。</p>
+                    </div>
+
+                    <div class="sources-summary">
+                      <h3>3 个引用来源 · 3 个 Provider</h3>
+                      <button class="source-row" type="button" data-source="1">
+                        <span class="source-number">1</span>
+                        <span class="source-row-copy"><strong>Event Gateway Migration Guide</strong><span>Dify · Reward Plus Architecture · 2026-08-11</span></span>
+                        <svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+                      </button>
+                      <button class="source-row" type="button" data-source="2">
+                        <span class="source-number">2</span>
+                        <span class="source-row-copy"><strong>Enterprise Event Integration Standard</strong><span>Confluence · Integration Standards · v42</span></span>
+                        <svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+                      </button>
+                      <button class="source-row" type="button" data-source="3">
+                        <span class="source-number">3</span>
+                        <span class="source-row-copy"><strong>AS400 Points Batch Runbook</strong><span>Git Markdown · AS400 Engineering · 7f8d3a2</span></span>
+                        <svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+                      </button>
+                    </div>
+
+                    <div class="message-actions">
+                      <button class="icon-button" type="button" data-copy-answer aria-label="复制回答" title="复制回答"><svg aria-hidden="true"><use href="#i-copy"></use></svg></button>
+                      <button class="icon-button" type="button" data-feedback="good" aria-label="回答有帮助" title="回答有帮助"><svg aria-hidden="true"><use href="#i-thumbs-up"></use></svg></button>
+                      <button class="icon-button" type="button" data-feedback="bad" aria-label="回答没有帮助" title="回答没有帮助"><svg aria-hidden="true"><use href="#i-thumbs-down"></use></svg></button>
+                      <button class="icon-button" type="button" data-open-dialog="reportDialog" aria-label="报告问题" title="报告问题"><svg aria-hidden="true"><use href="#i-flag"></use></svg></button>
+                    </div>
+                  </article>
+                </section>
+
+                <section class="scenario-panel" data-scenario="empty" aria-label="空白对话">
+                  <div class="empty-chat">
+                    <div class="empty-inner">
+                      <div class="empty-mark"><svg aria-hidden="true"><use href="#i-atlas"></use></svg></div>
+                      <h2>从可验证的技术知识开始</h2>
+                      <p>Atlas 只使用你当前有权访问且明确选中的知识库回答。先确认范围，再提出需要跨系统比较或整合的问题。</p>
+                      <div class="empty-scope">
+                        <span class="scope-chip">Reward Plus Architecture</span>
+                        <span class="scope-chip">Integration Standards</span>
+                        <span class="scope-chip">AS400 Engineering</span>
+                      </div>
+                      <button class="button" style="margin-top:16px" type="button" data-open-dialog="kbSelector">
+                        <svg aria-hidden="true"><use href="#i-book"></use></svg>调整知识库范围
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="scenario-panel" data-scenario="insufficient" aria-label="证据不足">
+                  <div class="user-message">现有系统能否保证任何跨区域故障都在 30 秒内自动恢复？</div>
+                  <article class="assistant-message">
+                    <div class="assistant-avatar"><svg aria-hidden="true"><use href="#i-atlas"></use></svg></div>
+                    <div class="message-heading">
+                      <div class="message-author">Atlas</div>
+                      <span class="request-id">req_3a90e</span>
+                    </div>
+                    <div class="evidence-empty" style="margin-top:13px">
+                      <div class="state-icon"><svg aria-hidden="true"><use href="#i-search"></use></svg></div>
+                      <h2>没有找到足以支持这个结论的证据</h2>
+                      <p>当前 3 个知识库只描述了单区域 RTO 和人工切换流程，没有“任何跨区域故障 30 秒内自动恢复”的承诺。Atlas 不会用模型常识或互联网内容补全公司事实。</p>
+                      <div class="state-actions">
+                        <button class="button" type="button" data-open-dialog="kbSelector"><svg aria-hidden="true"><use href="#i-book"></use></svg>增加其他知识库</button>
+                        <button class="button ghost" type="button" data-refine-question>改写问题</button>
+                      </div>
+                    </div>
+                  </article>
+                </section>
+
+                <section class="scenario-panel" data-scenario="partial" aria-label="部分知识库失败">
+                  <div class="user-message">总结 Reward Plus 切流计划，并检查 AS400 侧的停机窗口。</div>
+                  <article class="assistant-message">
+                    <div class="assistant-avatar"><svg aria-hidden="true"><use href="#i-atlas"></use></svg></div>
+                    <div class="message-heading">
+                      <div class="message-author">Atlas <span class="pill">部分证据</span></div>
+                      <span class="request-id">req_d21a7</span>
+                    </div>
+                    <div class="partial-banner" style="margin-top:13px">
+                      <svg aria-hidden="true"><use href="#i-alert"></use></svg>
+                      <span><strong style="color:var(--text)">Git Markdown Connector 检索超时。</strong>以下回答仅覆盖 Dify 与 Confluence，不能视为完整 Scope 的结论。</span>
+                    </div>
+                    <div class="coverage-card">
+                      <strong>部分来源不可用</strong>
+                      <div class="coverage-line"><span class="coverage-item ok">Dify · 成功</span><span class="coverage-item ok">Confluence · 成功</span><span class="coverage-item warn">Git Markdown · 5s timeout</span></div>
+                    </div>
+                    <div class="answer">
+                      <p>已检索到的证据支持分三阶段切流：预生产事件验证、14 天双写观察、Owner 联合确认后停止旧入口。<button class="citation" type="button" data-source="1" aria-label="查看来源 1">1</button><button class="citation" type="button" data-source="2" aria-label="查看来源 2">2</button></p>
+                      <p>由于 AS400 Knowledge Base 本轮失败，我无法确认 02:00–02:30 的停机窗口是否仍然有效。你可以安全重试失败的 KB，或先打开原始 Runbook 人工确认。</p>
+                      <div class="state-actions">
+                        <button class="button" type="button" data-retry><svg aria-hidden="true"><use href="#i-search"></use></svg>仅重试 Git Source</button>
+                        <button class="button ghost" type="button" data-source="3">查看上次授权来源</button>
+                      </div>
+                    </div>
+                  </article>
+                </section>
+              </div>
+            </div>
+
+            <div class="composer-wrap">
+              <div class="composer">
+                <label class="sr-only" for="chatInput">向 Atlas 提问</label>
+                <textarea id="chatInput" name="chat-question" rows="2" autocomplete="off" placeholder="向选中的知识库提问…"></textarea>
+                <div class="composer-footer">
+                  <div class="composer-meta">
+                    <span><svg aria-hidden="true"><use href="#i-shield"></use></svg>企业模型通道</span>
+                    <span>3 KB · 4 Sources · 最少上下文</span>
+                  </div>
+                  <button class="send-button" id="sendButton" type="button" aria-label="发送问题">
+                    <svg aria-hidden="true"><use href="#i-send"></use></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="composer-disclaimer">回答可能不完整，请以引用的原始文档为准。当前对话仅你可见。</div>
+            </div>
+          </div>
+
+          <aside class="source-panel" id="sourcePanel" aria-labelledby="sourcePanelTitle">
+            <div class="source-panel-header">
+              <div><strong id="sourcePanelTitle">Evidence</strong><span id="sourceCounter">1 / 3</span></div>
+              <button class="tiny-button" id="closeSourcePanel" type="button" aria-label="关闭来源面板"><svg aria-hidden="true"><use href="#i-x"></use></svg></button>
+            </div>
+            <div class="source-scroll">
+              <div class="source-content">
+                <div class="reauth-badge">
+                  <svg aria-hidden="true"><use href="#i-shield"></use></svg>
+                  <span>Exact Evidence Fetch 前已重新检查权限 · 10:42:18</span>
+                </div>
+                <div class="source-kicker" id="sourceKicker">引用 1 · Reward Plus Architecture</div>
+                <h2 id="sourceTitle">Event Gateway Migration Guide</h2>
+                <p class="source-byline" id="sourceByline">章节 3.2 · Consumer migration contract</p>
+                <div class="source-provider-line">
+                  <span class="provider-badge dify" id="sourceProviderBadge">Dify</span>
+                  <code id="sourceLocator">doc rp-arch-evt-017 · chunk 3</code>
+                </div>
+                <blockquote class="excerpt" id="sourceExcerpt">
+                  All new adjustments MUST call <mark>POST /v2/points/adjustments</mark> using workload identity. A successful submission returns 202; consumers MUST wait for points.adjustment.completed before treating the ledger update as final.
+                </blockquote>
+                <div class="source-actions">
+                  <button class="button primary" type="button" data-open-original><svg aria-hidden="true"><use href="#i-external"></use></svg>打开原始文档</button>
+                  <button class="button" type="button" data-copy-source aria-label="复制来源片段" title="复制来源片段"><svg aria-hidden="true"><use href="#i-copy"></use></svg></button>
+                </div>
+                <dl class="metadata">
+                  <div class="metadata-row"><dt>Document ID</dt><dd id="metaDocumentId">rp-arch-evt-017</dd></div>
+                  <div class="metadata-row"><dt>Knowledge Base</dt><dd id="metaKb">Reward Plus Architecture</dd></div>
+                  <div class="metadata-row"><dt>Source Binding</dt><dd id="metaBinding">bind_reward_dify</dd></div>
+                  <div class="metadata-row"><dt>Provider / Version</dt><dd id="metaProvider">Dify · source v18</dd></div>
+                  <div class="metadata-row"><dt>Owner</dt><dd id="metaOwner">Rewards Platform · Mei Lin</dd></div>
+                  <div class="metadata-row"><dt>原文更新</dt><dd id="metaUpdated">2026-08-11 16:20</dd></div>
+                  <div class="metadata-row"><dt id="metaSyncLabel">Dify 索引</dt><dd id="metaIndexed">2026-08-12 09:42</dd></div>
+                  <div class="metadata-row"><dt>Atlas 验证</dt><dd id="metaVerified">2026-08-19 10:42</dd></div>
+                  <div class="metadata-row"><dt>安全分类</dt><dd><span class="classification"><svg aria-hidden="true" style="width:12px;height:12px"><use href="#i-lock"></use></svg><span id="metaClass">Internal</span></span></dd></div>
+                </dl>
+                <div class="other-sources">
+                  <h3>本回答的其他来源</h3>
+                  <button class="mini-source active" type="button" data-source="1">
+                    <span class="source-number">1</span><span><strong>Event Gateway Migration Guide</strong><span>Dify · Reward Plus Architecture</span></span>
+                  </button>
+                  <button class="mini-source" type="button" data-source="2">
+                    <span class="source-number">2</span><span><strong>Enterprise Event Integration Standard</strong><span>Confluence · Integration Standards</span></span>
+                  </button>
+                  <button class="mini-source" type="button" data-source="3">
+                    <span class="source-number">3</span><span><strong>AS400 Points Batch Runbook</strong><span>Git Markdown · AS400 Engineering</span></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-kbs" aria-labelledby="kbListTitle">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button class="icon-button mobile-only" type="button" data-open-sidebar aria-label="打开侧栏"><svg aria-hidden="true"><use href="#i-menu"></use></svg></button>
+            <div class="topbar-copy"><h1>Knowledge Bases</h1><p>统一发现 Dify、Git Markdown 与 Confluence 知识</p></div>
+          </div>
+          <div class="topbar-actions">
+            <button class="button primary" type="button" data-open-dialog="addKbDialog"><svg aria-hidden="true"><use href="#i-plus"></use></svg><span>添加知识库</span></button>
+            <button class="icon-button theme-toggle-alt" type="button" aria-label="切换明暗主题"><svg aria-hidden="true"><use href="#i-sun"></use></svg></button>
+          </div>
+        </header>
+        <div class="page-scroll">
+          <div class="page">
+            <div class="page-heading">
+              <div>
+                <h1 id="kbListTitle">可访问的知识库</h1>
+                <p>知识库可以连接一个或多个来源。Atlas 统一授权、检索与引用，但不上传、编辑、转换或重新向量化原始文档。</p>
+              </div>
+              <span class="status-chip"><span class="status-dot"></span>6 Active</span>
+            </div>
+
+            <div class="catalog-summary" aria-label="知识库概览">
+              <div class="summary-card"><span>Chat ready</span><strong>5</strong><small>已通过 Model 与 Citation Gate</small></div>
+              <div class="summary-card"><span>Browse only</span><strong>1</strong><small>可浏览，不发送给模型</small></div>
+              <div class="summary-card"><span>Needs attention</span><strong style="color:var(--amber)">1</strong><small>Connector Degraded</small></div>
+              <div class="summary-card"><span>Source profiles</span><strong>3</strong><small>Dify · Git · Confluence</small></div>
+            </div>
+
+            <div class="catalog-toolbar">
+              <label class="search-field">
+                <svg aria-hidden="true"><use href="#i-search"></use></svg>
+                <span class="sr-only">搜索知识库</span>
+                <input id="kbSearch" name="kb-search" type="search" autocomplete="off" placeholder="按名称、Owner 或标签搜索…">
+              </label>
+              <div class="filter-chips" aria-label="知识库筛选">
+                <button class="filter-chip active" type="button" data-kb-filter="all">全部</button>
+                <button class="filter-chip" type="button" data-kb-filter="dify">Dify</button>
+                <button class="filter-chip" type="button" data-kb-filter="git">Git</button>
+                <button class="filter-chip" type="button" data-kb-filter="confluence">Confluence</button>
+                <button class="filter-chip" type="button" data-kb-filter="browse">Browse only</button>
+                <button class="filter-chip" type="button" data-kb-filter="degraded">Degraded</button>
+              </div>
+              <span class="toolbar-meta" id="kbResultCount">7 个结果</span>
+            </div>
+            <div class="kb-list">
+              <div class="kb-table-head multi-source" aria-hidden="true">
+                <span>Knowledge Base</span><span>Sources</span><span>Capability</span><span>Owner</span><span>Freshness</span><span>Health</span><span></span>
+              </div>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="Reward Plus Architecture Rewards Platform Dify Confluence chat active" data-provider="dify confluence" data-capability="chat" data-health="healthy">
+                <span class="kb-name-cell"><span class="kb-icon"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>Reward Plus Architecture</strong><span>Dify 184 docs · Confluence 73 pages</span></span></span>
+                <span class="provider-stack"><span class="provider-badge dify">Dify</span><span class="provider-badge confluence">Confluence</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">Rewards Platform</span>
+                <span class="freshness-cell"><strong>今天 09:42</strong><span>验证 10:42</span></span>
+                <span class="health-chip healthy">Healthy</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="HASE Engineering Playbook Git Markdown HASE Platform chat active" data-provider="git" data-capability="chat" data-health="healthy">
+                <span class="kb-name-cell"><span class="kb-icon green"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>HASE Engineering Playbook</strong><span>1,284 Markdown · `.kb` contract v1.3</span></span></span>
+                <span class="provider-stack"><span class="provider-badge git">Git Markdown</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">HASE Platform</span>
+                <span class="freshness-cell"><strong>14 分钟前</strong><span>验证 10:39</span></span>
+                <span class="health-chip healthy">Healthy</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="Enterprise Integration Standards Confluence Architecture Guild chat active" data-provider="confluence" data-capability="chat" data-health="healthy">
+                <span class="kb-name-cell"><span class="kb-icon"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>Enterprise Integration Standards</strong><span>96 pages · Space ARCH · root /standards</span></span></span>
+                <span class="provider-stack"><span class="provider-badge confluence">Confluence</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">Architecture Guild</span>
+                <span class="freshness-cell"><strong>昨天 18:10</strong><span>验证 10:40</span></span>
+                <span class="health-chip healthy">Healthy</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="AMH Operations Knowledge Dify AMH Platform chat degraded" data-provider="dify" data-capability="chat" data-health="degraded">
+                <span class="kb-name-cell"><span class="kb-icon amber"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>AMH Operations Knowledge</strong><span>14,000 docs · 312 waiting metadata remediation</span></span></span>
+                <span class="provider-stack"><span class="provider-badge dify">Dify</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">AMH Platform</span>
+                <span class="freshness-cell"><strong>今天 08:21</strong><span>验证 10:31</span></span>
+                <span class="health-chip degraded">Degraded</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="Platform Runbooks Git Confluence SRE Platform chat active" data-provider="git confluence" data-capability="chat" data-health="healthy">
+                <span class="kb-name-cell"><span class="kb-icon green"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>Platform Runbooks</strong><span>Git 427 Markdown · Confluence 51 pages</span></span></span>
+                <span class="provider-stack"><span class="provider-badge git">Git</span><span class="provider-badge confluence">Confluence</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">SRE Platform</span>
+                <span class="freshness-cell"><strong>39 分钟前</strong><span>验证 10:41</span></span>
+                <span class="health-chip healthy">Healthy</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="Product Delivery Handbook Confluence browse model ineligible" data-provider="confluence" data-capability="browse" data-health="healthy">
+                <span class="kb-name-cell"><span class="kb-icon"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>Product Delivery Handbook</strong><span>214 pages · Model ineligible · source browsing only</span></span></span>
+                <span class="provider-stack"><span class="provider-badge confluence">Confluence</span></span>
+                <span class="provider-stack"><span class="capability-chip browse">Browse</span><span class="detail-badge">Active</span></span>
+                <span class="kb-cell">Product Practice</span>
+                <span class="freshness-cell"><strong>8月18日</strong><span>验证 10:37</span></span>
+                <span class="health-chip healthy">Healthy</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+              <button class="kb-row multi-source" type="button" data-kb-row data-kb-name="Legacy Payments Archive Dify suspended unavailable" data-provider="dify" data-capability="chat" data-health="unavailable">
+                <span class="kb-name-cell"><span class="kb-icon amber"><svg aria-hidden="true"><use href="#i-book"></use></svg></span><span class="kb-name-copy"><strong>Legacy Payments Archive</strong><span>0 Chat-eligible · permission mapping expired</span></span></span>
+                <span class="provider-stack"><span class="provider-badge dify">Dify</span></span>
+                <span class="provider-stack"><span class="capability-chip chat">Chat</span><span class="detail-badge">Suspended</span></span>
+                <span class="kb-cell">Payments Operations</span>
+                <span class="freshness-cell"><strong>状态未知</strong><span>验证失败</span></span>
+                <span class="health-chip unavailable">Unavailable</span><svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-kb-detail" aria-labelledby="kbDetailTitle">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button class="icon-button mobile-only" type="button" data-open-sidebar aria-label="打开侧栏"><svg aria-hidden="true"><use href="#i-menu"></use></svg></button>
+            <div class="topbar-copy"><h1>Knowledge Base Detail</h1><p>Overview、Sources、Content Audit 与 Access</p></div>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-button theme-toggle-alt" type="button" aria-label="切换明暗主题"><svg aria-hidden="true"><use href="#i-sun"></use></svg></button>
+          </div>
+        </header>
+        <div class="page-scroll">
+          <div class="page">
+            <div class="breadcrumb">
+              <button type="button" data-view="kbs">Knowledge Bases</button>
+              <svg aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              <span>Reward Plus Architecture</span>
+            </div>
+            <div class="detail-hero">
+              <span class="kb-icon"><svg aria-hidden="true"><use href="#i-book"></use></svg></span>
+              <div class="detail-copy">
+                <h1 id="kbDetailTitle">Reward Plus Architecture</h1>
+                <div class="detail-badges">
+                  <span class="status-chip"><span class="status-dot"></span>Active</span>
+                  <span class="health-chip healthy">Healthy</span>
+                  <span class="capability-chip chat">Chat ready</span>
+                  <span class="detail-badge">Internal</span>
+                  <span class="detail-badge">2 Sources</span>
+                </div>
+                <p>Dify 与 Confluence 共同组成一个 Logical Knowledge Base。两个 Source 共享 Owner、Internal 分类、访问边界和 Model Eligibility；Atlas 保留各自版本与引用定位。</p>
+              </div>
+              <button class="button primary" type="button" data-use-kb><svg aria-hidden="true"><use href="#i-chat"></use></svg>在 Chat 中使用</button>
+            </div>
+
+            <div class="tabs" role="tablist" aria-label="知识库详情">
+              <button class="tab active" id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab="overview">Overview</button>
+              <button class="tab" id="tab-sources" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" data-tab="sources">Sources <span class="detail-badge">2</span></button>
+              <button class="tab" id="tab-documents" type="button" role="tab" aria-selected="false" aria-controls="panel-documents" data-tab="documents">Content Audit</button>
+              <button class="tab" id="tab-access" type="button" role="tab" aria-selected="false" aria-controls="panel-access" data-tab="access">Access & Health</button>
+            </div>
+
+            <div class="tab-panel active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+              <div class="overview-grid">
+                <article class="info-card">
+                  <h2>用途与内容边界</h2>
+                  <p>用于回答 Reward Plus 平台设计、服务集成和迁移相关问题。Dify 提供检索，Confluence 补充标准页面；生产配置值与实时运行状态不在权威范围内。</p>
+                  <ul class="boundary-list">
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>两个 Source 共享 Rewards Platform Owner 与最大访问边界</span></li>
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>Dify Document/Chunk 与 Confluence Page Version 均可稳定定位</span></li>
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>两个 Binding 均允许通过获批企业模型发送最少必要证据</span></li>
+                  </ul>
+                </article>
+                <article class="info-card">
+                  <h2>Registry Metadata</h2>
+                  <dl class="metadata">
+                    <div class="metadata-row"><dt>KB ID</dt><dd>kb_reward_plus_arch</dd></div>
+                    <div class="metadata-row"><dt>Config version</dt><dd>cfg_2026_08_19_04</dd></div>
+                    <div class="metadata-row"><dt>Owner</dt><dd>Rewards Platform · Mei Lin</dd></div>
+                    <div class="metadata-row"><dt>Discoverability</dt><dd>Catalog</dd></div>
+                    <div class="metadata-row"><dt>Max staleness</dt><dd>24 hours · warning</dd></div>
+                  </dl>
+                </article>
+                <article class="info-card">
+                  <h2>可见状态</h2>
+                  <div class="metric-grid">
+                    <div class="metric-card"><span>Sources</span><strong>2 / 2</strong></div>
+                    <div class="metric-card"><span>Chat eligible</span><strong style="color:var(--green)">251 items</strong></div>
+                    <div class="metric-card"><span>Lifecycle</span><strong>Active</strong></div>
+                    <div class="metric-card"><span>Health</span><strong style="color:var(--green)">Healthy</strong></div>
+                  </div>
+                </article>
+                <article class="info-card">
+                  <h2>联系 Owner</h2>
+                  <p>需要申请访问、报告内容过期或确认冲突时，请联系 Rewards Platform。Atlas 会分别重新检查 Dify 与 Confluence 权限，但不直接授予原系统访问权。</p>
+                  <button class="button" style="margin-top:14px" type="button" data-contact-owner>打开正式权限申请入口</button>
+                </article>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="panel-sources" role="tabpanel" aria-labelledby="tab-sources">
+              <div class="toolbar">
+                <div><strong style="font-size:12px">2 个已验证 Source</strong><div class="toolbar-meta" style="margin-top:3px">所有 Binding 必须共享 Owner、分类、访问边界与 Model Eligibility</div></div>
+                <button class="button" type="button" data-open-dialog="addKbDialog"><svg aria-hidden="true"><use href="#i-plus"></use></svg>添加 Source</button>
+              </div>
+              <div class="source-binding-grid">
+                <article class="binding-card">
+                  <div class="binding-head">
+                    <div><span class="provider-badge dify">Dify</span><h3>Reward Plus Dataset</h3><p>ds_4f018b · bind_reward_dify</p></div>
+                    <span class="binding-role">canonical</span>
+                  </div>
+                  <div class="binding-meta" style="margin-top:10px"><span class="health-chip healthy">Healthy</span><span class="capability-chip chat">Chat</span><span class="detail-badge">model eligible</span></div>
+                  <div class="binding-metrics">
+                    <div><span>Content</span><strong>184 docs</strong></div>
+                    <div><span>Source version</span><strong>v18</strong></div>
+                    <div><span>Content synced</span><strong>09:42</strong></div>
+                    <div><span>Atlas verified</span><strong>10:42</strong></div>
+                  </div>
+                </article>
+                <article class="binding-card">
+                  <div class="binding-head">
+                    <div><span class="provider-badge confluence">Confluence</span><h3>Reward Plus Architecture Space</h3><p>Space REWARD · root /architecture</p></div>
+                    <span class="binding-role">supplemental</span>
+                  </div>
+                  <div class="binding-meta" style="margin-top:10px"><span class="health-chip healthy">Healthy</span><span class="capability-chip chat">Chat</span><span class="detail-badge">model eligible</span></div>
+                  <div class="binding-metrics">
+                    <div><span>Content</span><strong>73 pages</strong></div>
+                    <div><span>Latest page</span><strong>v42</strong></div>
+                    <div><span>Content synced</span><strong>09:36</strong></div>
+                    <div><span>Atlas verified</span><strong>10:41</strong></div>
+                  </div>
+                </article>
+                <article class="binding-card degraded">
+                  <div class="binding-head">
+                    <div><span class="provider-badge git">Git Markdown</span><h3>添加新的 Git Source</h3><p>需要有效 `.kb` contract 才能启用 Chat</p></div>
+                    <span class="binding-role">not bound</span>
+                  </div>
+                  <div class="connection-note">普通 Markdown Repository 可以先以 Browse-only 接入。通过 Schema、Permission、Citation 与 Eval Gate 后，再由 Owner 明确升级。</div>
+                  <button class="button" style="margin-top:12px" type="button" data-open-dialog="addKbDialog">配置 Source</button>
+                </article>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="panel-documents" role="tabpanel" aria-labelledby="tab-documents">
+              <div class="catalog-summary" aria-label="Content Audit 概览">
+                <div class="summary-card"><span>Dify</span><strong>184</strong><small>178 Chat eligible · 6 excluded</small></div>
+                <div class="summary-card"><span>Confluence</span><strong>73</strong><small>73 Chat eligible</small></div>
+                <div class="summary-card"><span>Citation mapping</span><strong style="color:var(--green)">97.7%</strong><small>不合规内容已隔离</small></div>
+                <div class="summary-card"><span>Last audited</span><strong style="font-size:13px">10:18</strong><small>cfg_2026_08_19_04</small></div>
+              </div>
+              <div class="toolbar">
+                <label class="search-field">
+                  <svg aria-hidden="true"><use href="#i-search"></use></svg>
+                  <span class="sr-only">搜索文档</span>
+                  <input name="document-search" type="search" autocomplete="off" placeholder="按标题检查已审计内容…">
+                </label>
+                <span class="toolbar-meta">按 Source 分别计数 · 6 items waiting remediation</span>
+              </div>
+              <div class="document-list">
+                <div class="document-head" aria-hidden="true"><span>Document</span><span>Source</span><span>Version</span><span>Action</span></div>
+                <div class="document-row">
+                  <div class="document-title"><svg aria-hidden="true"><use href="#i-file"></use></svg><span>Event Gateway Migration Guide</span></div>
+                  <span class="provider-badge dify">Dify</span><span class="document-cell">source v18</span><button class="button" type="button" data-open-original>打开原文 <svg aria-hidden="true"><use href="#i-external"></use></svg></button>
+                </div>
+                <div class="document-row">
+                  <div class="document-title"><svg aria-hidden="true"><use href="#i-file"></use></svg><span>Reward Plus Service Boundary</span></div>
+                  <span class="provider-badge confluence">Confluence</span><span class="document-cell">page v42</span><button class="button" type="button" data-open-original>打开原文 <svg aria-hidden="true"><use href="#i-external"></use></svg></button>
+                </div>
+                <div class="document-row">
+                  <div class="document-title"><svg aria-hidden="true"><use href="#i-file"></use></svg><span>ADR-027 — Event-driven Ledger Updates</span></div>
+                  <span class="provider-badge confluence">Confluence</span><span class="document-cell">page v17</span><button class="button" type="button" data-open-original>打开原文 <svg aria-hidden="true"><use href="#i-external"></use></svg></button>
+                </div>
+                <div class="document-row">
+                  <div class="document-title"><svg aria-hidden="true" style="color:var(--amber)"><use href="#i-alert"></use></svg><span>Legacy Adjustment Notes</span></div>
+                  <span class="provider-badge dify">Dify</span><span class="document-cell" style="color:var(--amber)">Missing source version</span><button class="button" type="button" data-contact-owner>查看修复项</button>
+                </div>
+              </div>
+              <div class="connection-note">跨 Source 总数只有在 Dedup 口径可靠时才显示。当前界面保留 Dify 与 Confluence 各自计数，避免把镜像或重复内容直接相加。</div>
+            </div>
+
+            <div class="tab-panel" id="panel-access" role="tabpanel" aria-labelledby="tab-access">
+              <div class="overview-grid">
+                <article class="info-card">
+                  <h2>Access boundary</h2>
+                  <p>两个 Binding 的最大受众均为 `grp_reward_engineering`。Confluence 内合法的 Page-level Restriction 仍按当前用户逐项执行；完整 Binding 权限缺失时，整个 Knowledge Base 不参与 Chat。</p>
+                  <ul class="boundary-list">
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>Company SSO identity verified at 10:42</span></li>
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>Dify group mapping verified at 10:42</span></li>
+                    <li><svg aria-hidden="true"><use href="#i-check"></use></svg><span>Confluence delegated scope verified at 10:41</span></li>
+                  </ul>
+                </article>
+                <article class="info-card">
+                  <h2>Policy & data handling</h2>
+                  <dl class="metadata">
+                    <div class="metadata-row"><dt>Classification</dt><dd>Internal</dd></div>
+                    <div class="metadata-row"><dt>Model eligibility</dt><dd>Allowed · approved channel</dd></div>
+                    <div class="metadata-row"><dt>Region / egress</dt><dd>Company approved</dd></div>
+                    <div class="metadata-row"><dt>Evidence cache</dt><dd>Encrypted · permission isolated</dd></div>
+                  </dl>
+                </article>
+                <article class="info-card">
+                  <h2>Operational controls</h2>
+                  <div class="metric-grid">
+                    <div class="metric-card"><span>Lifecycle</span><strong>Active</strong></div>
+                    <div class="metric-card"><span>Health</span><strong style="color:var(--green)">Healthy</strong></div>
+                    <div class="metric-card"><span>Feature flag</span><strong>On</strong></div>
+                    <div class="metric-card"><span>Config</span><strong>v04</strong></div>
+                  </div>
+                </article>
+                <article class="info-card">
+                  <h2>Existing access workflow</h2>
+                  <p>Atlas 不自建审批。无权或 Connection 失效时，用户会被路由到公司 IAM、GitHub 或 Confluence 的正式流程，完成后由 Atlas 重新验证。</p>
+                  <button class="button" style="margin-top:14px" type="button" data-contact-owner>打开访问申请入口</button>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-settings" aria-labelledby="settingsTitle">
+        <header class="topbar">
+          <div class="topbar-title">
+            <button class="icon-button mobile-only" type="button" data-open-sidebar aria-label="打开侧栏"><svg aria-hidden="true"><use href="#i-menu"></use></svg></button>
+            <div class="topbar-copy"><h1>Settings</h1><p>身份、模型与 Source Connection</p></div>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-button theme-toggle-alt" type="button" aria-label="切换明暗主题"><svg aria-hidden="true"><use href="#i-sun"></use></svg></button>
+          </div>
+        </header>
+        <div class="page-scroll">
+          <div class="page">
+            <div class="page-heading">
+              <div><h1 id="settingsTitle">个人设置</h1><p>公司身份决定 Atlas Session；模型资格与 GitHub/Confluence Source Authorization 彼此独立。</p></div>
+            </div>
+            <div class="settings-grid">
+              <article class="settings-card">
+                <h2>身份与模型</h2>
+                <p>Atlas Session、Model Eligibility 与 Source Access 彼此独立。</p>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>Company SSO</strong><span>员工身份与 Atlas Session</span></div>
+                  <span class="auth-status"><svg aria-hidden="true"><use href="#i-check"></use></svg>已连接</span>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>GitHub Copilot Enterprise</strong><span>企业模型通道资格</span></div>
+                  <span class="auth-status"><svg aria-hidden="true"><use href="#i-check"></use></svg>已授权</span>
+                </div>
+              </article>
+              <article class="settings-card">
+                <h2>Source Connections</h2>
+                <p>Provider Token 加密保存在服务端；浏览器只持有不可读取的 Atlas Session Cookie。</p>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>GitHub Enterprise</strong><span>Repo read · 最小 Scope · 到期 8月26日</span></div>
+                  <button class="button" type="button" data-provider-action="GitHub Enterprise"><span class="auth-status"><svg aria-hidden="true"><use href="#i-check"></use></svg>已连接</span></button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>Confluence</strong><span>Space/Page read · 到期 2 小时</span></div>
+                  <button class="button" type="button" data-provider-action="Confluence"><span class="auth-status warning"><svg aria-hidden="true"><use href="#i-alert"></use></svg>重新连接</span></button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>Dify</strong><span>Owner-managed Connector · 不复用 AMH Service Account</span></div>
+                  <span class="kb-cell">无需用户连接</span>
+                </div>
+                <div class="connection-note">Atlas 不会静默扩大 Provider Scope。Revoke 后立即停止相关 Retrieval，并保留不含正文的必要审计。</div>
+              </article>
+              <article class="settings-card">
+                <h2>Chat History</h2>
+                <p>历史对话仅创建者可见，重新打开时会再次检查 KB 与来源权限。</p>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>默认保留期限</strong><span>受公司政策约束</span></div>
+                  <span class="kb-cell">90 天</span>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>删除我的历史</strong><span>安全审计记录按独立政策保留</span></div>
+                  <button class="button danger" type="button" data-delete-history><svg aria-hidden="true"><use href="#i-trash"></use></svg>删除</button>
+                </div>
+              </article>
+              <article class="settings-card">
+                <h2>回答语言</h2>
+                <p>默认跟随提问语言；直接引用保持原文，翻译会明确标记。</p>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>默认行为</strong><span>跟随问题语言</span></div>
+                  <span class="kb-cell">自动</span>
+                </div>
+              </article>
+              <article class="settings-card">
+                <h2>隐私边界</h2>
+                <p>产品分析不收集问题、回答或 Chunk 正文，也不使用会接收页面内容的公共 Analytics。</p>
+                <div class="setting-row">
+                  <div class="setting-copy"><strong>去标识化使用数据</strong><span>功能、延迟、失败类型与 Citation 交互</span></div>
+                  <span class="auth-status"><svg aria-hidden="true"><use href="#i-shield"></use></svg>受控</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="kbSelector" aria-labelledby="kbSelectorTitle">
+    <div class="dialog-header">
+      <div><h2 id="kbSelectorTitle">选择知识库</h2><p>每个对话最多选择 5 个；修改范围会创建新的对话分支</p></div>
+      <button class="tiny-button" type="button" data-close-dialog aria-label="关闭"><svg aria-hidden="true"><use href="#i-x"></use></svg></button>
+    </div>
+    <div class="dialog-body">
+      <label class="search-field" style="width:100%">
+        <svg aria-hidden="true"><use href="#i-search"></use></svg>
+        <span class="sr-only">搜索可访问的知识库</span>
+        <input id="kbSelectorSearch" name="kb-selector-search" type="search" autocomplete="off" placeholder="搜索可访问的知识库…">
+      </label>
+      <div class="kb-options">
+        <label class="kb-option" data-option-name="reward plus architecture rewards platform">
+          <input type="checkbox" name="kb-scope" value="Reward Plus Architecture" checked>
+          <span class="kb-option-copy"><strong>Reward Plus Architecture</strong><span>Chat · 2 Sources · Healthy</span></span>
+          <span class="provider-stack"><span class="provider-badge dify">Dify</span><span class="provider-badge confluence">Confluence</span></span>
+        </label>
+        <label class="kb-option" data-option-name="enterprise integration standards architecture guild">
+          <input type="checkbox" name="kb-scope" value="Integration Standards" checked>
+          <span class="kb-option-copy"><strong>Enterprise Integration Standards</strong><span>Chat · 96 pages · Healthy</span></span>
+          <span class="provider-badge confluence">Confluence</span>
+        </label>
+        <label class="kb-option" data-option-name="as400 engineering core banking">
+          <input type="checkbox" name="kb-scope" value="AS400 Engineering" checked>
+          <span class="kb-option-copy"><strong>AS400 Engineering</strong><span>Chat · `.kb` contract v1.3 · Healthy</span></span>
+          <span class="provider-badge git">Git Markdown</span>
+        </label>
+        <label class="kb-option" data-option-name="production engineering sre platform">
+          <input type="checkbox" name="kb-scope" value="Production Engineering">
+          <span class="kb-option-copy"><strong>Platform Runbooks</strong><span>Chat · 2 Sources · Healthy</span></span>
+          <span class="provider-stack"><span class="provider-badge git">Git</span><span class="provider-badge confluence">Confluence</span></span>
+        </label>
+        <label class="kb-option" data-option-name="product delivery handbook browse only" title="Model ineligible，因此不能加入 Chat">
+          <input type="checkbox" name="kb-scope" value="Product Delivery Handbook" disabled>
+          <span class="kb-option-copy"><strong>Product Delivery Handbook</strong><span>Browse only · Model ineligible · 可从 Catalog 打开</span></span>
+          <span class="capability-chip browse">Browse</span>
+        </label>
+        <label class="kb-option" data-option-name="legacy payments archive suspended">
+          <input type="checkbox" name="kb-scope" value="Legacy Payments Archive" disabled>
+          <span class="kb-option-copy"><strong>Legacy Payments Archive</strong><span>权限映射已过期，需要 Owner 修复</span></span>
+          <span class="status-chip suspended">Suspended</span>
+        </label>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <span class="selection-count"><strong id="selectedCount">3</strong> / 5 已选择</span>
+      <div class="dialog-footer-actions">
+        <button class="button ghost" type="button" data-close-dialog>取消</button>
+        <button class="button primary" id="applyKbSelection" type="button">应用并创建分支</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="wizard-dialog" id="addKbDialog" aria-labelledby="addKbTitle">
+    <div class="dialog-header">
+      <div><h2 id="addKbTitle">添加知识库</h2><p>Owner 注册向导 · 创建 Draft，不会直接激活或复制原始内容</p></div>
+      <button class="tiny-button" type="button" data-close-dialog aria-label="关闭"><svg aria-hidden="true"><use href="#i-x"></use></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div class="wizard-steps" aria-label="注册步骤">
+        <button class="wizard-step active" type="button" data-wizard-step="0"><strong>1 · Basics</strong>用途与 Owner</button>
+        <button class="wizard-step" type="button" data-wizard-step="1"><strong>2 · Sources</strong>添加 Binding</button>
+        <button class="wizard-step" type="button" data-wizard-step="2"><strong>3 · Access</strong>分类与边界</button>
+        <button class="wizard-step" type="button" data-wizard-step="3"><strong>4 · Test</strong>连接能力</button>
+        <button class="wizard-step" type="button" data-wizard-step="4"><strong>5 · Audit</strong>内容与引用</button>
+        <button class="wizard-step" type="button" data-wizard-step="5"><strong>6 · Review</strong>提交 Draft</button>
+      </div>
+
+      <section class="wizard-panel active" data-wizard-panel="0">
+        <h3>定义用户看到的知识库</h3>
+        <p>Logical Knowledge Base 是用户边界；Source Provider 只在下一步配置。</p>
+        <div class="overview-grid">
+          <label class="search-field" style="width:100%"><span class="sr-only">知识库名称</span><input type="text" value="Customer Platform Engineering" aria-label="知识库名称"></label>
+          <label class="search-field" style="width:100%"><span class="sr-only">Owner</span><input type="text" value="Customer Platform · Leo Zhang" aria-label="Owner"></label>
+        </div>
+        <div class="connection-note">一个知识库可以绑定多个 Source，但必须共享 Owner、用途、分类、最大访问边界与 Model Eligibility；否则需要拆分。</div>
+      </section>
+
+      <section class="wizard-panel" data-wizard-panel="1">
+        <h3>选择第一个 Source Profile</h3>
+        <p>Atlas 使用只读 Connector；不会接管 Ingestion、Markdown 转换或 Vectorization。</p>
+        <div class="provider-choice-grid">
+          <button class="provider-choice selected" type="button" data-provider-choice="Dify"><span class="provider-badge dify">Dify</span><strong>Dify Retrieval</strong><span>连接现有 Dataset。需要稳定 Document/Chunk 与 Original Version Mapping。</span></button>
+          <button class="provider-choice" type="button" data-provider-choice="Git Markdown"><span class="provider-badge git">Git Markdown</span><strong>Git Repository</strong><span>有效 `.kb` Contract 可启用 Chat；普通 Markdown Repository 为 Browse-only。</span></button>
+          <button class="provider-choice" type="button" data-provider-choice="Confluence"><span class="provider-badge confluence">Confluence</span><strong>Confluence Space</strong><span>限定 Space，可进一步限定 Page Root、Label 与 Content Type。</span></button>
+        </div>
+        <div class="connection-note" id="providerChoiceNote">已选择 Dify。下一步将通过 Connector Owner 完成最小权限授权，不在表单中粘贴 Token。</div>
+      </section>
+
+      <section class="wizard-panel" data-wizard-panel="2">
+        <h3>确认权限与数据边界</h3>
+        <p>Binding 之间的配置边界必须一致；合法的 Page/File Restriction 在运行时逐项执行。</p>
+        <div class="wizard-checklist">
+          <div class="wizard-check"><span>Owner 与 Purpose 已声明</span><span>Ready</span></div>
+          <div class="wizard-check"><span>Classification</span><span>Internal</span></div>
+          <div class="wizard-check"><span>Maximum audience</span><span>grp_customer_platform</span></div>
+          <div class="wizard-check"><span>Model eligibility</span><span>Approved channel</span></div>
+          <div class="wizard-check"><span>Region / retention / egress</span><span>Compatible</span></div>
+        </div>
+      </section>
+
+      <section class="wizard-panel" data-wizard-panel="3">
+        <h3>Connector Capability Test</h3>
+        <p>所有硬门禁通过前，Knowledge Base 保持 Draft。</p>
+        <div class="wizard-checklist">
+          <div class="wizard-check"><span>Authentication & least-privilege scope</span><span>Passed</span></div>
+          <div class="wizard-check"><span>Search / Retrieval</span><span>Passed · 382ms</span></div>
+          <div class="wizard-check"><span>Exact evidence fetch</span><span>Passed</span></div>
+          <div class="wizard-check"><span>Stable version & original navigation</span><span>Passed</span></div>
+          <div class="wizard-check"><span>Deletion propagation & error taxonomy</span><span>Passed</span></div>
+        </div>
+      </section>
+
+      <section class="wizard-panel" data-wizard-panel="4">
+        <h3>Content Audit</h3>
+        <p>不合规内容会被隔离并进入修复清单，Atlas 不会为它生成虚假 Citation。</p>
+        <div class="catalog-summary">
+          <div class="summary-card"><span>Discovered</span><strong>2,418</strong><small>Source items</small></div>
+          <div class="summary-card"><span>Chat eligible</span><strong style="color:var(--green)">2,391</strong><small>98.9%</small></div>
+          <div class="summary-card"><span>Excluded</span><strong style="color:var(--amber)">27</strong><small>Missing version mapping</small></div>
+          <div class="summary-card"><span>Security</span><strong style="font-size:13px;color:var(--green)">Passed</strong><small>0 access leaks</small></div>
+        </div>
+        <button class="button" type="button" data-download-remediation>下载修复清单</button>
+      </section>
+
+      <section class="wizard-panel" data-wizard-panel="5">
+        <h3>Review & Submit</h3>
+        <p>提交后进入 Draft Review。Atlas Admin 不能跳过权限、安全或 Citation 硬门禁。</p>
+        <div class="settings-card">
+          <div class="setting-row"><div class="setting-copy"><strong>Customer Platform Engineering</strong><span>Owner · Customer Platform · Leo Zhang</span></div><span class="detail-badge">Catalog</span></div>
+          <div class="setting-row"><div class="setting-copy"><strong>1 Source Binding</strong><span id="reviewProvider">Dify · canonical</span></div><span class="health-chip healthy">Validated</span></div>
+          <div class="setting-row"><div class="setting-copy"><strong>Capability</strong><span>Model eligible · exact citation available</span></div><span class="capability-chip chat">Chat ready</span></div>
+          <div class="setting-row"><div class="setting-copy"><strong>Activation</strong><span>Requires KB Owner, Connector Owner and Atlas Admin sign-off</span></div><span class="detail-badge">Draft</span></div>
+        </div>
+      </section>
+    </div>
+    <div class="dialog-footer">
+      <span class="selection-count" id="wizardProgress">Step 1 of 6 · Basics</span>
+      <div class="dialog-footer-actions">
+        <button class="button ghost" id="wizardBack" type="button" disabled>上一步</button>
+        <button class="button primary" id="wizardNext" type="button">下一步</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="reportDialog" aria-labelledby="reportTitle">
+    <div class="dialog-header">
+      <div><h2 id="reportTitle">报告问题</h2><p>只附带非敏感诊断标识，不自动提交问题、回答或来源正文</p></div>
+      <button class="tiny-button" type="button" data-close-dialog aria-label="关闭"><svg aria-hidden="true"><use href="#i-x"></use></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div class="report-options" role="radiogroup" aria-label="问题类型">
+        <label class="report-option"><input type="radio" name="reportType" value="内容错误">内容错误</label>
+        <label class="report-option"><input type="radio" name="reportType" value="Citation 错误">Citation 错误</label>
+        <label class="report-option"><input type="radio" name="reportType" value="Retrieval 错误">Retrieval 错误</label>
+        <label class="report-option"><input type="radio" name="reportType" value="权限问题">权限问题</label>
+        <label class="report-option"><input type="radio" name="reportType" value="模型生成问题">模型生成问题</label>
+        <label class="report-option"><input type="radio" name="reportType" value="系统问题">系统问题</label>
+      </div>
+      <div class="report-note">将附带：Request ID、Logical KB、Binding、Provider、Evidence Locator、错误类别与授权结果。不会附带完整 Prompt、Chunk 或回答正文；内容问题按 Dify Owner、Git `kb-correct` 或 Confluence 原页面路由。</div>
+    </div>
+    <div class="dialog-footer">
+      <span class="selection-count">路由：Source Workflow / Connector Owner / Atlas / Security</span>
+      <div class="dialog-footer-actions">
+        <button class="button ghost" type="button" data-close-dialog>取消</button>
+        <button class="button primary" id="submitReport" type="button">提交报告</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg aria-hidden="true"><use href="#i-check"></use></svg>
+    <span id="toastText">操作已完成</span>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var body = document.body;
+      var chatLayout = document.getElementById("chatLayout");
+      var sourceToggle = document.getElementById("sourceToggle");
+      var sourcePanel = document.getElementById("sourcePanel");
+      var scenarioSelect = document.getElementById("scenarioSelect");
+      var chatInput = document.getElementById("chatInput");
+      var toastTimer;
+
+      var sources = {
+        "1": {
+          kicker: "引用 1 · Reward Plus Architecture",
+          title: "Event Gateway Migration Guide",
+          byline: "章节 3.2 · Consumer migration contract",
+          excerpt: "All new adjustments MUST call <mark>POST /v2/points/adjustments</mark> using workload identity. A successful submission returns 202; consumers MUST wait for points.adjustment.completed before treating the ledger update as final.",
+          documentId: "rp-arch-evt-017",
+          kb: "Reward Plus Architecture",
+          owner: "Rewards Platform · Mei Lin",
+          provider: "Dify",
+          providerClass: "dify",
+          providerVersion: "Dify · source v18",
+          binding: "bind_reward_dify",
+          locator: "doc rp-arch-evt-017 · chunk 3",
+          updated: "2026-08-11 16:20",
+          syncLabel: "Dify 索引",
+          indexed: "2026-08-12 09:42",
+          verified: "2026-08-19 10:42",
+          classification: "Internal"
+        },
+        "2": {
+          kicker: "引用 2 · Integration Standards",
+          title: "Enterprise Event Integration Standard",
+          byline: "章节 5.4 · Idempotency and parallel run",
+          excerpt: "Producers MUST reuse the same <mark>Idempotency-Key</mark> for retries. Migrations from a synchronous interface SHOULD maintain parallel writes for no fewer than 14 calendar days unless an approved exception is recorded.",
+          documentId: "eis-event-std-054",
+          kb: "Enterprise Integration Standards",
+          owner: "Architecture Guild · Alex Chen",
+          provider: "Confluence",
+          providerClass: "confluence",
+          providerVersion: "Confluence · page v42",
+          binding: "bind_integration_conf",
+          locator: "page 88214 · version 42",
+          updated: "2026-07-29 10:05",
+          syncLabel: "Confluence 同步",
+          indexed: "2026-07-29 18:10",
+          verified: "2026-08-19 10:41",
+          classification: "Internal"
+        },
+        "3": {
+          kicker: "引用 3 · AS400 Engineering",
+          title: "AS400 Points Batch Runbook",
+          byline: "章节 2.1 · Settlement window and bridge contract",
+          excerpt: "The bridge preserves the existing fixed-width Copybook and EBCDIC encoding. During the <mark>02:00–02:30 settlement window</mark>, points adjustment commands are rejected; read-only balance enquiries remain available.",
+          documentId: "as4-runbook-points-008",
+          kb: "AS400 Engineering",
+          owner: "Core Banking · Priya Nair",
+          provider: "Git Markdown",
+          providerClass: "git",
+          providerVersion: "Git · commit 7f8d3a2",
+          binding: "bind_as400_git",
+          locator: "7f8d3a2 · docs/runbook.md:L84–L96",
+          updated: "2026-06-18 15:44",
+          syncLabel: "Manifest 同步",
+          indexed: "2026-08-18 07:32",
+          verified: "2026-08-19 10:39",
+          classification: "Confidential"
+        }
+      };
+
+      function showToast(message) {
+        var toast = document.getElementById("toast");
+        document.getElementById("toastText").textContent = message;
+        toast.classList.add("show");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(function () {
+          toast.classList.remove("show");
+        }, 2400);
+      }
+
+      function setTheme(theme) {
+        root.dataset.theme = theme;
+        document.getElementById("themeColor").setAttribute("content", theme === "dark" ? "#0a0c10" : "#f2f4f7");
+        try {
+          localStorage.setItem("atlas-kb-theme", theme);
+        } catch (error) {
+          // The prototype still works when local storage is unavailable.
+        }
+        document.querySelectorAll(".theme-icon-sun").forEach(function (icon) {
+          icon.style.display = theme === "dark" ? "" : "none";
+        });
+        document.querySelectorAll(".theme-icon-moon").forEach(function (icon) {
+          icon.style.display = theme === "light" ? "" : "none";
+        });
+      }
+
+      function toggleTheme() {
+        setTheme(root.dataset.theme === "dark" ? "light" : "dark");
+      }
+
+      try {
+        setTheme(localStorage.getItem("atlas-kb-theme") || "dark");
+      } catch (error) {
+        setTheme("dark");
+      }
+
+      document.getElementById("themeToggle").addEventListener("click", toggleTheme);
+      document.querySelectorAll(".theme-toggle-alt").forEach(function (button) {
+        button.addEventListener("click", toggleTheme);
+      });
+
+      function setView(view) {
+        var target = document.getElementById("screen-" + view);
+        if (!target) return;
+
+        document.querySelectorAll(".screen").forEach(function (screen) {
+          screen.classList.toggle("active", screen === target);
+        });
+        document.querySelectorAll(".nav-item").forEach(function (item) {
+          item.classList.toggle("active", item.dataset.view === view || (view === "kb-detail" && item.dataset.view === "kbs"));
+        });
+        body.classList.remove("sidebar-open");
+      }
+
+      document.querySelectorAll("[data-view]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          setView(button.dataset.view);
+        });
+      });
+
+      document.querySelectorAll("[data-kb-row]").forEach(function (row) {
+        row.addEventListener("click", function () {
+          setView("kb-detail");
+        });
+      });
+
+      function openSidebar() {
+        body.classList.add("sidebar-open");
+      }
+
+      document.getElementById("openSidebar").addEventListener("click", openSidebar);
+      document.querySelectorAll("[data-open-sidebar]").forEach(function (button) {
+        button.addEventListener("click", openSidebar);
+      });
+      document.getElementById("sidebarScrim").addEventListener("click", function () {
+        body.classList.remove("sidebar-open");
+      });
+
+      function setDrawer(open) {
+        chatLayout.classList.toggle("drawer-closed", !open);
+        sourceToggle.setAttribute("aria-expanded", String(open));
+      }
+
+      sourceToggle.addEventListener("click", function () {
+        setDrawer(chatLayout.classList.contains("drawer-closed"));
+      });
+      document.getElementById("closeSourcePanel").addEventListener("click", function () {
+        setDrawer(false);
+      });
+
+      function setScenario(scenario) {
+        document.querySelectorAll(".scenario-panel").forEach(function (panel) {
+          panel.classList.toggle("active", panel.dataset.scenario === scenario);
+        });
+        scenarioSelect.value = scenario;
+        if (scenario === "empty" || scenario === "insufficient") {
+          setDrawer(false);
+        } else {
+          setDrawer(true);
+        }
+        if (scenario === "empty") {
+          document.getElementById("chatTitle").textContent = "新建对话";
+        } else if (scenario === "insufficient") {
+          document.getElementById("chatTitle").textContent = "跨区域恢复目标";
+        } else if (scenario === "partial") {
+          document.getElementById("chatTitle").textContent = "Reward Plus 切流计划";
+        } else {
+          document.getElementById("chatTitle").textContent = "Reward Plus 迁移约束";
+        }
+        document.getElementById("chatScroll").scrollTop = 0;
+      }
+
+      scenarioSelect.addEventListener("change", function () {
+        setView("chat");
+        setScenario(scenarioSelect.value);
+      });
+
+      document.getElementById("newChatButton").addEventListener("click", function () {
+        setView("chat");
+        setScenario("empty");
+        chatInput.focus();
+      });
+
+      document.querySelectorAll("[data-history]").forEach(function (item) {
+        item.addEventListener("click", function () {
+          document.querySelectorAll("[data-history]").forEach(function (historyItem) {
+            historyItem.classList.toggle("active", historyItem === item);
+          });
+          setView("chat");
+          setScenario("answer");
+        });
+      });
+
+      function renderSource(id) {
+        var source = sources[id];
+        if (!source) return;
+        document.getElementById("sourceCounter").textContent = id + " / 3";
+        document.getElementById("sourceKicker").textContent = source.kicker;
+        document.getElementById("sourceTitle").textContent = source.title;
+        document.getElementById("sourceByline").textContent = source.byline;
+        document.getElementById("sourceExcerpt").innerHTML = source.excerpt;
+        var providerBadge = document.getElementById("sourceProviderBadge");
+        providerBadge.textContent = source.provider;
+        providerBadge.className = "provider-badge " + source.providerClass;
+        document.getElementById("sourceLocator").textContent = source.locator;
+        document.getElementById("metaDocumentId").textContent = source.documentId;
+        document.getElementById("metaKb").textContent = source.kb;
+        document.getElementById("metaBinding").textContent = source.binding;
+        document.getElementById("metaProvider").textContent = source.providerVersion;
+        document.getElementById("metaOwner").textContent = source.owner;
+        document.getElementById("metaUpdated").textContent = source.updated;
+        document.getElementById("metaSyncLabel").textContent = source.syncLabel;
+        document.getElementById("metaIndexed").textContent = source.indexed;
+        document.getElementById("metaVerified").textContent = source.verified;
+        document.getElementById("metaClass").textContent = source.classification;
+        document.querySelectorAll("[data-source]").forEach(function (button) {
+          button.classList.toggle("active", button.dataset.source === id);
+        });
+        setDrawer(true);
+      }
+
+      document.querySelectorAll("[data-source]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          renderSource(button.dataset.source);
+        });
+      });
+
+      document.querySelectorAll(".progress-title").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var box = button.closest(".retrieval-progress");
+          var collapsed = box.classList.toggle("collapsed");
+          button.setAttribute("aria-expanded", String(!collapsed));
+        });
+      });
+
+      document.querySelectorAll("[data-open-dialog]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var dialog = document.getElementById(button.dataset.openDialog);
+          if (dialog) dialog.showModal();
+        });
+      });
+
+      document.querySelectorAll("[data-close-dialog]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var dialog = button.closest("dialog");
+          if (dialog) dialog.close();
+        });
+      });
+
+      document.querySelectorAll("dialog").forEach(function (dialog) {
+        dialog.addEventListener("click", function (event) {
+          if (event.target === dialog) dialog.close();
+        });
+      });
+
+      var kbCheckboxes = Array.from(document.querySelectorAll("#kbSelector input[type=checkbox]:not(:disabled)"));
+
+      function updateKbSelection() {
+        var selected = kbCheckboxes.filter(function (checkbox) {
+          return checkbox.checked;
+        });
+        document.getElementById("selectedCount").textContent = String(selected.length);
+        kbCheckboxes.forEach(function (checkbox) {
+          checkbox.disabled = !checkbox.checked && selected.length >= 5;
+        });
+        return selected;
+      }
+
+      kbCheckboxes.forEach(function (checkbox) {
+        checkbox.addEventListener("change", updateKbSelection);
+      });
+
+      document.getElementById("applyKbSelection").addEventListener("click", function () {
+        var selected = updateKbSelection();
+        if (selected.length === 0) {
+          showToast("请至少选择 1 个知识库");
+          return;
+        }
+        var values = selected.map(function (checkbox) {
+          return checkbox.value;
+        });
+        document.getElementById("selectedCount").textContent = String(values.length);
+        document.getElementById("scopeButtonLabel").textContent = values.length + " 个知识库";
+        document.getElementById("scopeChips").innerHTML = values.map(function (value) {
+          var span = document.createElement("span");
+          span.className = "scope-chip";
+          span.textContent = value;
+          return span.outerHTML;
+        }).join("");
+        document.getElementById("kbSelector").close();
+        setView("chat");
+        setScenario("empty");
+        showToast("已应用新范围，并创建新的对话分支");
+      });
+
+      document.getElementById("kbSelectorSearch").addEventListener("input", function (event) {
+        var query = event.target.value.trim().toLowerCase();
+        document.querySelectorAll("[data-option-name]").forEach(function (option) {
+          option.hidden = Boolean(query) && !option.dataset.optionName.includes(query);
+        });
+      });
+
+      var activeKbFilter = "all";
+
+      function applyKbFilters() {
+        var query = document.getElementById("kbSearch").value.trim().toLowerCase();
+        var visibleCount = 0;
+        document.querySelectorAll("[data-kb-row]").forEach(function (row) {
+          var matchesQuery = !query || row.dataset.kbName.toLowerCase().includes(query);
+          var matchesFilter = activeKbFilter === "all"
+            || (row.dataset.provider || "").split(" ").includes(activeKbFilter)
+            || row.dataset.capability === activeKbFilter
+            || row.dataset.health === activeKbFilter;
+          row.hidden = !(matchesQuery && matchesFilter);
+          if (!row.hidden) visibleCount += 1;
+        });
+        document.getElementById("kbResultCount").textContent = visibleCount + " 个结果";
+      }
+
+      document.getElementById("kbSearch").addEventListener("input", applyKbFilters);
+
+      document.querySelectorAll("[data-kb-filter]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          activeKbFilter = button.dataset.kbFilter;
+          document.querySelectorAll("[data-kb-filter]").forEach(function (item) {
+            item.classList.toggle("active", item === button);
+          });
+          applyKbFilters();
+        });
+      });
+
+      document.querySelectorAll("[data-tab]").forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          document.querySelectorAll("[data-tab]").forEach(function (item) {
+            var active = item === tab;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-selected", String(active));
+          });
+          document.querySelectorAll(".tab-panel").forEach(function (panel) {
+            panel.classList.toggle("active", panel.id === "panel-" + tab.dataset.tab);
+          });
+        });
+      });
+
+      var wizardIndex = 0;
+      var wizardLabels = ["Basics", "Sources", "Access", "Connection Test", "Content Audit", "Review"];
+
+      function renderWizard(index) {
+        wizardIndex = Math.max(0, Math.min(5, index));
+        document.querySelectorAll("[data-wizard-step]").forEach(function (step) {
+          step.classList.toggle("active", Number(step.dataset.wizardStep) === wizardIndex);
+        });
+        document.querySelectorAll("[data-wizard-panel]").forEach(function (panel) {
+          panel.classList.toggle("active", Number(panel.dataset.wizardPanel) === wizardIndex);
+        });
+        document.getElementById("wizardProgress").textContent = "Step " + (wizardIndex + 1) + " of 6 · " + wizardLabels[wizardIndex];
+        document.getElementById("wizardBack").disabled = wizardIndex === 0;
+        document.getElementById("wizardNext").textContent = wizardIndex === 5 ? "提交 Draft" : "下一步";
+      }
+
+      document.querySelectorAll("[data-wizard-step]").forEach(function (step) {
+        step.addEventListener("click", function () {
+          renderWizard(Number(step.dataset.wizardStep));
+        });
+      });
+
+      document.getElementById("wizardBack").addEventListener("click", function () {
+        renderWizard(wizardIndex - 1);
+      });
+
+      document.getElementById("wizardNext").addEventListener("click", function () {
+        if (wizardIndex < 5) {
+          renderWizard(wizardIndex + 1);
+          return;
+        }
+        document.getElementById("addKbDialog").close();
+        showToast("Draft 已提交；等待 Owner、Connector Owner 与 Atlas Admin 审核");
+        renderWizard(0);
+      });
+
+      document.querySelectorAll("[data-provider-choice]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          document.querySelectorAll("[data-provider-choice]").forEach(function (item) {
+            item.classList.toggle("selected", item === button);
+          });
+          var provider = button.dataset.providerChoice;
+          document.getElementById("providerChoiceNote").textContent = "已选择 " + provider + "。下一步将通过 Connector Owner 完成最小权限授权，不在表单中粘贴 Token。";
+          document.getElementById("reviewProvider").textContent = provider + " · canonical";
+        });
+      });
+
+      document.querySelectorAll("[data-provider-action]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("原型演示：将为 " + button.dataset.providerAction + " 发起最小权限 JIT 授权");
+        });
+      });
+
+      document.querySelectorAll("[data-download-remediation]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("修复清单已准备（原型演示，不包含 Source Body）");
+        });
+      });
+
+      document.querySelectorAll("[data-open-original]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("原型演示：已重新校验权限，将打开原始文档");
+        });
+      });
+
+      document.querySelectorAll("[data-copy-source]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("来源片段已复制（原型演示）");
+        });
+      });
+
+      document.querySelectorAll("[data-copy-answer]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("回答与引用标识已复制");
+        });
+      });
+
+      document.querySelectorAll("[data-feedback]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast(button.dataset.feedback === "good" ? "感谢反馈" : "已记录反馈，可继续报告具体问题");
+        });
+      });
+
+      document.getElementById("submitReport").addEventListener("click", function () {
+        var selected = document.querySelector("input[name=reportType]:checked");
+        if (!selected) {
+          showToast("请选择一个问题类型");
+          return;
+        }
+        document.getElementById("reportDialog").close();
+        showToast("已提交“" + selected.value + "”，仅附带非敏感诊断信息");
+      });
+
+      document.querySelectorAll("[data-use-kb]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          setView("chat");
+          setScenario("empty");
+          showToast("Reward Plus Architecture 已加入当前范围");
+        });
+      });
+
+      document.querySelectorAll("[data-contact-owner]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("原型演示：将打开公司正式权限申请入口");
+        });
+      });
+
+      document.querySelectorAll("[data-delete-history]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("原型演示：删除前会再次确认范围与保留政策");
+        });
+      });
+
+      document.querySelectorAll("[data-refine-question]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          chatInput.value = "当前文档明确承诺的跨区域恢复目标是什么？";
+          chatInput.focus();
+        });
+      });
+
+      document.querySelectorAll("[data-retry]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("正在幂等重试 Git Markdown Source（原型演示）");
+        });
+      });
+
+      document.getElementById("sendButton").addEventListener("click", function () {
+        if (!chatInput.value.trim()) {
+          chatInput.focus();
+          showToast("请先输入问题");
+          return;
+        }
+        setScenario("answer");
+        chatInput.value = "";
+        showToast("已显示处理状态，开始检索当前 KB Scope");
+      });
+
+      chatInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          document.getElementById("sendButton").click();
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          document.getElementById("newChatButton").click();
+        }
+        if (event.key === "Escape") {
+          body.classList.remove("sidebar-open");
+        }
+      });
+
+      updateKbSelection();
+      renderSource("1");
+
+      var prototypeParams = new URLSearchParams(window.location.search);
+      var initialScenario = prototypeParams.get("scenario");
+      var initialView = window.location.hash.replace("#", "");
+      if (["answer", "empty", "insufficient", "partial"].includes(initialScenario)) {
+        setScenario(initialScenario);
+      }
+      if (["chat", "kbs", "kb-detail", "settings"].includes(initialView)) {
+        setView(initialView);
+      }
+      if (prototypeParams.get("dialog") === "add") {
+        window.setTimeout(function () {
+          document.getElementById("addKbDialog").showModal();
+        }, 60);
+      }
+    })();
+  </script>
+</body>
+</html>
