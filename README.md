@@ -101,7 +101,18 @@ docs/architecture/decisions/    Architecture Decision Records
 docs/product/                   Product baselines, decisions, prototypes, and diagrams
 docs/reviews/                   Document quality and readiness reviews
 scripts/                        Repository verification utilities
+backend/                        Spring Boot 3.4 / JDK 21 modular monolith
 ```
+
+Local backend skeleton (JDK 21, Maven Wrapper):
+
+```bash
+./mvnw -q test
+./mvnw spring-boot:run
+```
+
+Health is Actuator-only (`GET /actuator/health`). Business `/api/v1` endpoints
+are not part of TASK-001.
 
 ## SDD Workflow
 

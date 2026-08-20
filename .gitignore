@@ -10,6 +10,16 @@ node_modules/
 .venv/
 venv/
 
+# Maven / Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+.mvn/wrapper/maven-wrapper.jar
+
 # Build, test, and tool output
 dist/
 build/
