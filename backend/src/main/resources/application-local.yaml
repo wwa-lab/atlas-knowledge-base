@@ -17,3 +17,6 @@ atlas:
     # Placeholders until Security approves idle/absolute TTL (OQ-01).
     idle-ttl: 8h
     absolute-ttl: 24h
+  providers:
+    # Placeholders until OQ-02 / Security names minimum GitHub and Confluence scopes.
+    stub-completes-as-connected: true
