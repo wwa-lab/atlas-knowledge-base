@@ -3,14 +3,14 @@
 ## Document Summary
 
 - **Document type:** Architecture Decision Records (stack set)
-- **Scope summary:** Proposed ADRs for MVP modular monolith topology, Vue 3 frontend, Node backend, H2 local / Oracle non-prod+prod database strategy, and secret/environment separation, produced after design acceptance.
+- **Scope summary:** Proposed ADRs for MVP modular monolith topology, Vue 3 frontend, Node backend, H2 local / Oracle 19c with Flyway on all planes, and secret/environment separation, produced after design acceptance.
 - **Intended next stage:** Owner accept/amend ADRs, then `design-to-tasks`
 
 ## Overall Assessment
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle 19c estimate) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
 
 ## Strengths
 
@@ -33,7 +33,7 @@ None.
 
 **Defaults are recommendations, not yet Accepted decisions**
 
-- Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle for non-prod and prod.
+- Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle 19c for non-prod and prod, with Flyway on all planes.
 - Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name; DBA confirms Oracle 19c patch/RU.
 
 **Owner amended frontend default to Vue 3**
@@ -42,11 +42,11 @@ None.
 - Affected section: ADR-0003
 - Recommended fix: None unless company mandates a different Vue meta-framework.
 
-**Owner amended database strategy to H2 local + Oracle non-prod and prod**
+**Owner selected Flyway for all environment planes**
 
-- Why it matters: Replaces the earlier PostgreSQL-everywhere proposal and accepts cross-engine local drift risk; production Oracle is now confirmed.
+- Why it matters: Local H2, non-prod Oracle, and prod Oracle share one Flyway history; Oracle remains schema-acceptance authority.
 - Affected section: ADR-0005
-- Recommended fix: Require Oracle 19c-validated migrations in CI; DBA confirms patch/RU on acceptance.
+- Recommended fix: Scaffold Flyway for all planes; CI must run Oracle-validated migrate, not H2-only.
 
 **HTTP framework and frontend meta-framework left slightly open inside Accepted stack ADRs**
 
