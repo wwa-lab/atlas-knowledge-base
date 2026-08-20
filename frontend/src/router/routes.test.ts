@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { routes } from './index'
+import { routes } from './routes'
 
 describe('SPA route placeholders', () => {
   it('lands on Chat by default', () => {
