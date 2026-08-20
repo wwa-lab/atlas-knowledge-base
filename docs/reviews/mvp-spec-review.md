@@ -112,3 +112,9 @@ Accept the draft specification as the `mvp` behavior baseline. No rewrite is req
 
 ---
 **Final verdict: Ready with minor fixes**
+
+## Acceptance Update
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted `docs/03-spec/mvp-spec.md`
+as the MVP specification baseline. Architecture drafting may proceed; connector
+and model spikes remain blockers for activation feasibility.

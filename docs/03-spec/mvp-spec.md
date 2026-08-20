@@ -3,13 +3,18 @@
 > **Source stories:** US-001, US-002, US-003, US-004, US-005, US-006, US-007
 > **Upstream requirements:** `docs/01-requirements/mvp-requirements.md`
 > **Product baseline:** `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md`
-> **Spec status:** Draft
+> **Spec status:** Accepted
 > **Last updated:** 2026-08-20
+> **Accepted:** 2026-08-20
 > **Slice:** `mvp`
 
 `[USER-STATED]` On 2026-08-20 the product owner accepted
 `docs/02-user-stories/mvp-user-stories.md` as the MVP user-story baseline. This
 specification consolidates that accepted set.
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted this specification as
+the MVP behavior baseline after `review-doc-quality` reported Ready with minor
+fixes and no Critical or Major findings.
 
 `[USER-STATED]` Ordinary GitHub Markdown repositories remain Browse-only in MVP.
 Chat requires a team-generated, validated `.kb` contract. Atlas does not
