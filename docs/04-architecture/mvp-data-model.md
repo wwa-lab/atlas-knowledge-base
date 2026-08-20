@@ -383,8 +383,7 @@ Immutability: ordinary audit is append-only; redaction of bodies is unnecessary 
 4. Chat history must not store duplicate full retrieved chunks.
 5. Database product, HA, backup, and local/non-prod/prod engine strategy are
    ADR-owned. Current Proposed direction in ADR-0005: H2 for `local`, Oracle for
-   `non-prod` (and assumed `prod`). Logical types in this document remain
-   engine-neutral.
+   `non-prod` and `prod`. Logical types in this document remain engine-neutral.
 
 ## Open Questions
 

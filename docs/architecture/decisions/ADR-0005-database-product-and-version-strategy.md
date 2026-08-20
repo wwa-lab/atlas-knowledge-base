@@ -29,16 +29,11 @@ Forces:
 |---|---|
 | `local` | **H2** |
 | `non-prod` | **Oracle** |
-
-Production was not explicitly named in that statement. This ADR therefore sets:
-
-| Environment plane | Engine | Basis |
-|---|---|---|
-| `prod` | **Oracle** | `[ASSUMPTION]` / `[DEFAULT - revisit if wrong]` — align production with non-production unless the owner amends this ADR |
+| `prod` | **Oracle** |
 
 ### Version strategy
 
-1. **Oracle (`non-prod`, and assumed `prod`):**
+1. **Oracle (`non-prod` and `prod`):**
    - Pin a single Oracle **major/release family** for MVP (exact release string to be
      filled by DBA/platform on ADR acceptance; examples only: 19c / 23ai).
    - `non-prod` and `prod` MUST use the **same Oracle major/release family**.
@@ -60,9 +55,9 @@ Production was not explicitly named in that statement. This ADR therefore sets:
 
 | Alternative | Why Not |
 |---|---|
-| PostgreSQL everywhere (earlier proposal) | Replaced by owner selection of H2 local + Oracle non-prod |
+| PostgreSQL everywhere (earlier proposal) | Replaced by owner selection of H2 local + Oracle deployed planes |
 | Oracle for local as well | Higher local setup cost; owner chose H2 for local |
-| H2 for non-prod/prod | Rejected — non-prod is Oracle; deployed planes must follow company DB |
+| H2 for non-prod/prod | Rejected — deployed planes are Oracle |
 | Different Oracle majors for non-prod vs prod | Forbidden — causes migration and bug drift between deployed planes |
 | SQLite local | Not selected; owner specified H2 |
 
@@ -70,8 +65,8 @@ Production was not explicitly named in that statement. This ADR therefore sets:
 
 ### Positive
 
-- Matches stated local DX preference and company-style Oracle non-prod
-- Deployed planes stay on one Oracle family (assuming prod confirmation)
+- Matches stated local DX preference and Oracle for both non-prod and prod
+- Deployed planes stay on one Oracle family
 
 ### Negative
 
@@ -84,12 +79,10 @@ Production was not explicitly named in that statement. This ADR therefore sets:
 
 - No database exists yet
 - On acceptance, record the exact Oracle release family and H2 version/mode in this ADR
-- If production is **not** Oracle, amend this ADR before scaffolding prod config
 - Changing engines or Oracle major/release family requires superseding ADR + migration plan
 
 ## Review Triggers
 
-- Owner clarifies production is not Oracle
 - DBA mandates a specific Oracle release incompatible with the pin
 - Repeated local-only bugs escaping to non-prod because of H2 dialect gaps
 - Introduction of a required secondary store (search/cache)

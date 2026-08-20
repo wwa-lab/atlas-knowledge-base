@@ -33,14 +33,20 @@ None.
 
 **Defaults are recommendations, not yet Accepted decisions**
 
-- Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle non-prod (prod assumed Oracle until amended).
-- Recommended fix: Owner accepts or replaces remaining defaults; confirm prod Oracle; Security fills secret product name; DBA fills Oracle release family.
+- Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle for non-prod and prod.
+- Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name; DBA fills Oracle release family.
 
-**Owner amended database strategy to H2 local + Oracle non-prod**
+**Owner amended frontend default to Vue 3**
 
-- Why it matters: Replaces the earlier PostgreSQL-everywhere proposal and accepts cross-engine local drift risk.
+- Why it matters: ADR-0003 Decision now records `[USER-STATED]` Vue 3 + TypeScript (Vite default tooling).
+- Affected section: ADR-0003
+- Recommended fix: None unless company mandates a different Vue meta-framework.
+
+**Owner amended database strategy to H2 local + Oracle non-prod and prod**
+
+- Why it matters: Replaces the earlier PostgreSQL-everywhere proposal and accepts cross-engine local drift risk; production Oracle is now confirmed.
 - Affected section: ADR-0005
-- Recommended fix: Confirm whether `prod` is Oracle; require Oracle-validated migrations in CI; pin Oracle release on acceptance.
+- Recommended fix: Require Oracle-validated migrations in CI; pin Oracle release on acceptance.
 
 **HTTP framework and frontend meta-framework left slightly open inside Accepted stack ADRs**
 
