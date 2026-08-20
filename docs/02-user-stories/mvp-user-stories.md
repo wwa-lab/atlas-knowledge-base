@@ -4,18 +4,23 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft for user-story review |
+| Status | Accepted |
 | Slice | `mvp` |
 | Language | English |
 | Mode | Capability Story Mode |
 | Upstream | `docs/01-requirements/mvp-requirements.md` |
 | Product source | `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md` |
 | Date | 2026-08-19 |
+| Accepted | 2026-08-20 |
 | Intended next stage | Specification (`user-story-to-spec`) |
 
 These are capability-domain stories for the `mvp` slice. They are not
 sprint-sized implementation tickets. Split them into implementable stories only
 after the specification accepts this coverage.
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted this story set as the
+`mvp` user-story baseline after `review-doc-quality` reported Ready with minor
+fixes and no Critical or Major findings.
 
 `[USER-STATED]` On 2026-08-19 the product owner reconfirmed the original Git
 decision: ordinary GitHub Markdown repositories remain Browse-only; Chat
@@ -675,4 +680,7 @@ This story set is ready for `user-story-to-spec` only when:
 - Git Browse-only versus `.kb` Chat remains an accepted product decision;
 - acceptance criteria stay behavioral and testable;
 - unverified provider capabilities remain spike-gated;
-- `review-doc-quality` has no Critical or Major findings.
+- `review-doc-quality` has no Critical or Major findings;
+- the product owner has accepted the story set.
+
+`[USER-STATED]` These exit criteria were met on 2026-08-20.
