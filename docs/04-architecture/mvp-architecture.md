@@ -24,9 +24,13 @@
   provider connection, discovery/Browse, registration/activation, grounded Chat,
   evidence navigation, failure/governance, issue routing, and cross-cutting
   security, accessibility, evaluation, and pilot gates for slice `mvp`.
-- **Status**: Spec Accepted 2026-08-20. This architecture is Draft pending
-  product-owner acceptance and required ADRs / connector spikes before treating
-  Source Profiles as feasible for activation.
+- **Status**: Accepted 2026-08-20
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted this architecture and
+its companion data-flow as the MVP logical architecture baseline after
+`review-doc-quality` reported Ready with minor fixes and no Critical or Major
+findings. Frontend/backend/database stack and environment matrix remain ADR-gated
+and are not selected by this acceptance.
 
 The repository contains no Atlas application implementation. This document makes
 no claim that runtime components already exist.

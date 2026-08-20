@@ -6,3 +6,18 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 - Keep titles and normative technical content in English.
 - Do not rewrite accepted historical rationale; supersede it with a new ADR.
 - Link affected SDD slices and migration work.
+
+## Index
+
+| ID | Title | Status |
+|---|---|---|
+| ADR-0001 | Adopt SDD workflow and Control Tower skills | Accepted |
+| ADR-0002 | MVP runtime topology as modular monolith | Accepted |
+| ADR-0003 | MVP frontend technology stack (Vue 3 + TypeScript) | Accepted |
+| ADR-0004 | MVP backend technology stack (Spring Boot + JDK 21) | Accepted |
+| ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Accepted |
+| ADR-0006 | Secret boundary and environment separation | Accepted |
+
+Stack ADRs ADR-0002–0006 are Accepted. `design-to-tasks` and scaffolding may
+proceed. Security still fills the concrete secret-manager product name; DBA
+still confirms the Oracle 19c patch/RU. Local secret-ref stub is allowed.

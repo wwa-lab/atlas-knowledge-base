@@ -113,3 +113,11 @@ Accept `mvp-architecture.md` and `mvp-data-flow.md`. No structural rewrite requi
 
 ---
 **Final verdict: Ready with minor fixes**
+
+## Acceptance Update
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted
+`docs/04-architecture/mvp-architecture.md` and
+`docs/04-architecture/mvp-data-flow.md` as the MVP logical architecture
+baseline. Stack, persistence product, and environment matrix remain ADR-gated.
+Detailed design may proceed.

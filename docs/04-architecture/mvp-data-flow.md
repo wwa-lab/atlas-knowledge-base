@@ -4,11 +4,15 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Accepted |
 | Slice | `mvp` |
 | Companion to | `docs/04-architecture/mvp-architecture.md` |
 | Upstream spec | `docs/03-spec/mvp-spec.md` |
 | Date | 2026-08-20 |
+| Accepted | 2026-08-20 |
+
+`[USER-STATED]` Accepted with `mvp-architecture.md` on 2026-08-20 as the MVP
+logical data-flow baseline.
 
 This document describes how data moves through Atlas for the major MVP
 journeys. It does not select storage products, schemas, or API payloads.
