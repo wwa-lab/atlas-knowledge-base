@@ -381,7 +381,10 @@ Immutability: ordinary audit is append-only; redaction of bodies is unnecessary 
 2. Optional evidence cache requires Security/Data ADR; until then persist locator/citation metadata only.
 3. Shared cache only for proven-safe non-sensitive registry/manifest metadata.
 4. Chat history must not store duplicate full retrieved chunks.
-5. Database product, HA, backup, and local/non-prod/prod version strategy are ADR-owned and intentionally unspecified here.
+5. Database product, HA, backup, and local/non-prod/prod engine strategy are
+   ADR-owned. Current Proposed direction in ADR-0005: H2 for `local`, Oracle for
+   `non-prod` (and assumed `prod`). Logical types in this document remain
+   engine-neutral.
 
 ## Open Questions
 

@@ -17,58 +17,82 @@ the source of truth for full GitHub/Confluence bodies.
 
 Forces:
 - Need relational integrity for KB/binding/chat relationships and config versions
-- Local, non-production, and production must not drift into incompatible engines
+- Developer-local convenience versus company non-production/production database standards
 - Version strategy must be explicit before migrations are scaffolded
+- Dialect drift risk when local and deployed engines differ
 
 ## Decision
 
-1. `[DEFAULT - revisit if wrong]` Use **PostgreSQL** as the MVP primary datastore
-   for the accepted logical data model.
-2. **Version strategy:**
-   - Pin a single PostgreSQL **major** version for the slice (exact major to be
-     filled on ADR acceptance; recommended starting pin **PostgreSQL 16**
-     `[DEFAULT - revisit if wrong]`).
-   - Local, non-production, and production MUST run the **same major** version.
-   - Minor/patch upgrades are allowed within that major after compatibility
-     checks; major upgrades require a new ADR or an amendment.
-3. Schema migrations are forward-versioned and applied by an approved migration
-   tool chosen at scaffolding time (tool name not fixed here).
+`[USER-STATED]` On 2026-08-20 the product owner selected:
+
+| Environment plane | Engine |
+|---|---|
+| `local` | **H2** |
+| `non-prod` | **Oracle** |
+
+Production was not explicitly named in that statement. This ADR therefore sets:
+
+| Environment plane | Engine | Basis |
+|---|---|---|
+| `prod` | **Oracle** | `[ASSUMPTION]` / `[DEFAULT - revisit if wrong]` — align production with non-production unless the owner amends this ADR |
+
+### Version strategy
+
+1. **Oracle (`non-prod`, and assumed `prod`):**
+   - Pin a single Oracle **major/release family** for MVP (exact release string to be
+     filled by DBA/platform on ADR acceptance; examples only: 19c / 23ai).
+   - `non-prod` and `prod` MUST use the **same Oracle major/release family**.
+   - Minor/patch changes within that family require compatibility checks; crossing
+     major/release family requires amending or superseding this ADR.
+2. **H2 (`local` only):**
+   - Used for developer machines and local automated tests that intentionally run
+     against H2.
+   - Prefer H2 settings that reduce Oracle dialect surprises where practical
+     (for example Oracle compatibility mode if adopted at scaffolding time).
+   - H2 is **not** an allowed datastore for `non-prod` or `prod`.
+3. Schema changes are expressed as forward versioned migrations. Migrations MUST
+   be validated against **Oracle** before promotion. Local H2 may use a subset or
+   compatibility path, but Oracle remains the acceptance authority for schema.
 4. Optional evidence cache / non-relational stores remain **out of scope** until
    a separate Security/Data ADR accepts them.
 
 ## Alternatives Considered
 
-| Alternative | Why Not (for MVP default) |
+| Alternative | Why Not |
 |---|---|
-| MySQL / MariaDB | Viable; PostgreSQL chosen as default for JSON + strong relational features |
-| Document DB primary | Weak fit for relational KB/binding/chat integrity and config_version concurrency |
-| Different DB engines per environment | Forbidden by this ADR — causes migration and bug drift |
-| Unversioned local SQLite vs Postgres in prod | Rejected — local must match major engine/version family |
+| PostgreSQL everywhere (earlier proposal) | Replaced by owner selection of H2 local + Oracle non-prod |
+| Oracle for local as well | Higher local setup cost; owner chose H2 for local |
+| H2 for non-prod/prod | Rejected — non-prod is Oracle; deployed planes must follow company DB |
+| Different Oracle majors for non-prod vs prod | Forbidden — causes migration and bug drift between deployed planes |
+| SQLite local | Not selected; owner specified H2 |
 
 ## Consequences
 
 ### Positive
 
-- Predictable migrations across local and deployed environments
-- Clear pin for CI and developer onboarding
+- Matches stated local DX preference and company-style Oracle non-prod
+- Deployed planes stay on one Oracle family (assuming prod confirmation)
 
 ### Negative
 
-- Teams standardized on another engine must amend this ADR before coding
-- Evidence-cache product still unresolved (separate ADR)
+- Local H2 versus Oracle dialect/type differences can hide production bugs
+- CI should include an Oracle-validated migration/job path, not H2-only green builds
+- JSON/CLOB, boolean, and identity/sequence mappings need explicit dialect handling in design/tasks
+- Exact Oracle release still must be filled by DBA/platform
 
 ## Migration / Compatibility
 
 - No database exists yet
-- On acceptance, record the exact major (and preferred minor) in this ADR’s
-  Decision section amendment or a short follow-up note in Related Documents
-- Changing engine or major version requires superseding ADR + migration plan
+- On acceptance, record the exact Oracle release family and H2 version/mode in this ADR
+- If production is **not** Oracle, amend this ADR before scaffolding prod config
+- Changing engines or Oracle major/release family requires superseding ADR + migration plan
 
 ## Review Triggers
 
-- Company DBA standard mandates a different engine or major
-- Need for managed multi-region topology incompatible with the pin
-- Introduction of a required secondary store (search/cache) 
+- Owner clarifies production is not Oracle
+- DBA mandates a specific Oracle release incompatible with the pin
+- Repeated local-only bugs escaping to non-prod because of H2 dialect gaps
+- Introduction of a required secondary store (search/cache)
 
 ## Related Documents
 

@@ -43,7 +43,8 @@ Forces:
 2. Environment-specific values (IdP client, connector endpoints, feature flags,
    budgets) are injected as config/secrets at runtime — not baked into images as
    product decisions.
-3. Database major version follows ADR-0005 across all planes.
+3. Database engine and version strategy follow ADR-0005 (`local` H2;
+   `non-prod`/`prod` Oracle family).
 4. Real internal content must not flow through connectors/model channels whose
    spikes failed, regardless of environment.
 
