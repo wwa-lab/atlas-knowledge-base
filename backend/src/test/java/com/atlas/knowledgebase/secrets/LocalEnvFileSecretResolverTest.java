@@ -55,5 +55,20 @@ class LocalEnvFileSecretResolverTest {
         assertThatThrownBy(() -> resolver.resolve("env:ANY"))
                 .isInstanceOf(SecretResolutionException.class)
                 .hasMessageContaining("ADR-0006");
+        assertThatThrownBy(() -> resolver.store("x", "secret".toCharArray()))
+                .isInstanceOf(SecretResolutionException.class);
+        assertThatThrownBy(() -> resolver.delete("file:x"))
+                .isInstanceOf(SecretResolutionException.class);
+    }
+
+    @Test
+    void storeThenDeleteRemovesFile(@TempDir Path tempDir) throws Exception {
+        LocalEnvFileSecretResolver resolver = new LocalEnvFileSecretResolver(tempDir.toString());
+        String ref = resolver.store("github-usr-test", "token-value".toCharArray());
+        assertThat(ref).isEqualTo("file:github-usr-test");
+        assertThat(tempDir.resolve("github-usr-test")).exists();
+        resolver.delete(ref);
+        assertThat(tempDir.resolve("github-usr-test")).doesNotExist();
+        resolver.delete(ref);
     }
 }

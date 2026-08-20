@@ -10,10 +10,12 @@ import com.atlas.knowledgebase.secrets.SecretResolver;
 import com.atlas.knowledgebase.session.SessionProperties;
 import com.atlas.knowledgebase.session.SessionService;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -28,6 +30,12 @@ class ProviderConnectTest {
     @Autowired private ProviderConnectionRepository connections;
     @Autowired private SecretResolver secretResolver;
     @Autowired private ProviderConnectionService connectionService;
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void clearProviderConnections() {
+        jdbcTemplate.update("DELETE FROM provider_connection");
+    }
 
     @Test
     void connectRequiresSession() throws Exception {
@@ -64,7 +72,7 @@ class ProviderConnectTest {
         assertThat(body).doesNotContain("access_token");
 
         Cookie oauthState =
-                start.getResponse().getCookie(connectionService.stateCookieName());
+                start.getResponse().getCookie(connectionService.stateCookieName("github"));
         String location = jsonString(body, "authorization_url");
         location = location + "%20admin:org";
 
@@ -101,7 +109,7 @@ class ProviderConnectTest {
                         .andExpect(status().isOk())
                         .andReturn();
         Cookie oauthState =
-                start.getResponse().getCookie(connectionService.stateCookieName());
+                start.getResponse().getCookie(connectionService.stateCookieName("confluence"));
         String location = jsonString(start.getResponse().getContentAsString(), "authorization_url");
         mockMvc.perform(get(location).cookie(user.session(), oauthState)).andExpect(status().isFound());
 
@@ -111,6 +119,27 @@ class ProviderConnectTest {
                                 .header(SessionService.CSRF_HEADER, user.csrf()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ALREADY_CONNECTING"));
+    }
+
+    @Test
+    void abandonedPendingConnectIsReplaceable() throws Exception {
+        LoggedIn user = login();
+        mockMvc.perform(
+                        post("/api/v1/providers/github/connect")
+                                .cookie(user.session())
+                                .header(SessionService.CSRF_HEADER, user.csrf()))
+                .andExpect(status().isOk());
+
+        MvcResult retry =
+                mockMvc.perform(
+                                post("/api/v1/providers/github/connect")
+                                        .cookie(user.session())
+                                        .header(SessionService.CSRF_HEADER, user.csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.authorization_url").exists())
+                        .andReturn();
+        assertThat(retry.getResponse().getCookie(connectionService.stateCookieName("github")))
+                .isNotNull();
     }
 
     @Test

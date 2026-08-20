@@ -5,7 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -56,13 +59,7 @@ public class LocalEnvFileSecretResolver implements SecretResolver, SecretStore {
     }
 
     private char[] fromFile(String relativeName) {
-        if (!StringUtils.hasText(relativeName)) {
-            throw new SecretResolutionException("file secret_ref is missing a path");
-        }
-        Path resolved = fileRoot.resolve(relativeName.trim()).normalize();
-        if (!resolved.startsWith(fileRoot)) {
-            throw new SecretResolutionException("file secret_ref escapes the local secrets directory");
-        }
+        Path resolved = resolveInsideRoot(relativeName);
         try {
             if (!Files.isRegularFile(resolved)) {
                 throw new SecretResolutionException("file secret_ref does not exist");
@@ -99,9 +96,48 @@ public class LocalEnvFileSecretResolver implements SecretResolver, SecretStore {
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE);
+            restrictOwnerReadWrite(resolved);
             return FILE_PREFIX + safe;
         } catch (IOException ex) {
             throw new SecretResolutionException("file secret_ref could not be written", ex);
+        }
+    }
+
+    @Override
+    public void delete(String secretRef) {
+        if (!StringUtils.hasText(secretRef)) {
+            return;
+        }
+        String ref = secretRef.trim();
+        if (!ref.startsWith(FILE_PREFIX)) {
+            throw new SecretResolutionException("Unsupported secret_ref scheme for local delete");
+        }
+        Path resolved = resolveInsideRoot(ref.substring(FILE_PREFIX.length()));
+        try {
+            Files.deleteIfExists(resolved);
+        } catch (IOException ex) {
+            throw new SecretResolutionException("file secret_ref could not be deleted", ex);
+        }
+    }
+
+    private Path resolveInsideRoot(String relativeName) {
+        if (!StringUtils.hasText(relativeName)) {
+            throw new SecretResolutionException("file secret_ref is missing a path");
+        }
+        Path resolved = fileRoot.resolve(relativeName.trim()).normalize();
+        if (!resolved.startsWith(fileRoot)) {
+            throw new SecretResolutionException("file secret_ref escapes the local secrets directory");
+        }
+        return resolved;
+    }
+
+    private static void restrictOwnerReadWrite(Path resolved) {
+        try {
+            Set<PosixFilePermission> ownerReadWrite =
+                    EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
+            Files.setPosixFilePermissions(resolved, ownerReadWrite);
+        } catch (UnsupportedOperationException | IOException ignored) {
+            // Non-POSIX filesystems (or umask-only environments) still have the bytes written.
         }
     }
 }

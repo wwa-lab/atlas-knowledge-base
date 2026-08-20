@@ -104,6 +104,15 @@ public class SessionService {
         if (sessionId != null && !sessionId.isBlank()) {
             sessionRepository.revoke(sessionId, clock.instant());
         }
+        return clearedSessionCookie();
+    }
+
+    @Transactional
+    public int revokeAllForUser(String userId) {
+        return sessionRepository.revokeAllForUser(userId, clock.instant());
+    }
+
+    public ResponseCookie clearedSessionCookie() {
         return sessionCookie("", java.time.Duration.ZERO);
     }
 

@@ -12,4 +12,11 @@ public interface SecretStore {
      * @return opaque {@code secret_ref} such as {@code file:github-usr_abc}
      */
     String store(String logicalName, char[] secret);
+
+    /**
+     * Removes secret material for {@code secretRef} if it lives in this store.
+     * Missing files are success. Must not log the secret value. Sentinel refs such as
+     * {@code pending:oauth} must not be passed here.
+     */
+    void delete(String secretRef);
 }
