@@ -15,3 +15,12 @@ management:
   endpoint:
     health:
       show-details: never
+
+atlas:
+  session:
+    cookie-name: __Host-atlas-session
+    cookie-secure: true
+    cookie-same-site: Strict
+    # Placeholders until Security approves idle/absolute TTL (OQ-01).
+    idle-ttl: ${ATLAS_SESSION_IDLE_TTL:8h}
+    absolute-ttl: ${ATLAS_SESSION_ABSOLUTE_TTL:24h}
