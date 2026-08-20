@@ -18,5 +18,6 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 | ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Proposed |
 | ADR-0006 | Secret boundary and environment separation | Proposed |
 
-Stack ADRs ADR-0002–0006 must be Accepted (or amended) before `design-to-tasks`
-scaffolds application packages or invents install/build commands.
+Stack ADRs ADR-0003–0006 must be Accepted (or amended) before `design-to-tasks`
+scaffolds application packages or invents install/build commands. ADR-0002
+(modular monolith) is Accepted.
