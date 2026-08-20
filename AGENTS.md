@@ -146,3 +146,28 @@ typecheck, test, build, security, accessibility, and E2E commands.
 
 For an active SDD slice, its accepted architecture, design, and tasks provide
 the concrete source layout, commands, and verification requirements.
+
+## Cursor Cloud specific instructions
+
+This repository is currently a documentation / spec-driven-development (SDD)
+project. There is no application runtime, package manager, lockfile, or build
+system yet, so there are no dependencies to install and nothing to compile.
+Preinstalled `git`, `bash`, `python3`, and `node` are sufficient for all
+current workflows.
+
+- Lint/verification: the only executable checks today are the two documented in
+  the `## Verification` section — `git diff --check` (whitespace/conflict
+  markers) and `./scripts/verify-sdd-skills.sh` (skill-mirror integrity). Do not
+  invent lint/test/build commands; there is no code runtime to test.
+- `./scripts/verify-sdd-skills.sh` needs outbound network access: it shallow
+  clones `github.com/wwa-lab/Agentic-SDLC-Control-Tower` and fails if the pinned
+  commit in `docs/00-context/sdd-skills.lock` no longer matches upstream `main`.
+- The "application" in its current form is the interactive product prototype at
+  `docs/product/prototypes/atlas_knowledge_base_v0_4_multi_source_mvp.html`
+  (a self-contained single-file HTML page with inline CSS/JS). To preview it,
+  serve the repo root statically (e.g. `python3 -m http.server 8080`) and open
+  the file path in a browser; opening via `file://` also works.
+- The prototype is a click-through demo, not a live app: the chat "send" action
+  switches to a hardcoded scenario rather than processing the typed text.
+  Scenarios and views are selectable via query/hash params, e.g.
+  `?scenario=empty|answer|insufficient|partial` and `#chat|kbs|kb-detail|settings`.
