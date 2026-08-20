@@ -14,8 +14,10 @@
 findings.
 
 Frontend, backend, database/version strategy, secret-manager product, and
-environment matrix remain ADR-gated. Implementation scaffolding and
-`design-to-tasks` wait on Accepted stack ADRs.
+environment matrix are ADR-gated. Current owner-stated ADR direction:
+Vue 3 frontend; Java 21 + Spring Boot backend; H2 local / Oracle 19c deployed
+with Flyway on all planes. Implementation scaffolding and `design-to-tasks`
+wait on Accepted stack ADRs.
 
 ## Overview
 
@@ -23,9 +25,8 @@ This design translates the accepted MVP specification and logical architecture
 into module responsibilities, workflows, validation, error handling, and UI
 flows for slice `mvp`.
 
-It is implementation-facing but **stack-agnostic**. Frontend framework, backend
-runtime, database product/version, secret-manager product, and local/production
-environment matrix remain ADR decisions and are not selected here.
+Behavior in this document stays stack-agnostic. Concrete runtime products live
+in ADR-0002–0006.
 
 The repository contains no Atlas application implementation. This design makes
 no claim that runtime code already exists. Provider and model capabilities remain

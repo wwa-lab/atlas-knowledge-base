@@ -3,14 +3,14 @@
 ## Document Summary
 
 - **Document type:** Architecture Decision Records (stack set)
-- **Scope summary:** Proposed ADRs for MVP modular monolith topology, Vue 3 frontend, Node backend, H2 local / Oracle 19c with Flyway on all planes, and secret/environment separation, produced after design acceptance.
+- **Scope summary:** Proposed ADRs for MVP modular monolith topology, Vue 3 frontend, Spring Boot + JDK 21 backend, H2 local / Oracle 19c with Flyway on all planes, and secret/environment separation, produced after design acceptance.
 - **Intended next stage:** Owner accept/amend ADRs, then `design-to-tasks`
 
 ## Overall Assessment
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, Spring Boot + JDK 21, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0002/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
 
 ## Strengths
 
@@ -33,8 +33,14 @@ None.
 
 **Defaults are recommendations, not yet Accepted decisions**
 
-- Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle 19c for non-prod and prod, with Flyway on all planes.
-- Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name; DBA confirms Oracle 19c patch/RU.
+- Why it matters: Secret-manager product may not match company naming yet. Frontend is Vue 3. Backend is Spring Boot + JDK 21. Database is H2 local + Oracle 19c with Flyway on all planes.
+- Recommended fix: Owner accepts remaining ADR-0002/0006 defaults (or lists replacements); Security fills secret product name; DBA confirms Oracle 19c patch/RU.
+
+**Owner selected Spring Boot and JDK 21 for the backend**
+
+- Why it matters: Replaces the earlier Node.js default and aligns with company Java standard plus Oracle/Flyway/H2.
+- Affected section: ADR-0004
+- Recommended fix: Scaffold a Spring Boot modular monolith on JDK 21; do not introduce a Node BFF.
 
 **Owner amended frontend default to Vue 3**
 
@@ -51,7 +57,7 @@ None.
 **HTTP framework and frontend meta-framework left slightly open inside Accepted stack ADRs**
 
 - Why it matters: Tasks still need one scaffolding choice.
-- Recommended fix: On ADR acceptance, optionally amend ADR-0003/0004 with exact Vite/Fastify (or company standard) names.
+- Recommended fix: On ADR acceptance, optionally amend ADR-0003 with exact Vite line and ADR-0004 with the company Spring Boot minor.
 
 ## Completeness Check
 
@@ -70,7 +76,7 @@ None.
 
 ## Minimal Fix Path
 
-Owner accepts remaining ADR-0002/0004/0006 defaults (or lists replacements), Security names the secret product, and DBA confirms the Oracle 19c patch/RU.
+Owner accepts remaining ADR-0002/0006 defaults (or lists replacements), Security names the secret product, and DBA confirms the Oracle 19c patch/RU.
 
 ---
 **Final verdict: Ready with minor fixes**

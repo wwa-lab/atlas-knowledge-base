@@ -54,7 +54,7 @@ Boundaries:
 
 ### Negative
 
-- Shared TypeScript types with a Node BFF remain fine; UI component libraries differ from a React default
+- Shared TypeScript types with the Java backend are not assumed; HTTP contracts are the boundary
 - SPA CSRF/cookie care must be explicit in implementation
 
 ## Migration / Compatibility

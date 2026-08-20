@@ -12,56 +12,69 @@ Proposed
 
 Accepted design requires a Session/BFF trust boundary, capability modules,
 connector adapters, streaming chat mediation, webhooks/reconciliation workers,
-and content-free audit. Backend language/runtime is unset.
+and content-free audit. Backend language/runtime was previously proposed as
+TypeScript on Node.js as an empty-repo default.
 
 Forces:
+- Company platform standard is Java / Spring Boot
 - Cookie session + CSRF + server-only secrets
 - Parallel connector I/O and streaming responses
+- Selected data layer is H2 local + Oracle 19c + Flyway on all planes (ADR-0005)
 - Preference to keep MVP modular monolith simple (ADR-0002)
-- Must not invent build tooling before an Accepted stack ADR (`AGENTS.md`)
 
 ## Decision
 
-`[DEFAULT - revisit if wrong]` Use **TypeScript on Node.js** for the MVP
-backend/BFF modular monolith that implements the accepted `/api/v1` contracts.
+`[USER-STATED]` On 2026-08-20 the product owner selected **Spring Boot** and
+**JDK 21** as the company-standard MVP backend.
+
+Use **Java 21 (JDK 21) + Spring Boot** for the MVP backend modular monolith that
+implements the accepted `/api/v1` contracts, including the Session/BFF trust
+boundary in-process.
 
 Boundaries:
-- Exact HTTP framework (for example Fastify or NestJS-style) is chosen during
-  scaffolding tasks after this ADR is Accepted; it must support cookie sessions,
-  CSRF, streaming, and background workers
+- Exact Spring Boot **minor** line follows company platform standard at
+  scaffolding time; it must support JDK 21, cookie sessions, CSRF, streaming,
+  background work, Flyway, H2, and Oracle 19c
 - Connector adapters stay process-local modules until a later split ADR
-- Shared types with the frontend are allowed but must not leak server secrets
-  into client bundles
+- Frontend remains Vue 3 + TypeScript (ADR-0003). Shared TypeScript types with
+  the backend are not assumed; API contracts in
+  `mvp-API_IMPLEMENTATION_GUIDE.md` are the cross-language boundary
+- Flyway runs on all planes per ADR-0005 (typically via Spring Boot Flyway
+  integration)
 
 ## Alternatives Considered
 
-| Alternative | Why Not (for MVP default) |
+| Alternative | Why Not |
 |---|---|
-| Java / Spring Boot | Strong enterprise fit; higher ceremony for empty-repo MVP unless company standard requires it |
-| Go | Excellent for adapters/workers; weaker default for rapid BFF+SSR-adjacent web iteration here |
-| Python | Good for ML-adjacent teams; not selected as default without owner preference |
+| TypeScript on Node.js (earlier default) | Replaced by company-standard Java/Spring Boot; weaker fit for Oracle + Flyway + H2 |
+| Go | Excellent for adapters/workers; not the company standard |
+| Python | Good for ML-adjacent teams; not selected |
+| Split Node BFF + Spring core | Extra runtime; conflicts with modular-monolith default (ADR-0002) |
 
 ## Consequences
 
 ### Positive
 
-- One language across UI and API for a small MVP team
-- Straightforward streaming and async connector fan-out
+- Aligns with company Java platform, hiring, and operations
+- Natural fit for Oracle 19c, H2 local, and Flyway-on-all-planes
+- Cookie session, CSRF, and transaction/audit patterns are conventional in Spring
 
 ### Negative
 
-- May diverge from company JVM standards
-- CPU-heavy work later may need extracted workers (future ADR)
+- Frontend Vue/TypeScript and backend Java are different languages; contract tests matter more
+- Empty-repo ceremony is higher than a Node BFF default
+- Streaming and connector concurrency must use explicit Spring choices (MVC vs WebFlux) at scaffolding — not selected here
 
 ## Migration / Compatibility
 
-- No backend code exists yet
-- Supersede with a new ADR before changing runtime language
+- No backend code exists yet; replacing the Node proposal has zero migration cost
+- Changing JDK major, leaving Spring Boot, or splitting the BFF requires a superseding ADR
 
 ## Review Triggers
 
-- Company platform standard mandates JVM/Go
+- Company mandates a different JDK LTS or Spring Boot line
 - Reconciliation/worker load requires a separately scaled runtime earlier than expected
+- Streaming/chat performance evidence against the chosen Spring programming model
 
 ## Related Documents
 

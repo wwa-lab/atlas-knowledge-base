@@ -8,12 +8,13 @@
 | Accepted | 2026-08-20 |
 | Slice | `mvp` |
 | Base Path | `/api/v1` `[Assumption]` |
-| Backend stack | **Deferred to stack ADR** — not selected |
+| Backend stack | **Java 21 + Spring Boot** per Proposed ADR-0004 (`[USER-STATED]`) |
 | Auth model | Corporate SSO → opaque `__Host-` Atlas session cookie + CSRF for mutating requests |
 | Upstream | `docs/05-design/mvp-design.md`, `docs/03-spec/mvp-spec.md` |
 
-`[USER-STATED]` Accepted with the MVP design set on 2026-08-20. Backend/frontend
-runtime products remain ADR-gated.
+`[USER-STATED]` Accepted with the MVP design set on 2026-08-20. Frontend is Vue 3
+(ADR-0003). Backend is Java 21 + Spring Boot (ADR-0004, Proposed until stack
+ADRs are Accepted).
 
 ## Overview
 
