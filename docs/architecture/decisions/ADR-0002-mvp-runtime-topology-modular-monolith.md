@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -22,9 +22,13 @@ Forces:
 
 ## Decision
 
-`[DEFAULT - revisit if wrong]` Ship the MVP application as **one modular
-monolith runtime** that hosts the logical modules in-process behind the accepted
-HTTP API contracts.
+`[USER-STATED]` On 2026-08-20 the product owner accepted the current topology
+default.
+
+Ship the MVP application as **one modular monolith runtime** that hosts the
+logical modules in-process behind the accepted HTTP API contracts. For MVP that
+is one JDK 21 + Spring Boot process (ADR-0004) containing Session/BFF,
+capability modules, connector adapters, and workers.
 
 Boundaries:
 - Module packages/namespaces follow the design module list

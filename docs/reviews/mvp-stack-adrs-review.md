@@ -10,7 +10,7 @@
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, Spring Boot + JDK 21, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0002/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (modular monolith, Vue 3, Spring Boot + JDK 21, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0003–0006 as a set if not already treated as owner-stated, Security naming the secret product, and DBA confirming the 19c patch/RU.
 
 ## Strengths
 
@@ -34,7 +34,13 @@ None.
 **Defaults are recommendations, not yet Accepted decisions**
 
 - Why it matters: Secret-manager product may not match company naming yet. Frontend is Vue 3. Backend is Spring Boot + JDK 21. Database is H2 local + Oracle 19c with Flyway on all planes.
-- Recommended fix: Owner accepts remaining ADR-0002/0006 defaults (or lists replacements); Security fills secret product name; DBA confirms Oracle 19c patch/RU.
+- Recommended fix: Owner accepts remaining ADR-0003–0006 (Vue/Spring/H2-Oracle/Flyway already owner-stated; 0006 secret product still open); Security fills secret product name; DBA confirms Oracle 19c patch/RU.
+
+**Owner accepted modular-monolith topology**
+
+- Why it matters: MVP is one Spring Boot process, not microservices or a split BFF.
+- Affected section: ADR-0002
+- Recommended fix: Scaffold a single modular Spring Boot application.
 
 **Owner selected Spring Boot and JDK 21 for the backend**
 
@@ -72,11 +78,11 @@ None.
 
 - **Target stage:** Tasks (`design-to-tasks`) after ADR acceptance
 - **Verdict:** Sufficient for owner decision; not sufficient alone to scaffold code
-- **Blockers:** Accept/amend ADR-0002–0006
+- **Blockers:** Accept remaining Proposed ADRs (0003–0006); secret product and Oracle 19c patch/RU
 
 ## Minimal Fix Path
 
-Owner accepts remaining ADR-0002/0006 defaults (or lists replacements), Security names the secret product, and DBA confirms the Oracle 19c patch/RU.
+Owner accepts remaining stack ADRs 0003–0006 (or lists replacements), Security names the secret product, and DBA confirms the Oracle 19c patch/RU.
 
 ---
 **Final verdict: Ready with minor fixes**

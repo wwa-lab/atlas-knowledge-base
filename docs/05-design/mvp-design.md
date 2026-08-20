@@ -340,11 +340,11 @@ Do not invent connector numeric thresholds in tests; bind them to approved pilot
 5. Session idle/absolute lifetimes (Security)?
 6. Top-K and normal-load profile freeze dates?
 7. Named Connector Owners for first pilots?
-8. Confirm modular-monolith default for MVP scaffolding (ADR-0002)?
+8. Modular-monolith topology: Accepted (ADR-0002).
 
 ## Design Handoff Notes
 
 - `[USER-STATED]` Design set Accepted 2026-08-20
-- Next: Accept or amend Proposed ADRs ADR-0002–0006, then `design-to-tasks`
+- Next: Accept or amend remaining Proposed ADRs (0003–0006), then `design-to-tasks`
 - Do not scaffold application packages before stack ADRs are Accepted
 - Keep ordinary-Git Chat and Atlas-owned index bootstrap out of tasks

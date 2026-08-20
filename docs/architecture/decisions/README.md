@@ -12,7 +12,7 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 | ID | Title | Status |
 |---|---|---|
 | ADR-0001 | Adopt SDD workflow and Control Tower skills | Accepted |
-| ADR-0002 | MVP runtime topology as modular monolith | Proposed |
+| ADR-0002 | MVP runtime topology as modular monolith | Accepted |
 | ADR-0003 | MVP frontend technology stack (Vue 3 + TypeScript) | Proposed |
 | ADR-0004 | MVP backend technology stack (Spring Boot + JDK 21) | Proposed |
 | ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Proposed |
