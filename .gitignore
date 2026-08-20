@@ -10,6 +10,10 @@ node_modules/
 .venv/
 venv/
 
+# Maven / Java (backend lands in TASK-001; keep build output untracked)
+target/
+*.class
+
 # Build, test, and tool output
 dist/
 build/

@@ -99,6 +99,7 @@ During Grill Mode:
 - `docs/architecture/decisions/` — durable cross-cutting decisions
 - `docs/reviews/` — document and implementation review evidence
 - `scripts/` — repository verification and maintenance tooling
+- `frontend/` — Vue 3 + TypeScript + Vite SPA (TASK-002+)
 
 Do not add empty application packages or services speculatively. Introduce a
 runtime boundary only when an accepted slice and ADR require it.
@@ -128,11 +129,10 @@ Always:
 
 ## Verification
 
-Application build commands are intentionally not invented before runtime and
-stack ADRs exist. Until then, use:
+Whitespace and conflict-marker check (exact upstream/source mirrors retain
+their original Markdown hard breaks):
 
 ```sh
-# Exact upstream/source mirrors retain their original Markdown hard breaks.
 git diff --check -- . \
   ':(exclude).agents/skills/**' \
   ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'
@@ -141,28 +141,36 @@ git diff --check -- . \
 When `.agents/skills/` or `docs/00-context/sdd-skills.lock` changes, also run
 `./scripts/verify-sdd-skills.sh`.
 
-When runtimes are scaffolded, update this section with exact install, lint,
-typecheck, test, build, security, accessibility, and E2E commands.
+Frontend skeleton (TASK-002; from `frontend/`):
+
+```sh
+npm test
+npm run build
+```
+
+Do not invent extra lint, formatter, or E2E commands beyond the active slice
+tasks. Backend, Flyway/Oracle, security, accessibility, and E2E commands are
+added when those tasks land.
 
 For an active SDD slice, its accepted architecture, design, and tasks provide
 the concrete source layout, commands, and verification requirements.
 
 ## Cursor Cloud specific instructions
 
-This repository is currently a documentation / spec-driven-development (SDD)
-project. There is no application runtime, package manager, lockfile, or build
-system yet, so there are no dependencies to install and nothing to compile.
-Preinstalled `git`, `bash`, `python3`, and `node` are sufficient for all
-current workflows.
+This repository is an SDD project with a greenfield Vue 3 SPA skeleton under
+`frontend/`. Preinstalled `git`, `bash`, `python3`, and `node` are sufficient
+for the frontend workflow (`npm install` in `frontend/`).
 
-- Lint/verification: the only executable checks today are the two documented in
-  the `## Verification` section — `git diff --check` (whitespace/conflict
-  markers) and `./scripts/verify-sdd-skills.sh` (skill-mirror integrity). Do not
-  invent lint/test/build commands; there is no code runtime to test.
+- Lint/verification: `git diff --check` (whitespace/conflict markers),
+  `./scripts/verify-sdd-skills.sh` when skills or the lock change, and from
+  `frontend/` the task commands `npm test` and `npm run build`. Do not invent
+  extra lint/test/build commands.
+- Frontend `npm install` / `npm test` / `npm run build` need outbound network
+  access on first run to download npm packages.
 - `./scripts/verify-sdd-skills.sh` needs outbound network access: it shallow
   clones `github.com/wwa-lab/Agentic-SDLC-Control-Tower` and fails if the pinned
   commit in `docs/00-context/sdd-skills.lock` no longer matches upstream `main`.
-- The "application" in its current form is the interactive product prototype at
+- The click-through product prototype remains at
   `docs/product/prototypes/atlas_knowledge_base_v0_4_multi_source_mvp.html`
   (a self-contained single-file HTML page with inline CSS/JS). To preview it,
   serve the repo root statically (e.g. `python3 -m http.server 8080`) and open
