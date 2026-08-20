@@ -56,8 +56,10 @@ During Grill Mode:
 - Do not create a second requirements, design, or task chain beside the SDD
   profile.
 - After the slice is accepted for implementation, follow the Implementation
-  Task Loop in `PROJECT_RULES.md`: one task per PR, verify, review, merge,
-  then the next unblocked Must task without waiting to be told to continue.
+  Task Loop in `PROJECT_RULES.md`: implement, verify, Gate A review-only
+  subagent, Gate B (second Cloud Agent or human) when the PR is elevated,
+  merge when required checks are green, then the next unblocked Must task
+  without waiting to be told to continue.
 
 ## SDD Workflow Gate
 
@@ -65,10 +67,12 @@ During Grill Mode:
   `docs/00-context/agentic-sdlc-registry.md`.
 - Route each SDD stage directly to its matching skill; the profile and bootstrap
   document coordinate the chain.
-- Use `review-doc-quality` before implementation or publication. Use
-  `review-code-against-design` after each implementation task, and
-  `architecture-review` when its trigger conditions apply. Then merge and
-  continue per the Implementation Task Loop in `PROJECT_RULES.md`.
+- Use `review-doc-quality` before implementation or publication. After each
+  implementation task, Gate A is a *review-only* subagent in a fresh context
+  running `review-code-against-design` (and `architecture-review` when its
+  triggers apply). Elevated PRs also need Gate B. The implementer must not
+  write the merge-gate verdict. Then merge and continue per the
+  Implementation Task Loop in `PROJECT_RULES.md`.
 - Project rules and SDD artifacts are English-only. Knowledge content may use
   the language appropriate to its audience and sources.
 - Claims about existing code, content, sources, or project decisions must be
@@ -184,9 +188,18 @@ aggregator plus `backend/` Spring Boot 3.4.13 on JDK 21, and a Vue 3 SPA under
 sufficient. Use the committed Maven Wrapper rather than a system `mvn`.
 
 Implementation of accepted tasks follows the Implementation Task Loop in
-`PROJECT_RULES.md`: one task per PR from `main`, verify, `review-code-against-design`,
-merge via pull request, then the next unblocked Must task. Do not stop after a
-successful merge to wait for "continue" unless the user named a stop.
+`PROJECT_RULES.md`: one task per PR from `main` (with the documented parallel
+exception), verify, Gate A review-only subagent, merge via pull request when
+required checks are green, then the next unblocked Must task. Do not stop after
+a successful merge to wait for "continue" unless the user named a stop or a
+Gate B review is outstanding.
+
+Gate B is required (loop stops) when the PR changes authentication/session/
+CSRF/cookies, Flyway/data model, `/api/v1` contracts, or secrets/access
+control. Start a new Cloud Agent on that PR with a review-only prompt: follow
+`review-code-against-design`, do not implement or merge, review
+`git diff origin/main...HEAD`. A human GitHub review of the same diff also
+satisfies Gate B. The implementing agent cannot spawn that Cloud Agent.
 
 - Lint/verification: `git diff --check` (whitespace/conflict markers),
   `./scripts/verify-sdd-skills.sh` when skills or the lock change,

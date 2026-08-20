@@ -43,38 +43,102 @@ the existing work.
 ## Implementation Task Loop
 
 When implementing an accepted slice task list (for example
-`docs/06-tasks/mvp-tasks.md`), coding agents MUST drive the work in task order
+`docs/06-tasks/mvp-tasks.md`), coding agents MUST drive unblocked Must tasks
 without waiting for a per-task "continue". The user may name a start task, a
-stop task, or a blocker; otherwise keep going through unblocked Must tasks.
+stop task, or a blocker.
 
-For each task:
+Default: one Must task per branch and pull request, cut from current `main`.
+Exception: tasks the list already marks as parallel may share one PR only when
+they do not change shared schema, authentication/session, or `/api/v1`
+contracts. Name every included task ID in the PR.
 
-1. **Branch** from current `main`. One task per branch and pull request.
-2. **Implement** only that task's stated scope. Use `tasks-to-implementation`
-   for greenfield, bootstrap, or migration; use `tasks-to-code` for incremental
-   brownfield. Do not invent extra lint, formatter, or build commands.
-3. **Verify** with the exact commands recorded on the task (and any already
-   listed in `AGENTS.md`). Never claim a check passed unless it was run.
-4. **Review** with `review-code-against-design` against the accepted design,
-   contracts, ADRs, and the task. Use `architecture-review` when its trigger
-   conditions apply. Put the verdict (rating, Critical/Major/Minor, merge
-   gate) in the pull request body.
-5. **Gate** — do not merge while Critical or Major findings remain. Fix them
-   on the same branch and re-verify plus re-review. Minor findings may merge
-   if listed in the pull request.
-6. **Merge** the pull request into `main` after verification and the review
-   gate pass. `main` is protected; merge through the pull request, not a
-   direct push.
-7. **Continue** immediately to the next unblocked Must task.
+For each PR:
 
-Stop the loop (and say why) when:
+1. **Branch** from current `main`.
+2. **Implement** only the named task scope. Use `tasks-to-implementation` for
+   greenfield, bootstrap, or migration; use `tasks-to-code` for incremental
+   brownfield. Do not invent extra lint, formatter, or build commands. An
+   implementer self-check against the design is allowed while coding; it is
+   not the merge-gate review.
+3. **Verify** with the exact commands on the task and in `AGENTS.md`. Never
+   claim a check passed unless it was run.
+4. **Publish** the branch: commit, push, and open or update the pull request
+   *before* the merge-gate review, so the reviewer has a real diff.
+5. **Independent review** — the implementer MUST NOT author the merge-gate
+   verdict. Launch the required review-only agent(s) (below).
+6. **Gate** — do not merge while Critical or Major findings remain. Fix on the
+   same branch, re-verify, and launch a *new* review-only subagent (and a new
+   elevated review when that class applies). At most two fix-and-re-review
+   rounds for the same Critical/Major set; then stop and wait for the user.
+   Minor findings may merge if listed in the PR and the review file.
+7. **Record** every reviewer's report verbatim in the PR body and in
+   `docs/reviews/{slice}-task-{id}-code-review.md` (combined PRs list every
+   included task ID). Do not edit findings or soften the rating.
+8. **Merge** through the pull request only after local verification, the
+   applicable review gate(s) Pass (no Critical/Major), and green required
+   GitHub checks. Do not push `main` directly. If no required checks exist,
+   local verification is the executable CI gate; still do not merge while
+   started checks are failing.
+9. **Continue** to the next unblocked Must task after a merge, or stop this
+   run if context is too degraded. State which task landed and which is next.
+   Do not wait for "continue" unless the user named a stop, or an elevated
+   review is still outstanding.
+
+### Independent review
+
+Independence means a **different agent context** that did not implement the
+change and does not receive the implementer's rationale, discarded options, or
+a request to confirm a Pass. If any change in the PR hits an elevated class,
+the whole PR is elevated.
+
+**Gate A — required on every PR.** After the PR exists, the implementer starts
+a review-only subagent in a new context (Cursor `Task`, `generalPurpose`,
+unless a dedicated review subagent type exists). The prompt must:
+
+- order the agent to follow `.agents/skills/review-code-against-design/SKILL.md`,
+  and `.agents/skills/architecture-review/SKILL.md` when that skill's triggers
+  apply;
+- give task ID(s), PR URL or branch, and paths to the accepted design,
+  contracts, ADRs, and tasks — not a defense of the diff;
+- restrict the change set to `git diff origin/main...HEAD` or the PR diff;
+- forbid editing files, committing, merging, or writing a Pass to please the
+  implementer;
+- require the skill report plus an explicit merge gate: Pass or Fail.
+
+If the user named a review model, pass that model to the subagent. Otherwise
+inheriting the implementer's model is acceptable; isolation is the fresh
+context, not a different vendor.
+
+**Gate B — elevated, blocking.** A separate Cloud Agent or human GitHub review
+on the same PR, with the same review-only prompt as Gate A, is **required**
+when the PR changes any of:
+
+- authentication, session, CSRF, or cookies;
+- Flyway schema or the accepted data model;
+- `/api/v1` contracts;
+- secrets, `secret_ref`, or access control.
+
+The implementing agent cannot spawn a second Cloud Agent. After Gate A is
+recorded, it MUST stop, name the PR, and ask the user or dispatcher to start
+that run (or to review on GitHub). Do not merge and do not start the next
+Must task until Gate B Passes. UI shells, tests, stubs, copy, and other
+non-elevated work stay on Gate A plus required CI.
+
+If Gate A cannot be started, stop and say so. Do not treat an implementer
+self-check as Pass. The implementer may apply fixes from a report; they may
+not rewrite the verdict.
+
+### Stop the loop when
 
 - the user asked to stop, or named an exclusive task range that is finished;
+- this run's context is too degraded to continue faithfully;
+- a Gate B review is outstanding;
 - the task is spike-gated for **real** connector/model content and the spike
   report is missing (stub paths may still proceed);
 - an open Security/DBA question blocks **this** task, not only later production
   deploy;
-- Critical or Major review findings remain after a fix attempt.
+- Critical or Major findings remain after two fix-and-re-review rounds;
+- required CI checks fail after a fix attempt and the failure is not a fluke.
 
 Spike-gated adapter tasks must not block earlier platform, session, stub API,
 or UI-shell tasks. Do not skip a blocking Must task to start a later one.
