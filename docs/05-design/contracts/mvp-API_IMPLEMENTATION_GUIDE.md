@@ -3,12 +3,17 @@
 | Field | Value |
 |---|---|
 | Date | 2026-08-20 |
-| Version | 0.1 Draft |
+| Version | 0.1 |
+| Status | Accepted |
+| Accepted | 2026-08-20 |
 | Slice | `mvp` |
 | Base Path | `/api/v1` `[Assumption]` |
 | Backend stack | **Deferred to stack ADR** — not selected |
 | Auth model | Corporate SSO → opaque `__Host-` Atlas session cookie + CSRF for mutating requests |
 | Upstream | `docs/05-design/mvp-design.md`, `docs/03-spec/mvp-spec.md` |
+
+`[USER-STATED]` Accepted with the MVP design set on 2026-08-20. Backend/frontend
+runtime products remain ADR-gated.
 
 ## Overview
 

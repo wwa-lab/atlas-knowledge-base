@@ -1,5 +1,22 @@
 # Detailed Design: Atlas Knowledge Base MVP
 
+| Field | Value |
+|---|---|
+| Status | Accepted |
+| Slice | `mvp` |
+| Accepted | 2026-08-20 |
+| Language | English |
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted this design set
+(`mvp-design.md`, `mvp-data-model.md`, and
+`mvp-API_IMPLEMENTATION_GUIDE.md`) as the MVP detailed-design baseline after
+`review-doc-quality` reported Ready with minor fixes and no Critical or Major
+findings.
+
+Frontend, backend, database/version strategy, secret-manager product, and
+environment matrix remain ADR-gated. Implementation scaffolding and
+`design-to-tasks` wait on Accepted stack ADRs.
+
 ## Overview
 
 This design translates the accepted MVP specification and logical architecture
@@ -326,6 +343,7 @@ Do not invent connector numeric thresholds in tests; bind them to approved pilot
 
 ## Design Handoff Notes
 
-- Next: stack/persistence/environment ADRs (recommended immediately), then `design-to-tasks`
+- `[USER-STATED]` Design set Accepted 2026-08-20
+- Next: Accept or amend Proposed ADRs ADR-0002–0006, then `design-to-tasks`
 - Do not scaffold application packages before stack ADRs are Accepted
 - Keep ordinary-Git Chat and Atlas-owned index bootstrap out of tasks

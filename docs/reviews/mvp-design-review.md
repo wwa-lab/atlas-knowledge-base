@@ -112,3 +112,13 @@ Accept the three design artifacts. No structural rewrite required before ADR dra
 
 ---
 **Final verdict: Ready with minor fixes**
+
+## Acceptance Update
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted the MVP design set:
+`docs/05-design/mvp-design.md`, `docs/04-architecture/mvp-data-model.md`, and
+`docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`.
+
+Next gate: Accept or amend Proposed stack ADRs (frontend, backend, database
+version strategy, secrets/environment). Do not run implementation scaffolding
+or invent application build commands until those ADRs are Accepted.

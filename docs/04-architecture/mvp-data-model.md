@@ -1,5 +1,14 @@
 # Data Model: Atlas Knowledge Base MVP
 
+| Field | Value |
+|---|---|
+| Status | Accepted |
+| Slice | `mvp` |
+| Accepted | 2026-08-20 |
+
+`[USER-STATED]` Accepted with the MVP design set on 2026-08-20. Database product
+and version strategy remain ADR-gated; types below stay logical.
+
 ## Overview
 
 Logical persistence model for Atlas MVP governance metadata, private chat

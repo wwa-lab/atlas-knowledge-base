@@ -6,3 +6,17 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 - Keep titles and normative technical content in English.
 - Do not rewrite accepted historical rationale; supersede it with a new ADR.
 - Link affected SDD slices and migration work.
+
+## Index
+
+| ID | Title | Status |
+|---|---|---|
+| ADR-0001 | Adopt SDD workflow and Control Tower skills | Accepted |
+| ADR-0002 | MVP runtime topology as modular monolith | Proposed |
+| ADR-0003 | MVP frontend technology stack | Proposed |
+| ADR-0004 | MVP backend technology stack | Proposed |
+| ADR-0005 | Database product and version strategy | Proposed |
+| ADR-0006 | Secret boundary and environment separation | Proposed |
+
+Stack ADRs ADR-0002–0006 must be Accepted (or amended) before `design-to-tasks`
+scaffolds application packages or invents install/build commands.
