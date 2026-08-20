@@ -86,3 +86,8 @@ Owner accepts remaining stack ADRs 0003–0006 (or lists replacements), Security
 
 ---
 **Final verdict: Ready with minor fixes**
+
+## Acceptance Update
+
+`[USER-STATED]` On 2026-08-20 the product owner accepted ADR-0003 through
+ADR-0006. Implementation tasks are in `docs/06-tasks/mvp-tasks.md`.
