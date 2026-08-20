@@ -1,0 +1,7 @@
+# ADR-0005: prod is Oracle 19c (same family as non-prod). Credentials from env/secret boundary.
+spring:
+  datasource:
+    url: ${ATLAS_DATASOURCE_URL}
+    username: ${ATLAS_DATASOURCE_USERNAME}
+    password: ${ATLAS_DATASOURCE_PASSWORD}
+    driver-class-name: oracle.jdbc.OracleDriver
