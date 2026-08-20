@@ -13,7 +13,7 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 |---|---|---|
 | ADR-0001 | Adopt SDD workflow and Control Tower skills | Accepted |
 | ADR-0002 | MVP runtime topology as modular monolith | Proposed |
-| ADR-0003 | MVP frontend technology stack | Proposed |
+| ADR-0003 | MVP frontend technology stack (Vue 3 + TypeScript) | Proposed |
 | ADR-0004 | MVP backend technology stack | Proposed |
 | ADR-0005 | Database product and version strategy | Proposed |
 | ADR-0006 | Secret boundary and environment separation | Proposed |

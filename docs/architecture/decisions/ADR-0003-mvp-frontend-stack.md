@@ -22,22 +22,26 @@ Forces:
 
 ## Decision
 
-`[DEFAULT - revisit if wrong]` Use **TypeScript + React** for the MVP web
-frontend as a SPA (or SPA-equivalent app shell) that talks only to Atlas
-application APIs through the Session/BFF boundary.
+`[USER-STATED]` On 2026-08-20 the product owner selected **Vue 3** for the MVP
+frontend.
+
+Use **TypeScript + Vue 3** for the MVP web frontend as a SPA (or SPA-equivalent
+app shell) that talks only to Atlas application APIs through the Session/BFF
+boundary.
 
 Boundaries:
 - No provider or model credentials in browser storage, URL, or frontend logs
-- Exact meta-framework (for example Vite SPA vs Next-style app) may be fixed in
-  implementation tasks once this ADR is Accepted; default preference is a Vite
-  SPA unless company standard requires otherwise `[DEFAULT - revisit if wrong]`
+- Exact meta-framework tooling defaults to **Vite + Vue 3** unless company
+  standard requires otherwise `[DEFAULT - revisit if wrong]`
 - CSS/design-system choice is out of scope for this ADR
+- Does not change backend (ADR-0004), database (ADR-0005), or topology (ADR-0002)
 
 ## Alternatives Considered
 
-| Alternative | Why Not (for MVP default) |
+| Alternative | Why Not |
 |---|---|
-| Vue / Svelte | Fine alternatives; React is the default only to unblock scaffolding—owner may replace |
+| TypeScript + React | Previously proposed default; replaced by owner selection of Vue 3 |
+| Svelte | Viable; not selected |
 | Pure server-rendered multi-page app | Harder fit for streaming chat and Evidence Drawer interaction model |
 | Mobile-native first | Spec makes desktop primary; mobile is a reduced web journey |
 
@@ -45,17 +49,17 @@ Boundaries:
 
 ### Positive
 
-- Clear scaffolding target for tasks
-- Strong ecosystem for accessible component patterns and streaming UI
+- Clear scaffolding target for tasks aligned with owner preference
+- Vue 3 + Vite is a strong fit for SPA chat UI and component composition
 
 ### Negative
 
-- Default may not match an existing company frontend standard
+- Shared TypeScript types with a Node BFF remain fine; UI component libraries differ from a React default
 - SPA CSRF/cookie care must be explicit in implementation
 
 ## Migration / Compatibility
 
-- No frontend code exists yet
+- No frontend code exists yet; switching from the earlier React proposal has zero migration cost
 - Changing framework later requires a superseding ADR before rewrite tasks
 
 ## Review Triggers

@@ -33,8 +33,14 @@ None.
 
 **Defaults are recommendations, not yet Accepted decisions**
 
-- Why it matters: React/Node/Postgres 16 defaults may not match company standards.
-- Recommended fix: Owner accepts or replaces defaults; Security fills secret product name.
+- Why it matters: Node/Postgres 16 defaults may not match company standards. Frontend is now owner-selected as Vue 3.
+- Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name.
+
+**Owner amended frontend default to Vue 3**
+
+- Why it matters: ADR-0003 Decision now records `[USER-STATED]` Vue 3 + TypeScript (Vite default tooling).
+- Affected section: ADR-0003
+- Recommended fix: None unless company mandates a different Vue meta-framework.
 
 **HTTP framework and frontend meta-framework left slightly open inside Accepted stack ADRs**
 
