@@ -333,14 +333,14 @@ Do not invent connector numeric thresholds in tests; bind them to approved pilot
 
 ## Open Questions
 
-1. Frontend stack ADR candidates and decision owner?
-2. Backend runtime ADR candidates and decision owner?
-3. Database product + version strategy (local vs non-prod vs prod) ADR?
-4. Secret-manager product ADR?
+1. Frontend: Vue 3 + TypeScript (ADR-0003, owner-stated). Exact Vite/company UI kit still open.
+2. Backend: Java 21 + Spring Boot (ADR-0004, owner-stated). Exact Spring Boot minor follows company platform.
+3. Database: H2 local / Oracle 19c non-prod+prod / Flyway all planes (ADR-0005). DBA to confirm 19c patch/RU.
+4. Secret-manager product ADR-0006 still open (Security).
 5. Session idle/absolute lifetimes (Security)?
 6. Top-K and normal-load profile freeze dates?
 7. Named Connector Owners for first pilots?
-8. Confirm modular-monolith default for MVP scaffolding?
+8. Confirm modular-monolith default for MVP scaffolding (ADR-0002)?
 
 ## Design Handoff Notes
 
