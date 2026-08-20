@@ -3,19 +3,19 @@
 ## Document Summary
 
 - **Document type:** Architecture Decision Records (stack set)
-- **Scope summary:** Proposed ADRs for MVP modular monolith topology, frontend stack, backend stack, PostgreSQL version strategy across environments, and secret/environment separation, produced after design acceptance.
+- **Scope summary:** Proposed ADRs for MVP modular monolith topology, Vue 3 frontend, Node backend, H2 local / Oracle non-prod+prod database strategy, and secret/environment separation, produced after design acceptance.
 - **Intended next stage:** Owner accept/amend ADRs, then `design-to-tasks`
 
 ## Overall Assessment
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and defaults are marked `[DEFAULT - revisit if wrong]` rather than silently invented as company fact. Concrete secret-manager product name and final Postgres major pin still require owner/Security confirmation on acceptance.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA pinning the Oracle release family.
 
 ## Strengths
 
 - Separates topology, frontend, backend, database version strategy, and secrets/environments.
-- Forbids different DB engines per environment.
+- Keeps `non-prod` and `prod` on the same Oracle family; H2 is local-only.
 - Keeps evidence cache out until a dedicated ADR.
 - Blocks scaffolding until Accepted.
 
@@ -70,7 +70,7 @@ None.
 
 ## Minimal Fix Path
 
-Owner replies with accept-all-defaults, or lists replacements (for example JVM backend, Postgres 15, Vault).
+Owner accepts remaining ADR-0002/0004/0006 defaults (or lists replacements), Security names the secret product, and DBA pins the Oracle release family.
 
 ---
 **Final verdict: Ready with minor fixes**
