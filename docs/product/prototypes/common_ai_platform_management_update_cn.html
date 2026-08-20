@@ -315,6 +315,20 @@
       line-height: 1.5;
     }
 
+    .source-note {
+      grid-column: 1 / -1;
+      margin: -12px 0 0;
+      padding-top: 18px;
+      color: var(--subtle);
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .source-note strong {
+      color: var(--muted);
+    }
+
     section {
       margin-top: 92px;
       scroll-margin-top: 30px;
@@ -1274,6 +1288,12 @@
         font-size: 21px;
       }
 
+      .source-note {
+        margin-top: -8px;
+        padding-top: 12px;
+        font-size: 8px;
+      }
+
       section:not(.takeaways) {
         padding: 20px 0;
       }
@@ -1659,6 +1679,10 @@
           <span class="en">One common foundation. Multiple fit-for-purpose capabilities.</span>
         </blockquote>
       </aside>
+
+      <p class="source-note">
+        <strong>信息来源与状态：</strong>本材料基于本次跨团队讨论、Demo 体验及参会者提供的信息形成。现状、成熟度与规模相关陈述用于管理层方向讨论；在形成生产决策前，仍需由相应 Capability、Data 或 System Owner 结合系统记录确认。
+      </p>
     </header>
 
     <section id="landscape" aria-labelledby="landscape-title">
@@ -2057,7 +2081,14 @@
           }
         } catch (_) {
           fullscreenToggle.setAttribute('title', '当前浏览器不支持全屏');
+          fullscreenToggle.setAttribute('aria-label', '当前浏览器不支持全屏');
         }
+      });
+
+      document.addEventListener('fullscreenchange', () => {
+        const isFullscreen = Boolean(document.fullscreenElement);
+        fullscreenToggle.setAttribute('aria-label', isFullscreen ? '退出全屏' : '进入全屏');
+        fullscreenToggle.setAttribute('title', isFullscreen ? '退出全屏' : '全屏展示');
       });
 
       printPage.addEventListener('click', () => window.print());
