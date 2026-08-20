@@ -101,7 +101,33 @@ docs/architecture/decisions/    Architecture Decision Records
 docs/product/                   Product baselines, decisions, prototypes, and diagrams
 docs/reviews/                   Document quality and readiness reviews
 scripts/                        Repository verification utilities
+backend/                        Spring Boot 3.4 / JDK 21 modular monolith
+frontend/                       Vue 3 + TypeScript + Vite SPA
 ```
+
+Local backend skeleton (JDK 21, Maven Wrapper):
+
+```bash
+./mvnw -q test
+./mvnw spring-boot:run
+```
+
+Health is Actuator-only (`GET /actuator/health`). Business `/api/v1` endpoints
+are not part of TASK-001.
+
+Local frontend skeleton:
+
+```bash
+cd frontend
+npm install
+npm test
+npm run build
+npm run dev
+```
+
+Route placeholders: `/chat` (default landing), `/kbs`, `/settings`. The SPA
+talks only to Atlas APIs (Vite proxies `/api` to `http://127.0.0.1:8080`).
+Do not store provider tokens in browser storage.
 
 ## SDD Workflow
 

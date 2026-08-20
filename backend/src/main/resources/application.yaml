@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: atlas-knowledge-base
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
