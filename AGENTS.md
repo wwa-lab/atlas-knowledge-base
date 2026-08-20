@@ -100,6 +100,7 @@ During Grill Mode:
 - `docs/reviews/` — document and implementation review evidence
 - `scripts/` — repository verification and maintenance tooling
 - `backend/` — Spring Boot 3.4 / JDK 21 modular monolith (TASK-001+)
+- `frontend/` — Vue 3 + TypeScript + Vite SPA (TASK-002+)
 
 Do not add empty application packages or services speculatively. Introduce a
 runtime boundary only when an accepted slice and ADR require it.
@@ -147,27 +148,35 @@ Backend skeleton (TASK-001; JDK 21):
 ./mvnw -q test
 ```
 
-Do not invent extra lint, formatter, or build commands beyond the active
-slice tasks. Frontend, Flyway/Oracle, security, accessibility, and E2E
-commands are added when those tasks land.
+Frontend skeleton (TASK-002; from `frontend/`):
+
+```sh
+npm test
+npm run build
+```
+
+Do not invent extra lint, formatter, or E2E commands beyond the active slice
+tasks. Flyway/Oracle, security, accessibility, and E2E commands are added when
+those tasks land.
 
 For an active SDD slice, its accepted architecture, design, and tasks provide
 the concrete source layout, commands, and verification requirements.
 
 ## Cursor Cloud specific instructions
 
-This repository is an SDD project with a greenfield runtime skeleton. The
-backend is a Maven multi-module layout: root aggregator plus `backend/`
-Spring Boot 3.4.13 on JDK 21. There is no frontend package yet (TASK-002).
-Preinstalled `git`, `bash`, `python3`, `node`, and JDK 21 are sufficient;
-use the committed Maven Wrapper rather than a system `mvn`.
+This repository is an SDD project with a greenfield runtime skeleton: a Maven
+aggregator plus `backend/` Spring Boot 3.4.13 on JDK 21, and a Vue 3 SPA under
+`frontend/`. Preinstalled `git`, `bash`, `python3`, `node`, and JDK 21 are
+sufficient. Use the committed Maven Wrapper rather than a system `mvn`.
 
 - Lint/verification: `git diff --check` (whitespace/conflict markers),
-  `./scripts/verify-sdd-skills.sh` when skills or the lock change, and
-  `./mvnw -q test` for the backend skeleton. Do not invent extra
-  lint/test/build commands.
+  `./scripts/verify-sdd-skills.sh` when skills or the lock change,
+  `./mvnw -q test` for the backend, and from `frontend/` `npm test` and
+  `npm run build`. Do not invent extra lint/test/build commands.
 - `./mvnw -q test` needs outbound network access on first run to download
   Maven 3.9.11 and Spring Boot dependencies from Maven Central.
+- Frontend `npm install` / `npm test` / `npm run build` need outbound network
+  access on first run to download npm packages.
 - `./scripts/verify-sdd-skills.sh` needs outbound network access: it shallow
   clones `github.com/wwa-lab/Agentic-SDLC-Control-Tower` and fails if the pinned
   commit in `docs/00-context/sdd-skills.lock` no longer matches upstream `main`.
