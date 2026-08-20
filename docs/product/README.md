@@ -17,8 +17,10 @@ The supporting decision records are `grill-decisions-2026-08-19.md` for v0.3
 and `grill-decisions-v0.4-2026-08-19.md` for the v0.4 extension. They provide
 provenance but do not compete with the current product baseline.
 
-`docs/01-requirements/mvp-requirements.md` still cites v0.3 and must be rebased
-and re-reviewed before it can gate downstream v0.4 SDD work.
+`docs/01-requirements/mvp-requirements.md` is the English `mvp` requirements
+rebase of this v0.4 baseline. It may gate `req-to-user-story` only after its
+quality review has no Critical or Major findings and the product owner accepts
+it.
 
 Product documents may be Chinese. Downstream SDD artifacts follow the project
 rule and use English.

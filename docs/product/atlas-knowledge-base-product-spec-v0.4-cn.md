@@ -823,10 +823,12 @@ Phase 2 候选项不是承诺范围，需要独立 Product Decision 和 SDD Slic
 
 ## 27. 下游 SDD 状态
 
-当前 `docs/01-requirements/mvp-requirements.md` 明确引用 v0.3，尚未包含 Multi-Source
-范围。它在完成 v0.4 Requirements Rebase 和重新 Review 前，不得作为 v0.4 的完整
-Requirements Gate。后续必须沿项目 Profile 依次更新 Requirements、User Stories、Spec、
-Architecture、Design、Tasks、Traceability 和 Review。
+当前 `docs/01-requirements/mvp-requirements.md` 已 rebase 到本 v0.4 产品基线，覆盖
+Dify、Git Markdown 和 Confluence 的 Multi-Source 范围。它在质量评审无 Critical 或
+Major 问题、并获得产品负责人接受后，即可作为 `req-to-user-story` 的 Requirements
+Gate。后续必须沿项目 Profile 依次更新 User Stories、Spec、Architecture、Design、
+Tasks、Traceability 和 Review。实现前仍须完成 Connector Architecture Spike 与
+Section 24 所列 ADR。
 
 ## 28. 相对 v0.3 的主要变化
 
