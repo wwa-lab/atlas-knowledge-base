@@ -1,0 +1,7 @@
+# ADR-0005: non-prod is Oracle 19c. Credentials come from the environment, never git.
+spring:
+  datasource:
+    url: ${ATLAS_DATASOURCE_URL}
+    username: ${ATLAS_DATASOURCE_USERNAME}
+    password: ${ATLAS_DATASOURCE_PASSWORD}
+    driver-class-name: oracle.jdbc.OracleDriver

@@ -1,0 +1,7 @@
+# ADR-0005: local plane is H2. Oracle MODE reduces dialect surprises before Flyway (TASK-004).
+spring:
+  datasource:
+    url: jdbc:h2:mem:atlas;MODE=Oracle;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""

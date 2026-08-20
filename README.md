@@ -115,6 +115,14 @@ Local backend skeleton (JDK 21, Maven Wrapper):
 Health is Actuator-only (`GET /actuator/health`). Business `/api/v1` endpoints
 are not part of TASK-001.
 
+Environment planes (TASK-003; default `local`):
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+# non-prod / prod need ATLAS_DATASOURCE_* from the environment (Oracle 19c).
+# H2 is rejected on non-prod and prod.
+```
+
 Local frontend skeleton:
 
 ```bash
