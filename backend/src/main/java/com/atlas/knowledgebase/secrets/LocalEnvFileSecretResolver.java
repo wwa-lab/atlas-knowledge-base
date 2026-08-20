@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -15,7 +17,7 @@ import org.springframework.util.StringUtils;
  */
 @Component
 @Profile("local")
-public class LocalEnvFileSecretResolver implements SecretResolver {
+public class LocalEnvFileSecretResolver implements SecretResolver, SecretStore {
 
     static final String ENV_PREFIX = "env:";
     static final String FILE_PREFIX = "file:";
@@ -69,6 +71,37 @@ public class LocalEnvFileSecretResolver implements SecretResolver {
             return value.toCharArray();
         } catch (IOException ex) {
             throw new SecretResolutionException("file secret_ref could not be read", ex);
+        }
+    }
+
+    @Override
+    public String store(String logicalName, char[] secret) {
+        if (!StringUtils.hasText(logicalName)) {
+            throw new SecretResolutionException("secret store name is required");
+        }
+        if (secret == null || secret.length == 0) {
+            throw new SecretResolutionException("secret value is required");
+        }
+        String safe = logicalName.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
+        if (safe.isEmpty()) {
+            throw new SecretResolutionException("secret store name is invalid");
+        }
+        try {
+            Files.createDirectories(fileRoot);
+            Path resolved = fileRoot.resolve(safe).normalize();
+            if (!resolved.startsWith(fileRoot)) {
+                throw new SecretResolutionException("file secret_ref escapes the local secrets directory");
+            }
+            Files.writeString(
+                    resolved,
+                    new String(secret),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+            return FILE_PREFIX + safe;
+        } catch (IOException ex) {
+            throw new SecretResolutionException("file secret_ref could not be written", ex);
         }
     }
 }

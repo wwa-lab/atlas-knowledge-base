@@ -107,7 +107,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
                 response.getWriter(), ApiErrorResponses.body(category, code, message, nextStep));
     }
 
-    static String cookieValue(HttpServletRequest request, String name) {
+    public static String cookieValue(HttpServletRequest request, String name) {
         Cookie[] cookies = request.getCookies();
         if (cookies == null) {
             return null;

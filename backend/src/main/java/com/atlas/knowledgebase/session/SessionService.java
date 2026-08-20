@@ -15,9 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SessionService {
 
-    static final String REQUEST_SESSION_ATTRIBUTE = "atlas.session";
-    static final String REQUEST_USER_ATTRIBUTE = "atlas.user";
-    static final String CSRF_HEADER = "X-CSRF-Token";
+    public static final String REQUEST_SESSION_ATTRIBUTE = "atlas.session";
+    public static final String REQUEST_USER_ATTRIBUTE = "atlas.user";
+    public static final String CSRF_HEADER = "X-CSRF-Token";
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -134,7 +134,7 @@ public class SessionService {
                         now));
     }
 
-    static String deriveUserId(String ssoSubject) {
+    public static String deriveUserId(String ssoSubject) {
         try {
             byte[] digest =
                     MessageDigest.getInstance("SHA-256")
@@ -159,13 +159,13 @@ public class SessionService {
                 .build();
     }
 
-    static String randomToken() {
+    public static String randomToken() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }
 
-    static boolean constantTimeEquals(String left, String right) {
+    public static boolean constantTimeEquals(String left, String right) {
         if (left == null || right == null) {
             return false;
         }

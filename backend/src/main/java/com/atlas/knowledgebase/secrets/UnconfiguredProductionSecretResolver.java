@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile({"non-prod", "prod"})
-public class UnconfiguredProductionSecretResolver implements SecretResolver {
+public class UnconfiguredProductionSecretResolver implements SecretResolver, SecretStore {
 
     static final String NOT_CONFIGURED =
             "Production secret manager product is not named (ADR-0006). "
@@ -17,6 +17,11 @@ public class UnconfiguredProductionSecretResolver implements SecretResolver {
 
     @Override
     public char[] resolve(String secretRef) {
+        throw new SecretResolutionException(NOT_CONFIGURED);
+    }
+
+    @Override
+    public String store(String logicalName, char[] secret) {
         throw new SecretResolutionException(NOT_CONFIGURED);
     }
 }
