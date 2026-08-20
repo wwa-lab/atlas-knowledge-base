@@ -48,8 +48,8 @@ still depends on its cited evidence, provenance, and review state.
 | 9 | API/contract guide | Required when boundaries or APIs change | `docs/05-design/contracts/{slice}-API_IMPLEMENTATION_GUIDE.md` | `architecture-to-design` |
 | 10 | Tasks | Yes | `docs/06-tasks/{slice}-tasks.md` | `design-to-tasks` |
 | 11 | Traceability and review | Yes | `docs/00-context/{slice}-traceability.md`, `docs/reviews/` | `review-doc-quality` |
-| 12 | Implementation/publication | When the slice changes code or canonical content | Repository source/content tree | `tasks-to-code` or `tasks-to-implementation` for code; accepted tasks for content. After each code task, follow the Implementation Task Loop in `PROJECT_RULES.md` (verify, independent review-only agent, merge when required checks are green, next task). |
-| 13 | Code/architecture review | Required for applicable code changes | Review report in the PR body and `docs/reviews/{slice}-task-{id}-code-review.md` | A review-only agent in a fresh context runs `review-code-against-design`; `architecture-review` when applicable. The implementer must not author the merge-gate verdict. Critical/Major findings block merge. |
+| 12 | Implementation/publication | When the slice changes code or canonical content | Repository source/content tree | `tasks-to-code` or `tasks-to-implementation` for code; accepted tasks for content. After each code task, follow the Implementation Task Loop in `PROJECT_RULES.md` (verify, Gate A, Gate B when elevated, merge when required checks are green, next task). |
+| 13 | Code/architecture review | Required for applicable code changes | Review report in the PR body and `docs/reviews/{slice}-task-{id}-code-review.md` | Gate A: review-only subagent in a fresh context runs `review-code-against-design`; `architecture-review` when applicable. Gate B (second Cloud Agent or human) is required for auth, schema, `/api/v1`, and secrets/access-control PRs. The implementer must not author the merge-gate verdict. Critical/Major findings block merge. |
 
 ## Gates
 
@@ -65,8 +65,8 @@ still depends on its cited evidence, provenance, and review state.
   skills. Never create a second unprefixed artifact for the same stage.
 - `review-doc-quality` must pass before implementation/publication handoff.
 - Implementation of an accepted task list follows the Implementation Task Loop
-  in `PROJECT_RULES.md`: sequential Must tasks, independent review-only agent,
-  merge when required checks are green, continue.
+  in `PROJECT_RULES.md`: sequential Must tasks, Gate A on every PR, Gate B on
+  elevated PRs, merge when required checks are green, continue.
 
 ## Traceability
 

@@ -65,32 +65,35 @@ For each PR:
 4. **Publish** the branch: commit, push, and open or update the pull request
    *before* the merge-gate review, so the reviewer has a real diff.
 5. **Independent review** — the implementer MUST NOT author the merge-gate
-   verdict. Launch a review-only agent in a fresh context (below).
+   verdict. Launch the required review-only agent(s) (below).
 6. **Gate** — do not merge while Critical or Major findings remain. Fix on the
-   same branch, re-verify, and launch a *new* review-only agent. At most two
-   fix-and-re-review rounds for the same Critical/Major set; then stop and
-   wait for the user. Minor findings may merge if listed in the PR and the
-   review file.
-7. **Record** the reviewer's report verbatim in the PR body and in
+   same branch, re-verify, and launch a *new* review-only subagent (and a new
+   elevated review when that class applies). At most two fix-and-re-review
+   rounds for the same Critical/Major set; then stop and wait for the user.
+   Minor findings may merge if listed in the PR and the review file.
+7. **Record** every reviewer's report verbatim in the PR body and in
    `docs/reviews/{slice}-task-{id}-code-review.md` (combined PRs list every
    included task ID). Do not edit findings or soften the rating.
-8. **Merge** through the pull request after local verification, an independent
-   Pass (no Critical/Major), and green required GitHub checks. Do not push
-   `main` directly. If no required checks exist, local verification is the
-   executable gate; still do not merge while started checks are failing.
-9. **Continue** to the next unblocked Must task, or stop this run if context
-   is too degraded to implement or review faithfully. State which task landed
-   and which is next. Do not wait for "continue" unless the user named a stop.
+8. **Merge** through the pull request only after local verification, the
+   applicable review gate(s) Pass (no Critical/Major), and green required
+   GitHub checks. Do not push `main` directly. If no required checks exist,
+   local verification is the executable CI gate; still do not merge while
+   started checks are failing.
+9. **Continue** to the next unblocked Must task after a merge, or stop this
+   run if context is too degraded. State which task landed and which is next.
+   Do not wait for "continue" unless the user named a stop, or an elevated
+   review is still outstanding.
 
 ### Independent review
 
 Independence means a **different agent context** that did not implement the
 change and does not receive the implementer's rationale, discarded options, or
-a request to confirm a Pass.
+a request to confirm a Pass. If any change in the PR hits an elevated class,
+the whole PR is elevated.
 
-**Required default:** after the PR exists, the implementer starts a review-only
-subagent in a new context (Cursor `Task`, `generalPurpose`, unless a dedicated
-review subagent type exists). The prompt must:
+**Gate A — required on every PR.** After the PR exists, the implementer starts
+a review-only subagent in a new context (Cursor `Task`, `generalPurpose`,
+unless a dedicated review subagent type exists). The prompt must:
 
 - order the agent to follow `.agents/skills/review-code-against-design/SKILL.md`,
   and `.agents/skills/architecture-review/SKILL.md` when that skill's triggers
@@ -106,21 +109,30 @@ If the user named a review model, pass that model to the subagent. Otherwise
 inheriting the implementer's model is acceptable; isolation is the fresh
 context, not a different vendor.
 
-**Stronger isolation (does not block the loop unless the user requires it):** a
-separate Cloud Agent or human GitHub review on the same PR, with the same
-review-only prompt. Prefer this for authentication, schema, or `/api/v1`
-contract changes. The implementing agent cannot spawn a second Cloud Agent;
-the user or a dispatcher starts that run. Until the user requires that extra
-run, the review-only subagent is the merge gate.
+**Gate B — elevated, blocking.** A separate Cloud Agent or human GitHub review
+on the same PR, with the same review-only prompt as Gate A, is **required**
+when the PR changes any of:
 
-If no review-only agent can be started, stop and say so. Do not treat an
-implementer self-check as Pass. The implementer may apply fixes from the
-report; they may not rewrite the verdict.
+- authentication, session, CSRF, or cookies;
+- Flyway schema or the accepted data model;
+- `/api/v1` contracts;
+- secrets, `secret_ref`, or access control.
+
+The implementing agent cannot spawn a second Cloud Agent. After Gate A is
+recorded, it MUST stop, name the PR, and ask the user or dispatcher to start
+that run (or to review on GitHub). Do not merge and do not start the next
+Must task until Gate B Passes. UI shells, tests, stubs, copy, and other
+non-elevated work stay on Gate A plus required CI.
+
+If Gate A cannot be started, stop and say so. Do not treat an implementer
+self-check as Pass. The implementer may apply fixes from a report; they may
+not rewrite the verdict.
 
 ### Stop the loop when
 
 - the user asked to stop, or named an exclusive task range that is finished;
 - this run's context is too degraded to continue faithfully;
+- a Gate B review is outstanding;
 - the task is spike-gated for **real** connector/model content and the spike
   report is missing (stub paths may still proceed);
 - an open Security/DBA question blocks **this** task, not only later production
