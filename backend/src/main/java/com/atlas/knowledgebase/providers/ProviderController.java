@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,12 +32,38 @@ public class ProviderController {
             @PathVariable("provider") String provider, HttpServletRequest request) {
         AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
         ProviderConnectionService.StartConnectResult started = connections.startConnect(user, provider);
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("authorization_url", started.authorizationUrl());
-        body.put("state", started.state());
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, started.stateCookie().toString())
-                .body(body);
+        return authorizationStart(started);
+    }
+
+    @PostMapping("/{provider}/reconnect")
+    public ResponseEntity<Map<String, String>> reconnect(
+            @PathVariable("provider") String provider, HttpServletRequest request) {
+        AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
+        ProviderConnectionService.StartConnectResult started =
+                connections.startReconnect(user, provider);
+        return authorizationStart(started);
+    }
+
+    @PostMapping("/{provider}/revoke")
+    public ResponseEntity<Void> revoke(
+            @PathVariable("provider") String provider, HttpServletRequest request) {
+        AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
+        connections.revoke(user, provider);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * [ASSUMPTION] Not listed in the API guide. Session+CSRF. Ends every Atlas session for
+     * the current user after deleting the provider secret.
+     */
+    @PostMapping("/{provider}/compromise")
+    public ResponseEntity<Void> compromise(
+            @PathVariable("provider") String provider, HttpServletRequest request) {
+        AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
+        ResponseCookie cleared = connections.compromise(user, provider);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, cleared.toString())
+                .build();
     }
 
     @GetMapping("/{provider}/callback")
@@ -48,12 +75,22 @@ public class ProviderController {
             HttpServletRequest request) {
         AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
         String expected =
-                SessionAuthFilter.cookieValue(request, connections.stateCookieName());
+                SessionAuthFilter.cookieValue(request, connections.stateCookieName(provider));
         connections.requireMatchingState(expected, state);
         connections.completeCallback(user, provider, code, scope);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, "/settings")
-                .header(HttpHeaders.SET_COOKIE, connections.clearStateCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, connections.clearStateCookie(provider).toString())
                 .build();
+    }
+
+    private static ResponseEntity<Map<String, String>> authorizationStart(
+            ProviderConnectionService.StartConnectResult started) {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("authorization_url", started.authorizationUrl());
+        body.put("state", started.state());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, started.stateCookie().toString())
+                .body(body);
     }
 }

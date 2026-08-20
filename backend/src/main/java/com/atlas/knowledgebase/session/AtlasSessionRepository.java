@@ -81,6 +81,30 @@ public class AtlasSessionRepository {
                 sessionId);
     }
 
+    @Transactional
+    public int revokeAllForUser(String userId, Instant revokedAt) {
+        return jdbcTemplate.update(
+                """
+                UPDATE atlas_session
+                SET revoked_at = ?
+                WHERE user_id = ? AND revoked_at IS NULL
+                """,
+                Timestamp.from(revokedAt),
+                userId);
+    }
+
+    public int countNotRevokedForUser(String userId) {
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*) FROM atlas_session
+                        WHERE user_id = ? AND revoked_at IS NULL
+                        """,
+                        Integer.class,
+                        userId);
+        return count == null ? 0 : count;
+    }
+
     private static Instant optionalInstant(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant();
     }

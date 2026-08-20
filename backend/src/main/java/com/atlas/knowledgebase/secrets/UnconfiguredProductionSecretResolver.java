@@ -24,4 +24,9 @@ public class UnconfiguredProductionSecretResolver implements SecretResolver, Sec
     public String store(String logicalName, char[] secret) {
         throw new SecretResolutionException(NOT_CONFIGURED);
     }
+
+    @Override
+    public void delete(String secretRef) {
+        throw new SecretResolutionException(NOT_CONFIGURED);
+    }
 }
