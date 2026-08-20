@@ -10,7 +10,7 @@
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA pinning the Oracle release family.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (Vue 3, H2/Oracle 19c estimate) are recorded. Remaining items are acceptance of ADR-0002/0004/0006 defaults, Security naming the secret product, and DBA confirming the 19c patch/RU.
 
 ## Strengths
 
@@ -34,7 +34,7 @@ None.
 **Defaults are recommendations, not yet Accepted decisions**
 
 - Why it matters: Node defaults and secret-manager product may not match company standards. Frontend is owner-selected as Vue 3. Database is owner-selected as H2 local + Oracle for non-prod and prod.
-- Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name; DBA fills Oracle release family.
+- Recommended fix: Owner accepts or replaces remaining defaults; Security fills secret product name; DBA confirms Oracle 19c patch/RU.
 
 **Owner amended frontend default to Vue 3**
 
@@ -46,7 +46,7 @@ None.
 
 - Why it matters: Replaces the earlier PostgreSQL-everywhere proposal and accepts cross-engine local drift risk; production Oracle is now confirmed.
 - Affected section: ADR-0005
-- Recommended fix: Require Oracle-validated migrations in CI; pin Oracle release on acceptance.
+- Recommended fix: Require Oracle 19c-validated migrations in CI; DBA confirms patch/RU on acceptance.
 
 **HTTP framework and frontend meta-framework left slightly open inside Accepted stack ADRs**
 
@@ -70,7 +70,7 @@ None.
 
 ## Minimal Fix Path
 
-Owner accepts remaining ADR-0002/0004/0006 defaults (or lists replacements), Security names the secret product, and DBA pins the Oracle release family.
+Owner accepts remaining ADR-0002/0004/0006 defaults (or lists replacements), Security names the secret product, and DBA confirms the Oracle 19c patch/RU.
 
 ---
 **Final verdict: Ready with minor fixes**

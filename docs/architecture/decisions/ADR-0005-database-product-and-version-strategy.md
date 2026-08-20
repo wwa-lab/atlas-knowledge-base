@@ -34,11 +34,14 @@ Forces:
 ### Version strategy
 
 1. **Oracle (`non-prod` and `prod`):**
-   - Pin a single Oracle **major/release family** for MVP (exact release string to be
-     filled by DBA/platform on ADR acceptance; examples only: 19c / 23ai).
+   - `[USER-STATED]` The product owner estimates the company Oracle family as
+     **19c**. This ADR therefore pins **Oracle 19c** as the MVP release family
+     for both `non-prod` and `prod` `[DEFAULT - revisit if DBA confirms otherwise]`.
+   - DBA/platform should still record the exact 19c patch/RU used in each plane
+     at scaffolding time. Crossing to another family (for example 23ai) requires
+     amending or superseding this ADR.
    - `non-prod` and `prod` MUST use the **same Oracle major/release family**.
-   - Minor/patch changes within that family require compatibility checks; crossing
-     major/release family requires amending or superseding this ADR.
+   - Minor/patch changes within 19c require compatibility checks.
 2. **H2 (`local` only):**
    - Used for developer machines and local automated tests that intentionally run
      against H2.
@@ -59,6 +62,7 @@ Forces:
 | Oracle for local as well | Higher local setup cost; owner chose H2 for local |
 | H2 for non-prod/prod | Rejected — deployed planes are Oracle |
 | Different Oracle majors for non-prod vs prod | Forbidden — causes migration and bug drift between deployed planes |
+| Oracle 23ai (or other family) for MVP | Not selected; owner estimates 19c. Revisit if DBA standard is another family |
 | SQLite local | Not selected; owner specified H2 |
 
 ## Consequences
@@ -73,12 +77,12 @@ Forces:
 - Local H2 versus Oracle dialect/type differences can hide production bugs
 - CI should include an Oracle-validated migration/job path, not H2-only green builds
 - JSON/CLOB, boolean, and identity/sequence mappings need explicit dialect handling in design/tasks
-- Exact Oracle release still must be filled by DBA/platform
+- Exact 19c patch/RU still must be filled by DBA/platform; 19c remains an estimate until that confirm
 
 ## Migration / Compatibility
 
 - No database exists yet
-- On acceptance, record the exact Oracle release family and H2 version/mode in this ADR
+- On acceptance, record the exact Oracle 19c patch/RU and H2 version/mode in this ADR
 - Changing engines or Oracle major/release family requires superseding ADR + migration plan
 
 ## Review Triggers
