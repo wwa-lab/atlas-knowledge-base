@@ -48,9 +48,19 @@ Forces:
    - Prefer H2 settings that reduce Oracle dialect surprises where practical
      (for example Oracle compatibility mode if adopted at scaffolding time).
    - H2 is **not** an allowed datastore for `non-prod` or `prod`.
-3. Schema changes are expressed as forward versioned migrations. Migrations MUST
-   be validated against **Oracle** before promotion. Local H2 may use a subset or
-   compatibility path, but Oracle remains the acceptance authority for schema.
+3. **Schema migration tool — Flyway on every plane:**
+   - `[USER-STATED]` On 2026-08-20 the product owner selected **Flyway** to
+     manage schema for **all** environment planes: `local`, `non-prod`, and
+     `prod`.
+   - One versioned Flyway migration history is the source of schema change.
+     Ad-hoc DDL, unversioned local scripts, and a long-lived H2-only schema fork
+     are not allowed.
+   - Flyway must run against H2 locally and against Oracle 19c on deployed
+     planes. Dialect-specific SQL, if required, stays inside the Flyway set
+     (for example versioned placeholders or documented vendor fragments) and
+     must still be Oracle-validated before promotion.
+   - Migrations MUST be validated against **Oracle 19c** before promotion.
+     Local H2 success alone is not schema acceptance.
 4. Optional evidence cache / non-relational stores remain **out of scope** until
    a separate Security/Data ADR accepts them.
 
@@ -63,7 +73,8 @@ Forces:
 | H2 for non-prod/prod | Rejected — deployed planes are Oracle |
 | Different Oracle majors for non-prod vs prod | Forbidden — causes migration and bug drift between deployed planes |
 | Oracle 23ai (or other family) for MVP | Not selected; owner estimates 19c. Revisit if DBA standard is another family |
-| SQLite local | Not selected; owner specified H2 |
+| Liquibase or hand-applied DBA scripts as the primary path | Not selected; owner chose Flyway for all planes |
+| Flyway only on Oracle, manual/H2 schema locally | Rejected — all planes use Flyway |
 
 ## Consequences
 
@@ -71,6 +82,7 @@ Forces:
 
 - Matches stated local DX preference and Oracle for both non-prod and prod
 - Deployed planes stay on one Oracle family
+- Single Flyway history across local and deployed planes
 
 ### Negative
 
@@ -78,18 +90,20 @@ Forces:
 - CI should include an Oracle-validated migration/job path, not H2-only green builds
 - JSON/CLOB, boolean, and identity/sequence mappings need explicit dialect handling in design/tasks
 - Exact 19c patch/RU still must be filled by DBA/platform; 19c remains an estimate until that confirm
+- Flyway scripts must stay portable enough for H2 local plus Oracle 19c, or isolate vendor SQL without forking history
 
 ## Migration / Compatibility
 
 - No database exists yet
 - On acceptance, record the exact Oracle 19c patch/RU and H2 version/mode in this ADR
-- Changing engines or Oracle major/release family requires superseding ADR + migration plan
+- Changing engines, Oracle major/release family, or replacing Flyway requires
+  superseding ADR + migration plan
 
 ## Review Triggers
 
 - DBA mandates a specific Oracle release incompatible with the pin
 - Repeated local-only bugs escaping to non-prod because of H2 dialect gaps
-- Introduction of a required secondary store (search/cache)
+- Replacing Flyway or maintaining a second schema-change channel
 
 ## Related Documents
 

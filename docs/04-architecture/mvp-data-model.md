@@ -383,11 +383,12 @@ Immutability: ordinary audit is append-only; redaction of bodies is unnecessary 
 4. Chat history must not store duplicate full retrieved chunks.
 5. Database product, HA, backup, and local/non-prod/prod engine strategy are
    ADR-owned. Current Proposed direction in ADR-0005: H2 for `local`, Oracle 19c
-   (estimated; DBA to confirm patch/RU) for `non-prod` and `prod`. Logical types
-   in this document remain engine-neutral.
+   (estimated; DBA to confirm patch/RU) for `non-prod` and `prod`; **Flyway**
+   manages schema on all planes. Logical types in this document remain
+   engine-neutral.
 
 ## Open Questions
 
 - Exact role storage model (claims vs local role table)
 - Whether short citation excerpts are retained or re-fetched every open
-- DB product/version and migration tool chain (ADR)
+- DB product/version and Flyway-on-all-planes chain (ADR-0005)
