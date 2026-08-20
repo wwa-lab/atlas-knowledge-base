@@ -148,6 +148,16 @@ Backend skeleton (TASK-001; JDK 21):
 ./mvnw -q test
 ```
 
+Oracle Flyway migrate (TASK-004; not H2-only acceptance):
+
+```sh
+./scripts/flyway-migrate-oracle.sh
+```
+
+Requires `ATLAS_DATASOURCE_URL` (jdbc:oracle:...), `ATLAS_DATASOURCE_USERNAME`,
+and `ATLAS_DATASOURCE_PASSWORD`. GitHub Actions job `flyway-oracle` runs the
+same command against Oracle XE until DBA pins the 19c RU.
+
 Frontend skeleton (TASK-002; from `frontend/`):
 
 ```sh

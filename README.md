@@ -123,6 +123,13 @@ Environment planes (TASK-003; default `local`):
 # H2 is rejected on non-prod and prod.
 ```
 
+Shared Flyway history (TASK-004). Local H2 is migrated on application start.
+Oracle migrate (required before treating schema as accepted):
+
+```bash
+./scripts/flyway-migrate-oracle.sh
+```
+
 Local frontend skeleton:
 
 ```bash
