@@ -56,4 +56,27 @@ public class AtlasUserRepository {
                 .stream()
                 .findFirst();
     }
+
+    public Optional<AtlasUserRecord> findBySsoSubject(String ssoSubject) {
+        return jdbcTemplate
+                .query("SELECT * FROM atlas_user WHERE sso_subject = ?", ROW_MAPPER, ssoSubject)
+                .stream()
+                .findFirst();
+    }
+
+    @Transactional
+    public AtlasUserRecord refreshIdentity(
+            String userId, String displayName, String email, Instant updatedAt) {
+        jdbcTemplate.update(
+                """
+                UPDATE atlas_user
+                SET display_name = ?, email = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                displayName,
+                email,
+                Timestamp.from(updatedAt),
+                userId);
+        return findById(userId).orElseThrow();
+    }
 }
