@@ -1,9 +1,11 @@
 package com.atlas.knowledgebase;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -19,9 +21,12 @@ class AtlasKnowledgeBaseApplicationTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private Flyway flyway;
+
     @Test
     void contextLoads() {
-        // Spring context must start on JDK 21 with no business endpoints yet.
+        // Spring context must start on JDK 21 with the local H2 plane.
     }
 
     @Test
@@ -29,5 +34,11 @@ class AtlasKnowledgeBaseApplicationTests {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void flywayBaselineIsAppliedOnLocalH2() {
+        assertThat(flyway.info().current()).isNotNull();
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
     }
 }

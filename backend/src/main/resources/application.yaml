@@ -3,6 +3,9 @@ spring:
     name: atlas-knowledge-base
   profiles:
     default: local
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 management:
   endpoints:
