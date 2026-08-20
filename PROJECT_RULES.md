@@ -40,6 +40,45 @@ implementation or published content already exists without matching artifacts,
 backfill the slice and mark the documents `Backfilled`; never imply they preceded
 the existing work.
 
+## Implementation Task Loop
+
+When implementing an accepted slice task list (for example
+`docs/06-tasks/mvp-tasks.md`), coding agents MUST drive the work in task order
+without waiting for a per-task "continue". The user may name a start task, a
+stop task, or a blocker; otherwise keep going through unblocked Must tasks.
+
+For each task:
+
+1. **Branch** from current `main`. One task per branch and pull request.
+2. **Implement** only that task's stated scope. Use `tasks-to-implementation`
+   for greenfield, bootstrap, or migration; use `tasks-to-code` for incremental
+   brownfield. Do not invent extra lint, formatter, or build commands.
+3. **Verify** with the exact commands recorded on the task (and any already
+   listed in `AGENTS.md`). Never claim a check passed unless it was run.
+4. **Review** with `review-code-against-design` against the accepted design,
+   contracts, ADRs, and the task. Use `architecture-review` when its trigger
+   conditions apply. Put the verdict (rating, Critical/Major/Minor, merge
+   gate) in the pull request body.
+5. **Gate** — do not merge while Critical or Major findings remain. Fix them
+   on the same branch and re-verify plus re-review. Minor findings may merge
+   if listed in the pull request.
+6. **Merge** the pull request into `main` after verification and the review
+   gate pass. `main` is protected; merge through the pull request, not a
+   direct push.
+7. **Continue** immediately to the next unblocked Must task.
+
+Stop the loop (and say why) when:
+
+- the user asked to stop, or named an exclusive task range that is finished;
+- the task is spike-gated for **real** connector/model content and the spike
+  report is missing (stub paths may still proceed);
+- an open Security/DBA question blocks **this** task, not only later production
+  deploy;
+- Critical or Major review findings remain after a fix attempt.
+
+Spike-gated adapter tasks must not block earlier platform, session, stub API,
+or UI-shell tasks. Do not skip a blocking Must task to start a later one.
+
 ## Product Discovery Protocol: Grill Mode
 
 Use Grill Mode before specification or planning when the user's product intent,

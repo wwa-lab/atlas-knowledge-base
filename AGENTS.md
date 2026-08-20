@@ -55,6 +55,9 @@ During Grill Mode:
   or data.
 - Do not create a second requirements, design, or task chain beside the SDD
   profile.
+- After the slice is accepted for implementation, follow the Implementation
+  Task Loop in `PROJECT_RULES.md`: one task per PR, verify, review, merge,
+  then the next unblocked Must task without waiting to be told to continue.
 
 ## SDD Workflow Gate
 
@@ -63,8 +66,9 @@ During Grill Mode:
 - Route each SDD stage directly to its matching skill; the profile and bootstrap
   document coordinate the chain.
 - Use `review-doc-quality` before implementation or publication. Use
-  `review-code-against-design` after code changes, and `architecture-review`
-  when its trigger conditions apply.
+  `review-code-against-design` after each implementation task, and
+  `architecture-review` when its trigger conditions apply. Then merge and
+  continue per the Implementation Task Loop in `PROJECT_RULES.md`.
 - Project rules and SDD artifacts are English-only. Knowledge content may use
   the language appropriate to its audience and sources.
 - Claims about existing code, content, sources, or project decisions must be
@@ -178,6 +182,11 @@ This repository is an SDD project with a greenfield runtime skeleton: a Maven
 aggregator plus `backend/` Spring Boot 3.4.13 on JDK 21, and a Vue 3 SPA under
 `frontend/`. Preinstalled `git`, `bash`, `python3`, `node`, and JDK 21 are
 sufficient. Use the committed Maven Wrapper rather than a system `mvn`.
+
+Implementation of accepted tasks follows the Implementation Task Loop in
+`PROJECT_RULES.md`: one task per PR from `main`, verify, `review-code-against-design`,
+merge via pull request, then the next unblocked Must task. Do not stop after a
+successful merge to wait for "continue" unless the user named a stop.
 
 - Lint/verification: `git diff --check` (whitespace/conflict markers),
   `./scripts/verify-sdd-skills.sh` when skills or the lock change,

@@ -48,8 +48,8 @@ still depends on its cited evidence, provenance, and review state.
 | 9 | API/contract guide | Required when boundaries or APIs change | `docs/05-design/contracts/{slice}-API_IMPLEMENTATION_GUIDE.md` | `architecture-to-design` |
 | 10 | Tasks | Yes | `docs/06-tasks/{slice}-tasks.md` | `design-to-tasks` |
 | 11 | Traceability and review | Yes | `docs/00-context/{slice}-traceability.md`, `docs/reviews/` | `review-doc-quality` |
-| 12 | Implementation/publication | When the slice changes code or canonical content | Repository source/content tree | `tasks-to-code` or `tasks-to-implementation` for code; accepted tasks for content |
-| 13 | Code/architecture review | Required for applicable code changes | Review report, diff, verification evidence | `review-code-against-design`; `architecture-review` when applicable |
+| 12 | Implementation/publication | When the slice changes code or canonical content | Repository source/content tree | `tasks-to-code` or `tasks-to-implementation` for code; accepted tasks for content. After each code task, follow the Implementation Task Loop in `PROJECT_RULES.md` (verify, `review-code-against-design`, merge, next task). |
+| 13 | Code/architecture review | Required for applicable code changes | Review report in the PR body (and `docs/reviews/` when the slice requires durable evidence) | `review-code-against-design`; `architecture-review` when applicable. Critical/Major findings block merge. |
 
 ## Gates
 
@@ -64,6 +64,8 @@ still depends on its cited evidence, provenance, and review state.
 - Slice-prefixed paths in this profile override generic filenames in mirrored
   skills. Never create a second unprefixed artifact for the same stage.
 - `review-doc-quality` must pass before implementation/publication handoff.
+- Implementation of an accepted task list follows the Implementation Task Loop
+  in `PROJECT_RULES.md`: sequential Must tasks, per-task review, merge, continue.
 
 ## Traceability
 
