@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -23,7 +23,8 @@ Forces:
 
 ## Decision
 
-`[USER-STATED]` On 2026-08-20 the product owner selected:
+`[USER-STATED]` On 2026-08-20 the product owner selected the engines below,
+Flyway on all planes, estimated Oracle 19c, and accepted this ADR.
 
 | Environment plane | Engine |
 |---|---|

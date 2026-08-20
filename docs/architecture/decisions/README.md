@@ -13,11 +13,11 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 |---|---|---|
 | ADR-0001 | Adopt SDD workflow and Control Tower skills | Accepted |
 | ADR-0002 | MVP runtime topology as modular monolith | Accepted |
-| ADR-0003 | MVP frontend technology stack (Vue 3 + TypeScript) | Proposed |
-| ADR-0004 | MVP backend technology stack (Spring Boot + JDK 21) | Proposed |
-| ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Proposed |
-| ADR-0006 | Secret boundary and environment separation | Proposed |
+| ADR-0003 | MVP frontend technology stack (Vue 3 + TypeScript) | Accepted |
+| ADR-0004 | MVP backend technology stack (Spring Boot + JDK 21) | Accepted |
+| ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Accepted |
+| ADR-0006 | Secret boundary and environment separation | Accepted |
 
-Stack ADRs ADR-0003–0006 must be Accepted (or amended) before `design-to-tasks`
-scaffolds application packages or invents install/build commands. ADR-0002
-(modular monolith) is Accepted.
+Stack ADRs ADR-0002–0006 are Accepted. `design-to-tasks` and scaffolding may
+proceed. Security still fills the concrete secret-manager product name; DBA
+still confirms the Oracle 19c patch/RU. Local secret-ref stub is allowed.

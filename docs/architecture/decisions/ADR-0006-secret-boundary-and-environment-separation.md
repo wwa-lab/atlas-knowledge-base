@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -26,10 +26,12 @@ Forces:
 
 1. Application code references secrets only via **secret references** (as in
    `provider_connection.secret_ref`), never via committed values.
-2. `[DEFAULT - revisit if wrong]` Use the **company-approved secret manager /
-   sealed secret platform** as the concrete product. The exact product name must
-   be filled by Security on acceptance of this ADR (examples only: HashiCorp
-   Vault, cloud provider secret manager, platform sealed secrets).
+2. `[USER-STATED]` This ADR is Accepted with the **company-approved secret
+   manager / sealed secret platform** as the product class. The exact product
+   name remains for Security to fill (examples only: HashiCorp Vault, cloud
+   provider secret manager, platform sealed secrets) and does not block
+   scaffolding against a local stub that implements the same secret-ref
+   interface.
 3. Local development may use a **non-production secret backend or sealed local
    overlays** that implement the same reference interface; it must not read
    production secrets.

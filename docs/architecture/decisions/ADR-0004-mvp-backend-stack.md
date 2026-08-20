@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -25,7 +25,7 @@ Forces:
 ## Decision
 
 `[USER-STATED]` On 2026-08-20 the product owner selected **Spring Boot** and
-**JDK 21** as the company-standard MVP backend.
+**JDK 21** as the company-standard MVP backend and accepted this ADR.
 
 Use **Java 21 (JDK 21) + Spring Boot** for the MVP backend modular monolith that
 implements the accepted `/api/v1` contracts, including the Session/BFF trust

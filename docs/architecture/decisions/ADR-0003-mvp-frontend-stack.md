@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -23,7 +23,7 @@ Forces:
 ## Decision
 
 `[USER-STATED]` On 2026-08-20 the product owner selected **Vue 3** for the MVP
-frontend.
+frontend and accepted this ADR.
 
 Use **TypeScript + Vue 3** for the MVP web frontend as a SPA (or SPA-equivalent
 app shell) that talks only to Atlas application APIs through the Session/BFF

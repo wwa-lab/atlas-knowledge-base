@@ -345,6 +345,6 @@ Do not invent connector numeric thresholds in tests; bind them to approved pilot
 ## Design Handoff Notes
 
 - `[USER-STATED]` Design set Accepted 2026-08-20
-- Next: Accept or amend remaining Proposed ADRs (0003–0006), then `design-to-tasks`
-- Do not scaffold application packages before stack ADRs are Accepted
+- `[USER-STATED]` ADR-0002–0006 Accepted 2026-08-20
+- Next: execute `docs/06-tasks/mvp-tasks.md` from TASK-001
 - Keep ordinary-Git Chat and Atlas-owned index bootstrap out of tasks

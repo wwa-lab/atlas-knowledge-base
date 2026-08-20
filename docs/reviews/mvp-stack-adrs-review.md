@@ -10,7 +10,7 @@
 
 - **Quality rating:** Good
 - **Readiness verdict:** Ready with minor fixes
-- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (modular monolith, Vue 3, Spring Boot + JDK 21, H2/Oracle 19c estimate, Flyway on all planes) are recorded. Remaining items are acceptance of ADR-0003–0006 as a set if not already treated as owner-stated, Security naming the secret product, and DBA confirming the 19c patch/RU.
+- **Rationale:** Decisions are explicit, alternatives are listed, and owner-stated choices (modular monolith, Vue 3, Spring Boot + JDK 21, H2/Oracle 19c estimate, Flyway on all planes) are recorded. ADR-0002–0006 are Accepted. Security still names the secret product; DBA still confirms the 19c patch/RU.
 
 ## Strengths
 
