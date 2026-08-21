@@ -384,12 +384,18 @@
     .capability-card::after {
       content: "";
       position: absolute;
+      z-index: 0;
       width: 170px;
       height: 170px;
       right: -72px;
       bottom: -90px;
       border-radius: 50%;
       background: var(--card-soft);
+    }
+
+    .capability-card > * {
+      position: relative;
+      z-index: 1;
     }
 
     .capability-card.knowledge {
@@ -481,6 +487,31 @@
       height: 6px;
       background: var(--card);
       border-radius: 50%;
+    }
+
+    .fact-list strong {
+      color: var(--card);
+      font-weight: 820;
+    }
+
+    .selection-note {
+      margin: 20px 0 0;
+      padding: 16px 20px;
+      color: var(--navy);
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 680;
+      text-align: center;
+    }
+
+    .selection-note small {
+      display: block;
+      margin-top: 5px;
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 560;
     }
 
     .learning-grid {
@@ -1364,6 +1395,17 @@
         font-size: 9px;
       }
 
+      .selection-note {
+        margin-top: 10px;
+        padding: 8px 12px;
+        font-size: 9px;
+      }
+
+      .selection-note small {
+        margin-top: 2px;
+        font-size: 7px;
+      }
+
       .learning-grid {
         grid-template-columns: 1.06fr .94fr;
         gap: 14px;
@@ -1664,8 +1706,8 @@
         <p class="eyebrow">Cross-team alignment update</p>
         <h1>跨团队通用<br>AI 能力</h1>
         <p class="hero-lead">
-          统一<strong>公共基础能力</strong>，不强制统一 Backend、Provider 或 UI。
-          让不同 Capability 独立演进，同时共享 Production AI、安全、Evidence 与治理基础。
+          复用现有 <strong>Group AI 基础能力与 LLM API</strong>，不强制统一 Workflow、Tool、Backend 或 UI。
+          由各 Value Stream 围绕真实场景构建解决方案，并对业务价值与生产运行负责。
         </p>
       </div>
 
@@ -1675,8 +1717,8 @@
           共同建议
         </div>
         <blockquote>
-          不需要把所有工具合并成一个方案，需要的是管理共享能力的公共平台与 Common AI Foundation。
-          <span class="en">One common foundation. Multiple fit-for-purpose capabilities.</span>
+          不需要重新建设与 Group AI 重叠的基础平台。以 Group AI API 为共同底座，各 Value Stream 自主设计 Workflow、Skill 和 Tool。
+          <span class="en">One shared AI foundation. Value-stream-owned delivery.</span>
         </blockquote>
       </aside>
 
@@ -1689,23 +1731,24 @@
       <div class="section-head">
         <div>
           <p class="section-kicker">Current landscape</p>
-          <h2 id="landscape-title">三条路径，各自验证不同价值</h2>
+          <h2 id="landscape-title">各有优势，也各有适用边界</h2>
         </div>
-        <p>现有方案来自不同基础设施条件，不应被简单理解为互相竞争或替代。</p>
+        <p>不是判断唯一赢家，而是根据 Audience、Entry Point、Content、Scale 与 Production 要求选择合适路径。</p>
       </div>
 
       <div class="landscape-grid">
         <article class="capability-card knowledge fade-up delay-1">
           <div class="card-top">
             <div class="card-icon" aria-hidden="true">K</div>
-            <span class="status">真实场景验证</span>
+            <span class="status">大规模验证</span>
           </div>
           <h3>AMH Knowledge Base</h3>
-          <p>Dify Knowledge + GitHub Copilot，已形成较完整的文档导入与 Retrieval 路径。</p>
+          <p>Dify Knowledge + GitHub Copilot，经过上万份真实文档验证，适用于多数常见企业文档类型。</p>
           <ul class="fact-list">
-            <li>上万份真实文档</li>
-            <li>Knowledge ingestion 与 Retrieval</li>
-            <li>下一步聚焦文档质量与生产化</li>
+            <li><strong>优势：</strong>规模验证、文档类型覆盖与完整 Retrieval 路径</li>
+            <li><strong>适合：</strong>IT 及已有 GitHub Copilot 许可的用户</li>
+            <li><strong>边界：</strong>RTF / BIZ 缺少自然入口、许可覆盖与业务流程体验</li>
+            <li><strong>继续提升：</strong>复杂 OCR / Layout、Embedding 与 Production Readiness</li>
           </ul>
         </article>
 
@@ -1714,12 +1757,13 @@
             <div class="card-icon" aria-hidden="true">H</div>
             <span class="status">轻量务实路径</span>
           </div>
-          <h3>HASE GitHub-based KB</h3>
-          <p>Git Markdown + Skill + Copilot，在有限基础设施条件下实现快速启动。</p>
+          <h3>HASE GitHub LLM Wiki</h3>
+          <p>Git Markdown + Skill + Copilot，在有限基础设施条件下实现 Lightweight、Quick start。</p>
           <ul class="fact-list">
-            <li>Lightweight、Developer-friendly</li>
-            <li>与 GitHub Workflow 自然集成</li>
-            <li>规模、权限与生命周期待验证</li>
+            <li><strong>优势：</strong>轻量、Developer-friendly，与 GitHub Workflow 自然集成</li>
+            <li><strong>适合：</strong>Markdown-first 的技术知识和小到中等规模落地</li>
+            <li><strong>边界：</strong>当前只支持 Markdown；普通 Git 单对象上限 100 MiB</li>
+            <li><strong>规模：</strong>仓库理想 &lt;1 GB、强烈建议 &lt;5 GB；权限与生命周期待验证</li>
           </ul>
         </article>
 
@@ -1737,15 +1781,20 @@
           </ul>
         </article>
       </div>
+
+      <p class="selection-note">
+        选择合适场景，而不是强制统一：AMH 更接近经过规模验证的 Knowledge Capability；HASE 更接近轻量、快速、Developer-centric 的路径。
+        <small>GitHub 容量数据来源：GitHub Docs《About large files on GitHub》，核对日期 2026-08-21；5 GB 为强烈建议值，不是单一硬上限。</small>
+      </p>
     </section>
 
     <section id="learning" aria-labelledby="learning-title">
       <div class="section-head">
         <div>
           <p class="section-kicker">What we learned</p>
-          <h2 id="learning-title">统一边界，而不是统一一切</h2>
+          <h2 id="learning-title">统一基础能力，场景化交付</h2>
         </div>
-        <p>跨团队复用的重点，是访问、治理与运行方式，而不是强制迁移知识或替换现有工具。</p>
+        <p>Group AI 提供基础 AI 与 API；Value Stream 决定怎样把能力组合成解决实际问题的 Workflow 和 Tool。</p>
       </div>
 
       <div class="learning-grid">
@@ -1760,26 +1809,26 @@
 
         <article class="boundary-panel">
           <p class="panel-label">Platform boundary</p>
-          <h3>公共平台应该管什么？</h3>
+          <h3>Group AI 与 Value Stream 如何分工？</h3>
           <div class="boundary-columns">
             <div class="boundary-column reuse">
-              <strong>应该共享</strong>
+              <strong>Group AI 基础层</strong>
               <ul class="plain-list">
-                <li>Production AI Access</li>
-                <li>Identity / Authorization</li>
-                <li>Evidence / Citation / Audit</li>
-                <li>Provider Integration</li>
-                <li>Usage / Cost / Health</li>
+                <li>LLM API 与 Approved Model</li>
+                <li>Production Identity / Quota</li>
+                <li>基础 Governance / Audit</li>
+                <li>Usage / Cost 基础能力</li>
+                <li>实际范围需进一步确认</li>
               </ul>
             </div>
             <div class="boundary-column keep">
-              <strong>不强制统一</strong>
+              <strong>Value Stream 场景层</strong>
               <ul class="plain-list">
-                <li>Knowledge Backend</li>
-                <li>Source of Truth</li>
-                <li>Provider 内部实现</li>
-                <li>UI 与业务流程</li>
-                <li>领域专属 Capability</li>
+                <li>Use Case 与成功指标</li>
+                <li>Workflow / Skill / Tool</li>
+                <li>Provider 与领域集成</li>
+                <li>Evidence / Evaluation</li>
+                <li>Production Support 与结果</li>
               </ul>
             </div>
           </div>
@@ -1842,7 +1891,7 @@
         </div>
 
         <p class="lifecycle-message">
-          旧系统和新系统的技术栈可以不同，但都需要相同的 SDLC 管理闭环；公共平台应复用各阶段的共同能力，并允许阶段专属工具独立演进。
+          旧系统和新系统的技术栈可以不同；两者都通过 Group AI API 使用基础模型，但各 Value Stream 需要按自身 SDLC 场景设计 Workflow、Skill 与 Tool。
         </p>
       </div>
     </section>
@@ -1851,12 +1900,12 @@
       <div class="section-head">
         <div>
           <p class="section-kicker">Common direction</p>
-          <h2 id="direction-title">联邦式 Common Platform</h2>
+          <h2 id="direction-title">Group AI 底座 + Value Stream 交付</h2>
         </div>
-        <p>Provider-neutral、incremental，以现有能力为起点沉淀公共基础，而不是启动 Big Bang 平台项目。</p>
+        <p>复用现有 Group AI，不重复建设基础层；通过真实 Use Case 逐步沉淀可跨团队复用的组件。</p>
       </div>
 
-      <div class="architecture" role="img" aria-label="不同 Capability 汇聚到公共平台能力、Common AI Foundation 与 Group AI 的分层架构">
+      <div class="architecture" role="img" aria-label="不同 Capability 由 Value Stream 场景化交付，并通过 Group AI API 使用现有 Group AI 基础能力的分层架构">
         <div class="arch-row capabilities">
           <div class="arch-box">
             <span class="mini-label">Capability 01</span>
@@ -1878,34 +1927,36 @@
         <div class="arch-arrow" aria-hidden="true"></div>
 
         <div class="platform-band">
-          <h3>公共平台能力</h3>
+          <h3>Value Stream 场景化交付层</h3>
           <div class="chip-row">
-            <span class="chip">Provider Integration</span>
-            <span class="chip">Identity &amp; Authorization</span>
-            <span class="chip">Evidence &amp; Citation</span>
-            <span class="chip">Governance &amp; Audit</span>
-            <span class="chip">Usage · Cost · Health</span>
+            <span class="chip">Use Case</span>
+            <span class="chip">Workflow</span>
+            <span class="chip">Skill</span>
+            <span class="chip">Tool</span>
+            <span class="chip">Domain Integration</span>
+            <span class="chip">Evidence · Evaluation</span>
+            <span class="chip">Production Support</span>
           </div>
         </div>
 
         <div class="arch-arrow" aria-hidden="true"></div>
 
         <div class="foundation-band">
-          <h3>Common AI Foundation</h3>
+          <h3>Group AI API</h3>
           <div class="chip-row">
-            <span class="chip">LLM</span>
-            <span class="chip">Embedding</span>
-            <span class="chip">OCR</span>
-            <span class="chip">Document Understanding</span>
-            <span class="chip">Model Routing</span>
+            <span class="chip">LLM API</span>
+            <span class="chip">Approved Models</span>
+            <span class="chip">Production Identity</span>
+            <span class="chip">Quota</span>
+            <span class="chip">Capability Extension</span>
           </div>
         </div>
 
         <div class="arch-arrow" aria-hidden="true"></div>
-        <div class="group-band">Group AI</div>
+        <div class="group-band">现有 Group AI 基础能力 · 统一 AI 接入与基线治理</div>
 
         <p class="architecture-note">
-          平台统一 Capability 如何被访问、治理和运行，而不是规定所有知识必须存在哪里。
+          Group AI 是基础能力与 API 提供方；Value Stream 是场景、Workflow、Tool 和业务结果的 Owner。
         </p>
       </div>
     </section>
@@ -1915,21 +1966,21 @@
         <div class="gap-title">
           <p class="section-kicker">Current gap</p>
           <h2 id="gap-title">当前关键缺口</h2>
-          <p>技术方向足以进入下一阶段验证，但共享服务缺少可持续的生产级 AI 基础。</p>
+          <p>Group AI 基础能力已经存在；需要补齐的是从基础 API 到 Value Stream 生产场景的接入、能力与责任闭环。</p>
         </div>
 
         <div class="gap-core">
           <div class="gap-core-item">
-            <strong>Production-grade Group AI Capability</strong>
-            <span>Approved LLM、Embedding、OCR、Document Understanding 与可规划的 Production Quota。</span>
+            <strong>Production-grade Group AI API Access</strong>
+            <span>Production Service Account、Approved LLM、可规划 Quota、审计与 Support。</span>
           </div>
           <div class="gap-core-item">
-            <strong>共享 Service Account</strong>
-            <span>稳定服务身份、凭证生命周期、成本归属、审计、合规与 Production Support。</span>
+            <strong>按场景扩展所需能力</strong>
+            <span>根据 Use Case 确认 Embedding、OCR、Document Understanding 与 Model Capability。</span>
           </div>
           <div class="gap-core-item">
-            <strong>Business Sponsorship</strong>
-            <span>推动能力从 Ideation / PoC 进入有明确 Owner、用例和运行责任的 Production 路径。</span>
+            <strong>Value Stream Ownership</strong>
+            <span>明确 Use Case、Workflow / Tool Owner、成功指标、成本与 Production Support。</span>
           </div>
         </div>
       </div>
@@ -1941,40 +1992,40 @@
           <p class="section-kicker">Recommendation</p>
           <h2 id="actions-title">下一阶段怎么推进</h2>
         </div>
-        <p>不等待全部基础设施统一，通过真实 Use Case 和多个 Provider 逐步验证公共边界。</p>
+        <p>不等待中央团队设计完整方案，由 Value Stream 通过真实 Use Case 验证 Group AI API 与场景化交付方式。</p>
       </div>
 
       <div class="bottom-grid">
         <article class="action-panel">
           <h2>建议行动</h2>
-          <p class="panel-intro">用聚焦验证替代完整平台建设。</p>
+          <p class="panel-intro">用 Value Stream 场景验证替代完整平台建设。</p>
           <ol class="check-list">
             <li>
               <span class="check-number">01</span>
               <span class="check-copy">
-                <strong>明确优先 Use Case</strong>
-                <span>确认业务价值、目标用户、Data/System Owner 与成功标准。</span>
+                <strong>Value Stream 明确优先 Use Case</strong>
+                <span>确认业务价值、目标用户、Data/System Owner、Workflow 与成功标准。</span>
               </span>
             </li>
             <li>
               <span class="check-number">02</span>
               <span class="check-copy">
-                <strong>定义最小公共接口</strong>
-                <span>Provider、Identity、Authorization、Evidence、Citation 与 Health。</span>
+                <strong>确认 Group AI API 边界</strong>
+                <span>LLM API、Approved Model、Service Account、Quota、Cost 与 Support。</span>
               </span>
             </li>
             <li>
               <span class="check-number">03</span>
               <span class="check-copy">
-                <strong>进行跨 Provider 验证</strong>
-                <span>以 AMH Dify 与 HASE GitHub-based Knowledge Base 为起点。</span>
+                <strong>构建 Workflow、Skill 与 Tool</strong>
+                <span>由各 Value Stream 贴合系统、用户旅程和 SDLC Phase 自主设计。</span>
               </span>
             </li>
             <li>
               <span class="check-number">04</span>
               <span class="check-copy">
-                <strong>建立质量与生产标准</strong>
-                <span>覆盖复杂文档、Retrieval、Citation、Permission、Cost 与 Support。</span>
+                <strong>沉淀可复用组件与标准</strong>
+                <span>把验证有效的 Connector、Evidence、Evaluation 与质量门槛跨团队复用。</span>
               </span>
             </li>
           </ol>
@@ -1987,22 +2038,22 @@
             <li>
               <span class="check-number">01</span>
               <span class="check-copy">
-                <strong>Business Sponsorship</strong>
-                <span>推动 Group AI Production Access、Service Account、Quota 与合规审批。</span>
+                <strong>Production API Sponsorship</strong>
+                <span>推动 Group AI API、Service Account、Quota、所需能力扩展与合规审批。</span>
               </span>
             </li>
             <li>
               <span class="check-number">02</span>
               <span class="check-copy">
-                <strong>认可联邦式方向</strong>
-                <span>复用公共基础能力，不强制一个 Backend、Provider 或 UI。</span>
+                <strong>确认责任边界</strong>
+                <span>Group AI 管基础能力与 API；Value Stream 管 Workflow、Tool 与业务结果。</span>
               </span>
             </li>
             <li>
               <span class="check-number">03</span>
               <span class="check-copy">
-                <strong>确认 Owner 与资源</strong>
-                <span>明确 Accountable Owner、Engineering Capacity、Cost 与 Production Support。</span>
+                <strong>确认 Value Stream Owner 与资源</strong>
+                <span>明确 Use Case Owner、Engineering Capacity、Cost 与 Production Support。</span>
               </span>
             </li>
           </ol>
@@ -2019,31 +2070,31 @@
           <span>现有路径来自不同约束，当前能力定位和关系已形成初步共识。</span>
         </div>
         <div class="takeaway">
-          <strong>方案互补，不是竞争</strong>
-          <span>AMH、HASE 与 System Intelligence 分别验证不同价值。</span>
+          <strong>按场景选择，不做排名</strong>
+          <span>AMH 强在规模验证；HASE 强在轻量快速，各自有明确适用边界。</span>
         </div>
         <div class="takeaway">
-          <strong>不做过早技术合并</strong>
-          <span>优先统一公共基础能力，保留 Provider 和体验的灵活性。</span>
+          <strong>复用现有 Group AI</strong>
+          <span>以统一基础能力和 LLM API 为底座，不重复建设。</span>
         </div>
         <div class="takeaway">
           <strong>覆盖完整 SDLC</strong>
           <span>Planning 到 Maintenance，旧系统和新系统都需要同一管理闭环。</span>
         </div>
         <div class="takeaway">
-          <strong>Production Access 是关键依赖</strong>
-          <span>需要生产账号、模型、Quota、文档能力及相应审批与支持。</span>
+          <strong>Value Stream 自主场景化</strong>
+          <span>每个 Value Stream 结合实际设计 Workflow、Skill、Tool 与集成。</span>
         </div>
         <div class="takeaway">
-          <strong>Owner 与运行责任要同步明确</strong>
-          <span>技术准入、业务价值、成本和 Production Support 必须形成闭环。</span>
+          <strong>Production API Access 是关键依赖</strong>
+          <span>需要生产账号、模型、Quota、所需能力扩展及相应审批与支持。</span>
         </div>
       </div>
 
       <div class="closing">
         <p>
-          现在不是选择最终技术方案，而是确认共同方向、生产化前提，
-          并授权一个有明确 Owner 与成功标准的下一阶段验证。
+          现在不是选择最终工具，也不是重新建设 Group AI；而是确认责任边界、生产 API 条件，
+          并授权 Value Stream 用真实场景构建和验证自己的 Workflow 与 Tool。
         </p>
       </div>
     </section>
