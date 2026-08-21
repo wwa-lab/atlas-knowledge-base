@@ -80,18 +80,19 @@ does not change `/api/v1` field names in this change.
 11. The completion payload is **generic chat/completion** (`prompt` or
     `messages` → streamed tokens). Atlas places the user question plus the
     minimum authorized excerpts in that format.
-12. Streaming is end-to-end: browser ← Atlas SSE (existing Chat contract) ←
-    gateway token stream. User cancel **must** abort gateway-side generation.
-    If the gateway cannot abort, Atlas still discards further tokens and does
-    not store a completed answer.
+12. Streaming is end-to-end: browser ← Atlas Chat stream (SSE is the task-list
+    default; not implemented in this change) ← gateway token stream. User cancel
+    **must** abort gateway-side generation. If the gateway cannot abort, Atlas
+    still discards further tokens and does not store a completed answer.
 13. Without a live registration, Chat **must not generate**. Browse and
     retrieval remain available. The composer is blocked or fails immediately
     with “local gateway offline”. Asks are not queued until the gateway returns.
 14. If the gateway is registered but emits no tokens, Atlas times out, records
     generation failure, aborts gateway-side generation, and allows retry.
-15. Successful Chat answers **do not** display “generated via local gateway”.
-    Offline and failure states show the reason. Settings already expose
-    online/offline to the user.
+15. Successful Chat answers **do not** display "generated via local gateway".
+    Offline and failure states show the reason. Settings **shall** expose
+    online/offline to the user. TASK-010 `model_channel.eligible` remains a stub
+    until a later task binds it to a live `gateway_registration` row.
 
 ### Settings, kill switch, visibility
 
@@ -175,7 +176,7 @@ does not change `/api/v1` field names in this change.
 
 ## Related Documents
 
-- `docs/03-spec/mvp-spec.md` (FR-03, FR-04, FR-07, FR-39, FR-72–FR-79)
+- `docs/03-spec/mvp-spec.md` (FR-03, FR-04, FR-07, FR-39, FR-72–FR-80)
 - `docs/04-architecture/mvp-architecture.md`
 - `docs/04-architecture/mvp-data-flow.md`
 - `docs/05-design/mvp-design.md`

@@ -26,11 +26,10 @@ into module responsibilities, workflows, validation, error handling, and UI
 flows for slice `mvp`.
 
 Behavior in this document stays stack-agnostic. Concrete runtime products live
-in ADR-0002–0006.
+in ADR-0002–0007.
 
-The repository contains no Atlas application implementation. This design makes
-no claim that runtime code already exists. Provider and model capabilities remain
-spike-gated.
+TASK-001–010 are already on `main`. This amendment does not change runtime
+code. Provider and model capabilities remain spike-gated.
 
 ## Source Architecture
 
@@ -79,14 +78,15 @@ spike-gated.
 - Consumes corporate SSO assertions into Atlas identity
 - Starts JIT least-privilege provider authorization for GitHub/Confluence
 - Stores tokens only via Secret Boundary adapter
-- Exposes Settings projection: identity, model eligibility, connection state/scope/expiry/last verified
+- Exposes Settings projection: identity, local-gateway online/offline, connection state/scope/expiry/last verified
 - On expiry: preserve non-sensitive KB name/Owner metadata, disable retrieval, prompt reconnect
 - On leakage/compromise: revoke provider tokens, terminate related sessions, set reconnect-required, write content-free security audit
 
 ### Model Entitlement Gate
 
-- Separates per-user model authorization from Atlas identity and KB authorization
-- Blocks model-send when entitlement fails even if source read succeeds
+- Treats a live local-gateway registration for the current SSO subject as generation eligibility (ADR-0007)
+- Blocks model-send when no live registration exists, even if source read succeeds, except the `local`/`non-prod` mock stub without real excerpts
+- Does not store Copilot tokens or add a Copilot bind UI
 
 ### Registry Module
 
@@ -214,7 +214,7 @@ Ordinary users cannot open self-registration for datasets/repos/Spaces.
 
 ### Settings
 
-Show corporate identity, model eligibility, provider connection state/scope/expiry/last verified, reconnect/revoke.
+Show corporate identity, local-gateway online/offline, provider connection state/scope/expiry/last verified, reconnect/revoke. No Copilot account-binding page.
 
 ### Evidence Drawer
 

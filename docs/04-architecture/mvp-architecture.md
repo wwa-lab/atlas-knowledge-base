@@ -215,8 +215,8 @@ The system is organized into these logical layers:
 - **Git Markdown Adapter**: Browse tree/preview; Contracted Chat over validated `.kb` + pinned-commit hits; no whole-repo clone per query; webhook/poll cache refresh
 - **Confluence Adapter**: User-context Space-scoped retrieval; page/attachment version locators; navigation-only for unsupported attachments
 - **SSO Adapter**: Corporate identity and optional Owner-approved group mapping when provider user-level auth is unavailable
-- **Model Channel Adapter**: Streaming/cancellation under approved training/retention/region terms
-- **Secret Boundary Adapter**: Store/retrieve provider and model credentials without exposing them to browser or ordinary logs
+- **Model Channel Adapter**: Atlas-side SME-compatible registration and completion dispatch on the user's live local-gateway channel; streaming/cancellation; no Copilot tokens in Atlas (ADR-0007)
+- **Secret Boundary Adapter**: Store/retrieve GitHub/Confluence provider credentials without exposing them to browser or ordinary logs; Copilot credentials are out of scope
 
 ---
 
@@ -230,6 +230,7 @@ The system is organized into these logical layers:
 | Binding | Provider-backed source attachment | `binding_id`, provider profile, source identity, role, auth method, health, freshness, locator rule, credential owner, feature flag/kill switch |
 | Atlas Session | Authenticated user session | Opaque session id, SSO identity, idle/absolute expiry |
 | Provider Connection | Delegated provider authorization | Provider, scope, expiry, last verified, reconnect-required |
+| Gateway Registration | Live local SME gateway channel | SSO subject, channel id, expiry/heartbeat, Atlas plane; at most one live row per subject; no Copilot token |
 | Chat / Answer | Private conversation results | Logical KB scope, configuration version, binding set, citation ids, completion state |
 | Citation / Evidence Metadata | Traceable claim support | Locator, version, excerpt metadata, Owner, classification, verification times |
 | Issue Report | Routed feedback | Category, non-sensitive diagnostics, routing target |
@@ -250,7 +251,8 @@ The system is organized into these logical layers:
 - Runtime health: `Healthy | Degraded | Unavailable` (independent of lifecycle)
 - Binding runtime: enabled / Disabled (Disable is not a lifecycle state)
 - Git capability: Basic Browse ↔ Contracted Chat only after schema/permission/citation/evaluation/Owner activation
-- Generation: processing → streamed → completed | incomplete-cancelled
+- Generation: processing → streamed → completed | incomplete-cancelled | failed-timeout | aborted-replaced
+- Gateway registration: live | expired | replaced (at most one live per SSO subject)
 - Correction memory: `active` eligible as separate evidence; `conflicted` excluded and surfaced as conflict
 
 ### Persistence Responsibilities
@@ -260,7 +262,8 @@ The system is organized into these logical layers:
 - Evidence Service may persist locator/citation metadata; must not persist complete GitHub/Confluence bodies as source of truth
 - Audit/Telemetry modules persist content-free operational and security events
 - Optional evidence cache, if used, is short-lived, encrypted, and permission-isolated (ADR)
-- Secret Boundary persists provider/model credentials outside the browser
+- Secret Boundary persists GitHub/Confluence provider credentials outside the browser; Copilot credentials stay on the local gateway (ADR-0007)
+- Chat Orchestration may persist gateway registration metadata (subject, channel, expiry, plane) without model secrets
 
 ### Edge-case traces for architectural rules
 
@@ -346,7 +349,7 @@ The system is organized into these logical layers:
 3. Retrieval Orchestrator fans out in parallel under per-connector budgets.
 4. Merge via RRF product constraint; preserve provenance; build coverage map.
 5. On security/auth failure: fail closed. On ordinary partial failure: disclosed partial path. On canonical conflict: disagreement section.
-6. Model Entitlement Gate + model-send authorization; stream answer; store identifiers/state only if completed.
+6. Model Entitlement Gate requires a live local-gateway registration (or the `local`/`non-prod` mock stub without real excerpts) plus model-send authorization. If offline, refuse generation. If live, dispatch generic chat/completion on that channel, stream tokens, abort on cancel/timeout/replace, and store identifiers/state only if completed.
 
 ### State Transitions
 
@@ -517,5 +520,6 @@ These product constraints require ADRs; this architecture does not select the pr
 - Next SDD stage: detailed design via `architecture-to-design` → `docs/05-design/mvp-design.md` plus data-model and contracts as required
 - Companion data-flow: `docs/04-architecture/mvp-data-flow.md`
 - Do not reopen ordinary-Git Chat or Atlas-owned Git index generation
-- Carry FR-63–FR-71 and Required ADRs as non-optional constraints into design
+- Carry FR-63–FR-80 and Required ADRs as non-optional constraints into design
+- Treat ADR-0007 as the model-channel topology
 - Connector/model spikes remain blockers for activation feasibility, not for continuing design of spike-gated Suspended paths

@@ -42,16 +42,17 @@ product and version strategy require an ADR before implementation.
 │ (from SSO)       │                  │ connection       │
 └────────┬─────────┘                  └──────────────────┘
          │
-         │ 1:N
-         ▼
-┌──────────────────┐      ┌──────────────────┐
-│ atlas_session    │      │ issue_report     │
-└──────────────────┘      └──────────────────┘
+         ├─ 1:N ──▶ atlas_session
+         └─ 1:0..1 live ──▶ gateway_registration
 
 ┌──────────────────┐      ┌──────────────────┐
 │ content_audit_   │      │ audit_event      │
 │ result           │      │ (append-only)    │
 └──────────────────┘      └──────────────────┘
+
+┌──────────────────┐
+│ issue_report     │
+└──────────────────┘
 ```
 
 Cardinality notes:
@@ -59,6 +60,7 @@ Cardinality notes:
 - Chat threads belong to one user; messages belong to one thread.
 - Citations reference message answers and binding/locator metadata.
 - Provider connections belong to one user per provider.
+- At most one live `gateway_registration` per user; replace marks the previous row `replaced`.
 
 ## Entity Definitions
 
@@ -112,6 +114,31 @@ Cardinality notes:
 - **PK:** `connection_id`
 - **Unique:** (`user_id`, `provider`)
 - Tokens live only in secret boundary via `secret_ref`
+
+### gateway_registration
+
+Logical live channel for grounded generation (ADR-0007). Not a Flyway change in
+this amendment; a later task persists it. Atlas must not store Copilot tokens
+on this row.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| registration_id | String | No | Stable id |
+| user_id | String | No | FK atlas_user |
+| sso_subject | String | No | Same corporate SSO subject as the Atlas session |
+| channel_id | String | No | Id of the outbound long-lived channel |
+| atlas_plane | Enum | No | `local` \| `non-prod` \| `prod` |
+| status | Enum | No | `live` \| `expired` \| `replaced` |
+| last_heartbeat_at | Timestamp | No | Last heartbeat; TTL expiry takes the row offline |
+| expires_at | Timestamp | Yes | Absolute expiry if the protocol supplies one |
+| replaced_at | Timestamp | Yes | Set when a newer live registration replaces this row |
+| created_at | Timestamp | No | First register |
+| updated_at | Timestamp | No | Last heartbeat or replace |
+
+- **PK:** `registration_id`
+- **Unique live:** at most one `status = live` row per `user_id`
+- No `secret_ref` and no Copilot token columns
+- `atlas_user.model_entitled` and `GET /settings` `model_channel.eligible` are projections of a live row for that user
 
 ### logical_knowledge_base
 
@@ -358,7 +385,7 @@ chat_ready ──gate failure/suspend──▶ browse_only or suspended KB
 
 ## Audit Entities
 
-Covered by `audit_event`. Action types include at minimum: sign-in, connect/reconnect/revoke, retrieve, evidence_open, activate, disable, kill_switch, retire, rollback, issue_report, authorization_denied.
+Covered by `audit_event`. Action types include at minimum: sign-in, connect/reconnect/revoke, retrieve, evidence_open, activate, disable, kill_switch, model_channel_kill_switch, gateway_register, gateway_replace, gateway_timeout, gateway_expire, retire, rollback, issue_report, authorization_denied.
 
 Immutability: ordinary audit is append-only; redaction of bodies is unnecessary if bodies were never stored.
 
@@ -374,6 +401,7 @@ Immutability: ordinary audit is append-only; redaction of bodies is unnecessary 
 | Citation click | citation.* → Evidence Drawer projection |
 | Issue diagnostics allow-list | issue_report.diagnostics |
 | Coverage banner | chat_message.coverage |
+| Local gateway online/offline | live gateway_registration row; atlas_user.model_entitled is a projection |
 
 ## Persistence Rules
 

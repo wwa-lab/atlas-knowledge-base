@@ -197,8 +197,38 @@ Discovery/Browse ──▶ Git Adapter ──▶ tree / Markdown preview / origi
 1. Missing complete binding access → KB unavailable this turn; no subset-as-complete answer
 2. Item-level restriction → omit item; KB stays in scope
 3. Cancel mid-stream → incomplete; not stored as completed; safe idempotent retry
-4. No live gateway registration → generation refused; Browse/retrieval remain available
+4. No live gateway registration → generation refused; Browse/retrieval remain available (`local`/`non-prod` mock stub may generate without real excerpts)
 5. New registration replaces old during generation → abort in-flight completion; new channel only
+6. Heartbeat/TTL expiry during generation → treat as generation failure; abort; registration offline
+
+---
+
+## Flow 4b — Local Gateway Registration
+
+```
+Local Go gateway ── SSO (same subject) ── outbound long-lived channel ──▶ Atlas
+                                                                      │
+                    ┌─────────────────────────────────────────────────┤
+                    ▼                                                 ▼
+             First register                                    Replace live row
+             (one live per subject)                            abort in-flight
+                    │                                                 │
+                    ▼                                                 ▼
+             Heartbeat / TTL                                   New channel only
+                    │
+          ┌─────────┴─────────┐
+          ▼                   ▼
+        Live               Expired / kill switch
+        (eligible)         (generation refused)
+```
+
+**Must not persist**
+- Copilot tokens, refresh tokens, or secret_ref to the model credential
+
+**Edge cases**
+1. Two processes for the same subject → last successful register wins; previous marked replaced
+2. Gateway process may also register to SME cloud at the same time; Atlas plane is still exactly one
+3. `local`/`non-prod` mock stub does not create a production registration and must not receive real excerpts
 
 ---
 
@@ -251,6 +281,10 @@ Impact preview ──▶ confirm ──▶ stop new retrieval immediately
                       │
                       ▼
                restore/rollback requires re-validation
+
+Admin model-channel kill switch (independent of source disable):
+Enable ──▶ refuse all gateway generation (registrations may remain)
+           UI: generation unavailable
 ```
 
 **Edge cases**

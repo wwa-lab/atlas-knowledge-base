@@ -18,8 +18,8 @@ fixes and no Critical or Major findings.
 
 `[USER-STATED]` On 2026-08-21 the product owner accepted ADR-0007: grounded
 generation uses the per-user local SME Go gateway; Chat remains in Atlas;
-Copilot credentials do not enter Atlas. FR-03, FR-04, FR-07, FR-39, FR-53, and
-FR-72–FR-79 record that amendment. `/api/v1` field names are unchanged in this
+Copilot credentials do not enter Atlas. FR-03, FR-04, FR-07, FR-39, FR-72–FR-80
+record that amendment. `/api/v1` field names are unchanged in this
 revision.
 
 `[USER-STATED]` Ordinary GitHub Markdown repositories remain Browse-only in MVP.
@@ -190,7 +190,7 @@ conflict, revocation, and security boundaries.
 - **FR-50**: After access revocation, reopened history shall hide or redact generated content and evidence, retaining only allowed non-sensitive time, state, and original-scope metadata. Deleted, retired, disabled, or no-longer-authorized source content shall be excluded from new retrieval. Necessary retained audit evidence after revocation shall exclude source and answer body content unless approved policy requires otherwise. *(Source: US-006; REQ-AUTH-006, REQ-AUTH-010, REQ-FAIL-004, REQ-LIFE-003, REQ-LIFE-004, REQ-LIFE-005)*
 - **FR-51**: Permission or security-boundary failure shall fail closed and suspend the whole logical knowledge base. If current permission cannot be revalidated, Atlas may expose only allowed non-sensitive catalog metadata such as name and Owner. Citation or quality failure shall suspend the affected source; remaining safe sources may continue as Degraded only if the access boundary remains complete. Ordinary quota exhaustion degrades only the affected source and publishes retry-after. *(Source: US-006; REQ-KB-012, REQ-KB-013, REQ-KB-014, REQ-FAIL-002, REQ-FAIL-003, REQ-FAIL-005)*
 - **FR-52**: Disable is a source runtime control, not a fifth lifecycle state. Source removal follows Disable → impact preview → confirm → Retire. Disable stops new retrieval immediately. Restoration and rollback require re-validation. Audit history is preserved. *(Source: US-006; REQ-BIND-009, REQ-BIND-010, REQ-KB-009)*
-- **FR-53**: An Atlas Admin kill switch or disable, after impact preview and confirm, shall stop new retrieval from that source immediately while unrelated knowledge bases remain available. A model-channel kill switch shall stop all gateway generation; registrations may remain, send is refused, and the UI states that generation is unavailable. *(Source: US-006; REQ-BIND-008; ADR-0007)*
+- **FR-53**: An Atlas Admin kill switch or disable, after impact preview and confirm, shall stop new retrieval from that source immediately while unrelated knowledge bases remain available. *(Source: US-006; REQ-BIND-008)*
 - **FR-54**: Webhooks or events plus periodic reconciliation shall detect update, move, delete, and ACL change. Query and open shall recheck to shorten exposure from event delay. When webhook/event/reconciliation detects ACL or group changes, Atlas shall re-authorize. *(Source: US-006 / review carry-forward; REQ-LIFE-006, REQ-AUTH-012)*
 - **FR-55**: `freshness_required` knowledge bases shall hard-stop Chat when `max_staleness` is exceeded. Ordinary stale content is disclosed. *(Source: US-006; REQ-FRESH-001, REQ-FRESH-002)*
 - **FR-56**: Missing, stale, or indeterminate authorization evidence shall deny access. Uncertain identity, permission, classification, model eligibility, or evidence version shall fail closed. *(Source: US-006; REQ-AUTH-007)*
@@ -220,12 +220,13 @@ conflict, revocation, and security boundaries.
 
 - **FR-72**: Users shall chat in Atlas. Retrieval, authorization, citations, evidence, and audit shall remain in Atlas. Atlas shall not move Chat into the SME web application. *(Source: US-001, US-004; ADR-0007)*
 - **FR-73**: Real grounded generation shall use the existing per-user local Go gateway. Atlas shall not call Copilot from the server, shall not ship a parallel gateway, and shall not operate a shared gateway or a shared Copilot token. The same gateway process may register to SME cloud and to one Atlas plane at once. Each gateway process shall register to at most one Atlas plane (`local` / `non-prod` / `prod`). *(Source: US-001, US-004; ADR-0007)*
-- **FR-74**: The gateway shall authenticate with the same corporate SSO subject as the Atlas session and shall open an outbound long-lived connection to Atlas. Atlas shall dispatch completions only on that channel and shall not dial the user's private IP or forward via SME cloud. Atlas Spring shall implement the SME-cloud-compatible registration and completion protocol; the gateway change for Atlas is configuration of the Atlas URL. Payload shall be generic chat/completion (`prompt` or `messages` → streamed tokens). If the model-channel spike shows the protocol cannot carry that payload, config-only reuse is invalid. *(Source: US-001, US-004; ADR-0007)*
+- **FR-74**: The gateway shall authenticate with the same corporate SSO subject as the Atlas session and shall open an outbound long-lived connection to Atlas. Atlas shall dispatch completions only on that channel and shall not dial the user's private IP or forward via SME cloud. Atlas shall implement the SME-cloud-compatible registration and completion protocol; the gateway change for Atlas is configuration of the Atlas URL. Payload shall be generic chat/completion. If the model-channel spike shows the protocol cannot carry that payload, config-only reuse is invalid. *(Source: US-001, US-004; ADR-0007)*
 - **FR-75**: Atlas shall keep at most one live registration per SSO subject. Heartbeat or TTL expiry shall take the registration offline. A new registration shall replace the previous one. Replacement during generation shall abort the in-flight completion as incomplete or failed and allow safe retry. *(Source: US-001, US-004; ADR-0007)*
-- **FR-76**: Without a live registration, Chat shall not generate. Browse and retrieval remain available. The composer shall be blocked or fail immediately; asks shall not queue until the gateway returns. If the gateway is registered but emits no tokens, Atlas shall time out, abort gateway-side generation, record generation failure, and allow retry. User cancel shall abort gateway-side generation; streaming shall be end-to-end. Incomplete or cancelled generation shall not be stored as a completed answer (FR-38). *(Source: US-004; REQ-CHAT-008, REQ-CHAT-009, REQ-FAIL-006; ADR-0007)*
+- **FR-76**: Without a live registration, Chat shall not generate except via the `local`/`non-prod` mock stub in FR-78. Browse and retrieval remain available. The composer shall be blocked or fail immediately; asks shall not queue until the gateway returns. If the gateway is registered but emits no tokens, Atlas shall time out, abort gateway-side generation, record generation failure, and allow retry. User cancel shall abort gateway-side generation; streaming shall be end-to-end. Incomplete or cancelled generation shall not be stored as a completed answer (FR-38). *(Source: US-004; REQ-CHAT-008, REQ-CHAT-009, REQ-FAIL-006; ADR-0007)*
 - **FR-77**: Successful Chat answers shall not display "generated via local gateway". Offline and failure states shall show the reason. Only the current user may see their gateway online/offline detail; Admins may see the global model-channel kill switch and aggregate counts, not per-user live endpoints. *(Source: US-001; REQ-SET-001; ADR-0007)*
 - **FR-78**: `local` and `non-prod` may use an Atlas mock model stub that can stream and cancel. The stub shall not receive real internal excerpts. Production generation requires a live user gateway. *(Source: US-004; REQ-SEC-006; ADR-0007)*
 - **FR-79**: Stub Chat, registry, and connector work may proceed without a live gateway. Real internal excerpts may reach the gateway (and therefore Copilot) only after the model-channel spike (protocol compatibility and company policy) passes. *(Source: US-004; REQ-SEC-006; ADR-0007)*
+- **FR-80**: An Atlas Admin model-channel kill switch shall stop all gateway generation. Registrations may remain; send is refused; the UI states that generation is unavailable. This control is independent of source disable / retrieval kill switch (FR-53) and does not require the source impact-preview path. *(Source: US-006; ADR-0007)*
 
 ---
 
@@ -483,7 +484,8 @@ The following are explicitly excluded from this feature:
 | OQ-12 | What operational definition of sustained use will the pilot use? | US-006 / REQ-PILOT-002 | Product |
 | OQ-13 | What request-ID format should support appear on the report receipt? | US-007 | Eng / Support |
 | OQ-14 | Which security mailbox or intake path should system/security reports use? | US-007 | Security |
-| OQ-15 | Does the existing SME gateway wire protocol accept generic `prompt`/`messages` completion payloads without a gateway code change? | US-004 / ADR-0007 | Model-channel spike |
+| OQ-15 | Does the existing SME gateway wire protocol accept generic chat/completion payloads without a gateway code change? | US-004 / ADR-0007 | Model-channel spike |
+| OQ-16 | Is the outbound long-lived channel WebSocket, long-poll, or another SME-compatible transport? | US-004 / ADR-0007 | Model-channel spike |
 
 ---
 
@@ -493,7 +495,7 @@ Before `spec-to-architecture` treats a Source Profile or model channel as feasib
 
 1. Complete Dify, GitHub Enterprise, Confluence, and model-channel spikes from the requirements validation gates.
 2. Record ADRs for the eight architecture-impacting decision areas listed in requirements §18.7.
-3. Carry FR-10, FR-28, FR-54, FR-63–FR-79 as system constraints, not optional appendix items.
+3. Carry FR-10, FR-28, FR-54, FR-63–FR-80 as system constraints, not optional appendix items.
 4. Do not reopen ordinary-Git Chat or Atlas-owned Git index generation.
 5. Keep open numeric thresholds as named gates; do not invent connector-specific numbers.
 6. Treat ADR-0007 as the model-channel topology; do not restore server-side Copilot tokens without a superseding ADR.

@@ -64,7 +64,8 @@ Boundaries:
 
 ## Migration / Compatibility
 
-- No runtime exists yet; adopting this ADR only constrains scaffolding layout
+- Atlas application runtime exists (TASK-001–010 on `main`); this ADR only
+  constrains scaffolding layout of that monolith
 - If superseded by a split-runtime ADR, migrate along API contracts and adapter interfaces
 
 ## Review Triggers
