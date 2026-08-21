@@ -260,6 +260,46 @@ class ActivationApiTest {
     }
 
     @Test
+    void staleDifyAuditAfterMixedAclPatchStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraftWithDify(owner, "Stale ACL", true);
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/drafts/" + logicalKbId + "/content-audit")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exclusion_reasons.acl_mixed").doesNotExist());
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?",
+                        String.class,
+                        logicalKbId);
+        // Replace-all wizard PATCH cannot rewrite this row after Content Audit
+        // (FK_AUDIT_RESULT_BINDING). Mutate the current identity in place so activate
+        // must re-evaluate mixed ACL against the live binding, not the stored audit.
+        jdbcTemplate.update(
+                """
+                UPDATE binding
+                SET source_identity = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE binding_id = ?
+                """,
+                """
+                {"dataset_id":"ds_1","original_version_mapping":{"doc_1":"v1"},"acl_mixed":true}
+                """,
+                bindingId);
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
     void ownerCannotActivate() throws Exception {
         LoggedIn owner = login("kb_owner");
         String logicalKbId = createDraftWithDify(owner, "Owner activate", true);
@@ -320,6 +360,22 @@ class ActivationApiTest {
                                 .content("{\"confirm\":true}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("NOT_OWNERLESS"));
+    }
+
+    @Test
+    void ownerlessDraftStaysDraftOnSuspend() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Ownerless draft");
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/admin/knowledge-bases/" + logicalKbId + "/suspend-ownerless")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("NOT_ACTIVE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
     }
 
     private String createDraftWithDify(LoggedIn owner, String name, boolean versionMapped) throws Exception {

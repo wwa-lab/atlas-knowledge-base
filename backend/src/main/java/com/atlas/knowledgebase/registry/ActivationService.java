@@ -233,9 +233,20 @@ public class ActivationService {
             if ("dify".equals(binding.providerProfile())) {
                 ContentAuditResultRecord audit =
                         audits.findLatestForBinding(logicalKbId, binding.bindingId()).orElse(null);
-                if (audit == null) {
+                SourceProbe.AuditCounts live = probe.auditCounts(binding);
+                boolean stale =
+                        audit == null
+                                || (binding.updatedAt() != null
+                                        && audit.auditedAt() != null
+                                        && audit.auditedAt().isBefore(binding.updatedAt()));
+                if (audit == null || stale) {
                     failures.add(gateFailure(binding, checks, "content_audit_required"));
-                } else if (readReasons(audit.exclusionReasonsJson()).containsKey("acl_mixed")) {
+                }
+                boolean mixedAcl =
+                        live.exclusionReasons().containsKey("acl_mixed")
+                                || (audit != null
+                                        && readReasons(audit.exclusionReasonsJson()).containsKey("acl_mixed"));
+                if (mixedAcl) {
                     failures.add(gateFailure(binding, checks, "acl_mixed"));
                 }
             }
@@ -270,6 +281,14 @@ public class ActivationService {
             throw new DraftValidationException(
                     "NOT_OWNERLESS",
                     "This knowledge base still has an accountable Owner; transfer ownership instead.");
+        }
+        if ("suspended".equals(kb.lifecycle())) {
+            return kb;
+        }
+        if (!"active".equals(kb.lifecycle())) {
+            throw new DraftValidationException(
+                    "NOT_ACTIVE",
+                    "Owner-less Suspend applies to Active knowledge bases. Drafts without an Owner remain Draft.");
         }
         LogicalKnowledgeBaseRecord suspended = knowledgeBases.suspend(logicalKbId);
         audit(user.userId(), logicalKbId, null, "suspend_ownerless", "allowed", "success");

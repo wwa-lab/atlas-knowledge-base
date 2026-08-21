@@ -192,7 +192,7 @@ public class LogicalKnowledgeBaseRepository {
                         """
                         UPDATE logical_knowledge_base
                         SET lifecycle = 'suspended', updated_at = ?
-                        WHERE logical_kb_id = ? AND lifecycle IN ('draft', 'active')
+                        WHERE logical_kb_id = ? AND lifecycle = 'active'
                         """,
                         Timestamp.from(now),
                         logicalKbId);
