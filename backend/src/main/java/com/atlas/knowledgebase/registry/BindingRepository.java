@@ -88,6 +88,11 @@ public class BindingRepository {
     }
 
     @Transactional
+    public int deleteByLogicalKbId(String logicalKbId) {
+        return jdbcTemplate.update("DELETE FROM binding WHERE logical_kb_id = ?", logicalKbId);
+    }
+
+    @Transactional
     public BindingRecord update(String bindingId, int expectedVersion, BindingDraft draft) {
         Instant now = Instant.now();
         int updated =
