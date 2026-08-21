@@ -25,6 +25,7 @@ journeys. It does not select storage products, schemas, or API payloads.
 |---|---|---|---|
 | Atlas Session | SSO sign-in | expiry, CSRF state | Idle/absolute expiry; terminate on compromise |
 | Provider Connection | JIT connect | scope, expiry, last verified, reconnect-required | Revoke on leakage/compromise; tokens only in secret boundary |
+| Gateway Registration | Local gateway register | channel id, expiry/heartbeat | One live row per SSO subject; replace aborts in-flight generation |
 | Logical Knowledge Base | Owner wizard | metadata, capability, lifecycle, health, config version | Retired not selectable; config versioned |
 | Binding | Owner wizard | role, health, flags, kill switch, locator rules | Disable stops new retrieval; rollback re-validates |
 | Content Audit Result | Activation validation | eligible/excluded counts, remediation list | Required before Dify Chat activation |
@@ -167,9 +168,11 @@ Discovery/Browse ──▶ Git Adapter ──▶ tree / Markdown preview / origi
                     └─────────────────────────┼─────────────────────────┘
                                               ▼
                                     Model-send authorization
+                                    + live gateway registration
                                               │
                                               ▼
-                                    Model Channel (stream)
+                                    Local SME gateway channel
+                                    (stream; cancel aborts)
                                               │
                                               ▼
                                     Answer + citation ids
@@ -194,6 +197,8 @@ Discovery/Browse ──▶ Git Adapter ──▶ tree / Markdown preview / origi
 1. Missing complete binding access → KB unavailable this turn; no subset-as-complete answer
 2. Item-level restriction → omit item; KB stays in scope
 3. Cancel mid-stream → incomplete; not stored as completed; safe idempotent retry
+4. No live gateway registration → generation refused; Browse/retrieval remain available
+5. New registration replaces old during generation → abort in-flight completion; new channel only
 
 ---
 
@@ -274,12 +279,12 @@ Answer / citation ──▶ Issue Routing Service
 
 ## End-To-End Data Path Summary
 
-1. **Identity data** enters via SSO and stays in session metadata; provider tokens enter only the secret boundary.
+1. **Identity data** enters via SSO and stays in session metadata; GitHub/Confluence provider tokens enter only the secret boundary; Copilot tokens never enter Atlas (ADR-0007).
 2. **Registry data** (logical KBs, bindings, versions, lifecycle/health) is Atlas-authored governance metadata, not source content.
 3. **Source content** is read ephemerally through adapters under current-user authorization; Atlas stores locators/citations/state, not full GitHub/Confluence bodies as source of truth.
-4. **Retrieval candidates** move adapter → orchestrator → coverage/conflict assembly → minimum evidence to model channel.
-5. **User-visible answers** return with citation ids; Evidence Drawer resolves locators after re-auth.
-6. **Governance and audit** record content-free events for connect, retrieve, open, fail, disable, kill switch, rollback, and issues.
+4. **Retrieval candidates** move adapter → orchestrator → coverage/conflict assembly → minimum evidence onto the user's live local-gateway channel as a generic chat/completion payload.
+5. **User-visible answers** return with citation ids; Evidence Drawer resolves locators after re-auth. Successful answers do not label the local gateway.
+6. **Governance and audit** record content-free events for connect, retrieve, open, fail, disable, kill switch, gateway register/replace/timeout, rollback, and issues.
 7. **Corrections** leave Atlas as routed references into source-owned workflows.
 
 ---

@@ -118,7 +118,7 @@ spike-gated.
 - Applies Reciprocal Rank Fusion as product ranking constraint (internals ADR)
 - Builds coverage map; partial vs fail-closed branching
 - Assembles disagreement section for canonical conflicts; mirror divergence as sync error
-- Sends minimum authorized model-eligible evidence to model channel; streams answer
+- Sends minimum authorized model-eligible evidence on the live local-gateway channel; streams answer; refuses generation when the gateway is offline
 - Does not store incomplete/cancelled generation as completed; safe idempotent retry
 
 ### Evidence Module
@@ -228,7 +228,7 @@ Activation review (no hard-gate override) → impact preview for disable/kill sw
 
 ### Grounded chat turn ordering
 
-1. Validate session and model entitlement
+1. Validate session and live local-gateway registration (or use mock stub on `local`/`non-prod` without real excerpts)
 2. Validate scope (1–5 Chat-ready, authorized, healthy enough, freshness)
 3. Re-authorize every KB/binding
 4. Fan-out retrieval
@@ -276,7 +276,7 @@ Activation review (no hard-gate override) → impact preview for disable/kill sw
 | GitHub Enterprise | Delegated user auth + API + webhook/poll | Secret boundary | Connector budget/backoff/circuit breaker |
 | Confluence | User-context API + event/poll | Secret boundary | Same |
 | Dify | Retrieval/metadata API | Declared credential owner; no default AMH reuse | Same |
-| Model channel | Streaming generation | Secret boundary + per-user entitlement | Cancel supported; no infinite retry |
+| Model channel | Dispatch on registered local SME gateway channel (ADR-0007) | Copilot tokens stay on the gateway; Atlas stores registration metadata only | Cancel/timeout abort; no infinite retry |
 | Correction/security intakes | Outbound route/link | N/A | Manual follow-up outside Atlas |
 
 Failed spike ⇒ Source Profile remains Suspended; real content must not flow through failed channel.

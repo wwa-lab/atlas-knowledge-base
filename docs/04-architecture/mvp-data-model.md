@@ -71,7 +71,7 @@ Cardinality notes:
 | display_name | String | Yes | Display name from IdP |
 | email | String | Yes | Corporate email if provided |
 | roles | String[] / JSON | No | EndUser and optional KB Owner / Atlas Admin / Connector Owner markers `[Assumption]` role storage shape |
-| model_entitled | Boolean | No | Per-user model entitlement flag/cache of entitlement decision |
+| model_entitled | Boolean | No | Cache/projection of generation eligibility. ADR-0007: live eligibility is a live local-gateway registration for this SSO subject, not a Copilot token stored in Atlas |
 | created_at | Timestamp | No | First seen |
 | updated_at | Timestamp | No | Last identity refresh |
 

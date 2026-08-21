@@ -20,6 +20,7 @@ implementation tasks. Not every Must REQ is restated; IDs remain in
 | `docs/04-architecture/mvp-architecture.md` | Accepted |
 | `docs/05-design/mvp-design.md` | Accepted |
 | ADR-0002–0006 | Accepted |
+| ADR-0007 | Accepted (amends model-channel topology) |
 | `docs/06-tasks/mvp-tasks.md` | This chain |
 
 ## Story → tasks
@@ -52,3 +53,4 @@ implementation tasks. Not every Must REQ is restated; IDs remain in
 | ADR-0004 Spring Boot JDK 21 | TASK-001 |
 | ADR-0005 H2 / Oracle 19c / Flyway | TASK-003, TASK-004, TASK-006 |
 | ADR-0006 Secret-ref + env planes | TASK-003, TASK-005 |
+| ADR-0007 Local SME model gateway | TASK-014, TASK-022 (spike); Settings eligibility TASK-010 later bind |
