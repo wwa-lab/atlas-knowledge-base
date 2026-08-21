@@ -124,7 +124,7 @@ class ActivationApiTest {
                                           "bindings": [{
                                             "provider_profile": "git_markdown",
                                             "role": "canonical",
-                                            "source_identity": {"repo": "org/runbooks"}
+                                            "source_identity": {"repo": "org/runbooks", "commit": "abc123def"}
                                           }]
                                         }
                                         """))
@@ -139,6 +139,124 @@ class ActivationApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lifecycle").value("active"))
                 .andExpect(jsonPath("$.capability").value("browse_only"));
+    }
+
+    @Test
+    void gitWithoutVersionMappingStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Git no mapping");
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "config_version": 1,
+                                          "bindings": [{
+                                            "provider_profile": "git_markdown",
+                                            "role": "canonical",
+                                            "source_identity": {"repo": "org/runbooks"}
+                                          }]
+                                        }
+                                        """))
+                .andExpect(status().isOk());
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
+    void difyMixedAclStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Mixed ACL");
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "config_version": 1,
+                                          "bindings": [{
+                                            "provider_profile": "dify",
+                                            "role": "canonical",
+                                            "source_identity": {
+                                              "dataset_id": "ds_1",
+                                              "original_version_mapping": {"doc_1": "v1"},
+                                              "acl_mixed": true
+                                            }
+                                          }]
+                                        }
+                                        """))
+                .andExpect(status().isOk());
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/drafts/" + logicalKbId + "/content-audit")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exclusion_reasons.acl_mixed").exists());
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
+    void failedConnectionTestStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Conn fail");
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "config_version": 1,
+                                          "bindings": [{
+                                            "provider_profile": "dify",
+                                            "role": "canonical",
+                                            "source_identity": {
+                                              "dataset_id": "ds_1",
+                                              "original_version_mapping": {"doc_1": "v1"},
+                                              "fail_connection_test": true
+                                            }
+                                          }]
+                                        }
+                                        """))
+                .andExpect(status().isOk());
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/drafts/" + logicalKbId + "/content-audit")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk());
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
     }
 
     @Test

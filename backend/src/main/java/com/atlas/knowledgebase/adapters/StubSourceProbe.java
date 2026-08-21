@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * Real adapters replace this in TASK-019–021.
  */
 @Component
-public class StubSourceProbe {
+public class StubSourceProbe implements SourceProbe {
 
     public static final String CHECK_AUTHENTICATION = "authentication";
     public static final String CHECK_RETRIEVAL = "retrieval";
@@ -37,6 +37,7 @@ public class StubSourceProbe {
         }
     }
 
+    @Override
     public Map<String, String> connectionChecks(BindingRecord binding) {
         JsonNode identity = identity(binding);
         Map<String, String> checks = new LinkedHashMap<>();
@@ -48,14 +49,17 @@ public class StubSourceProbe {
         return checks;
     }
 
+    @Override
     public boolean connectionPassed(Map<String, String> checks) {
         return checks.values().stream().allMatch("pass"::equals);
     }
 
+    @Override
     public boolean hasOriginalVersionMapping(BindingRecord binding) {
         return hasOriginalVersionMapping(binding, identity(binding));
     }
 
+    @Override
     public boolean gitKbValidated(BindingRecord binding) {
         if (!"git_markdown".equals(binding.providerProfile())) {
             return true;
@@ -75,6 +79,7 @@ public class StubSourceProbe {
      * Stub Content Audit counters. Remediation lists use opaque document ids only — never titles
      * used as citations.
      */
+    @Override
     public AuditCounts auditCounts(BindingRecord binding) {
         JsonNode identity = identity(binding);
         int total = identity.path("audit_total").asInt(10);
@@ -100,13 +105,9 @@ public class StubSourceProbe {
             case "git_markdown" ->
                     identity.hasNonNull("commit")
                             || identity.hasNonNull("commit_sha")
-                            || identity.hasNonNull("repo")
                             || gitKbValidated(binding);
             case "confluence" -> identity.hasNonNull("page_version") || identity.hasNonNull("version");
             default -> false;
         };
     }
-
-    public record AuditCounts(
-            int total, int chatEligible, int excluded, Map<String, Integer> exclusionReasons) {}
 }

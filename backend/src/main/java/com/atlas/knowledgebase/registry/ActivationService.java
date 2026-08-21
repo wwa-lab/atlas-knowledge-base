@@ -1,6 +1,6 @@
 package com.atlas.knowledgebase.registry;
 
-import com.atlas.knowledgebase.adapters.StubSourceProbe;
+import com.atlas.knowledgebase.adapters.SourceProbe;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
 import com.atlas.knowledgebase.session.AtlasRoles;
@@ -33,7 +33,7 @@ public class ActivationService {
     private final ContentAuditResultRepository audits;
     private final AtlasUserRepository users;
     private final AuditEventRepository auditEvents;
-    private final StubSourceProbe probe;
+    private final SourceProbe probe;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -43,7 +43,7 @@ public class ActivationService {
             ContentAuditResultRepository audits,
             AtlasUserRepository users,
             AuditEventRepository auditEvents,
-            StubSourceProbe probe,
+            SourceProbe probe,
             ObjectMapper objectMapper,
             Clock clock) {
         this.knowledgeBases = knowledgeBases;
@@ -136,7 +136,7 @@ public class ActivationService {
         Map<String, Integer> reasons = new LinkedHashMap<>();
         String latestAuditId = null;
         for (BindingRecord binding : found) {
-            StubSourceProbe.AuditCounts counts = probe.auditCounts(binding);
+            SourceProbe.AuditCounts counts = probe.auditCounts(binding);
             String auditId = "aud_" + SessionService.randomToken().substring(0, 16);
             latestAuditId = auditId;
             audits.insert(
@@ -224,16 +224,10 @@ public class ActivationService {
         boolean anyGitWithoutKb = false;
         for (BindingRecord binding : found) {
             Map<String, String> checks = probe.connectionChecks(binding);
-            boolean gitWithoutKb =
-                    "git_markdown".equals(binding.providerProfile()) && !probe.gitKbValidated(binding);
-            if (gitWithoutKb) {
+            if ("git_markdown".equals(binding.providerProfile()) && !probe.gitKbValidated(binding)) {
                 anyGitWithoutKb = true;
-                if (!"pass".equals(checks.get(StubSourceProbe.CHECK_AUTHENTICATION))
-                        || !"pass".equals(checks.get(StubSourceProbe.CHECK_RETRIEVAL))
-                        || !"pass".equals(checks.get(StubSourceProbe.CHECK_EXACT_FETCH))) {
-                    failures.add(gateFailure(binding, checks, "connection_test"));
-                }
-            } else if (!probe.connectionPassed(checks) || !probe.hasOriginalVersionMapping(binding)) {
+            }
+            if (!probe.connectionPassed(checks) || !probe.hasOriginalVersionMapping(binding)) {
                 failures.add(gateFailure(binding, checks, "original_version_or_connection"));
             }
             if ("dify".equals(binding.providerProfile())) {
@@ -241,6 +235,8 @@ public class ActivationService {
                         audits.findLatestForBinding(logicalKbId, binding.bindingId()).orElse(null);
                 if (audit == null) {
                     failures.add(gateFailure(binding, checks, "content_audit_required"));
+                } else if (readReasons(audit.exclusionReasonsJson()).containsKey("acl_mixed")) {
+                    failures.add(gateFailure(binding, checks, "acl_mixed"));
                 }
             }
         }
