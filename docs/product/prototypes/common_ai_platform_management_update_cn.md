@@ -6,7 +6,7 @@
 
 ## 一、管理摘要
 
-相关团队与 SME 已集中体验和讨论当前的 Knowledge Base、System Intelligence 及其他通用 AI 能力。
+相关团队与 SME 已集中体验和讨论当前的 Knowledge Base、SOL 及其他通用 AI 能力。
 
 本次讨论形成的初步共同判断是：现有方案不应被看成互相竞争的产品。它们是在不同基础设施条件下形成的不同路径，验证了不同能力，也处于不同成熟阶段。
 
@@ -31,9 +31,8 @@
 | 能力方向 | 已验证价值 | 当前适用对象 / 场景 | 主要限制与待验证项 |
 |---|---|---|---|
 | **AMH Knowledge Base** | Dify + GitHub Copilot 已经过上万份真实文档验证，对多数常见企业文档类型具备较好的适用性 | 当前更适合 IT 用户、已有 GitHub Copilot 许可的用户，以及大规模文档 Knowledge Retrieval | 面向 RTF / BIZ 用户时，GitHub Copilot 不是自然入口；仍需补充非 GitHub 体验、授权覆盖和业务流程集成。复杂 OCR / Layout 的质量仍需持续提升 |
-| **HASE GitHub LLM Wiki** | Git Markdown + Skill + Copilot，Lightweight、Quick start、Developer-friendly，基础设施依赖较低 | 适合以 Markdown 为主、已使用 GitHub Workflow 的技术知识，以及小到中等规模的快速落地 | 当前方案只支持 Markdown；同时受 GitHub 容量与工作方式约束。普通 Git 单对象超过 100 MiB 会被阻止，仓库理想情况下应小于 1 GB，并强烈建议小于 5 GB[^github-limits]。大规模 Retrieval、权限、生命周期与索引维护仍需验证 |
-| **System Intelligence** | 提出了 Object 360、Code Explanation、Application Mapping、Flow、Lineage、Impact Analysis 和 Diagnosis 等目标能力 | 适合代码、系统关系、数据流、影响分析和运行诊断等 System Knowledge 场景 | 需要按具体 Value Stream 明确优先 Use Case、数据来源、交互入口、Evidence 和生产责任 |
-| **End-to-End SDLC Capability** | 从 Planning、Estimation、Discovery 到 Build、Testing、Deployment 和 Maintenance 的完整生命周期 | 旧系统和新系统共同需要；各 Value Stream 可基于 Group AI API 构建贴合场景的工程能力 | 不能仅依靠通用模型能力，需要每个 Value Stream 结合实际流程、工具链、控制点和成功指标进行设计 |
+| **HASE AI Knowledge Workspace** | Git Markdown + Skill + Copilot，Lightweight、Quick start、Developer-friendly，基础设施依赖较低 | 适合以 Markdown 为主、已使用 GitHub Workflow 的技术知识，以及小到中等规模的快速落地 | 当前方案只支持 Markdown；同时受 GitHub 容量与工作方式约束。普通 Git 单对象超过 100 MiB 会被阻止，仓库理想情况下应小于 1 GB，并强烈建议小于 5 GB[^github-limits]。大规模 Retrieval、权限、生命周期与索引维护仍需验证 |
+| **SOL** | 提出了 Object 360、Code Explanation、Application Mapping、Flow、Lineage、Impact Analysis 和 Diagnosis 等目标能力 | 适合代码、系统关系、数据流、影响分析和运行诊断等 System Knowledge 场景 | 需要按具体 Value Stream 明确优先 Use Case、数据来源、交互入口、Evidence 和生产责任 |
 
 [^github-limits]: [GitHub Docs — About large files on GitHub](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github)：网页上传单文件上限为 25 MiB；普通 Git 对超过 100 MiB 的文件进行阻止；仓库理想情况下小于 1 GB，并强烈建议小于 5 GB。资料核对日期：2026-08-21。
 
@@ -103,7 +102,7 @@ HASE 当前方案的优势包括：
 - Application Dependency
 - Runtime 与 Incident Information
 
-因此，System Intelligence 应被看成与 Document Knowledge 平行且互补的 Capability，而不是完全独立的产品。
+因此，SOL 应被看成与 Document Knowledge 平行且互补的 Capability，而不是完全独立的产品。
 
 ### 5. 选择原则：按场景匹配，而不是选出唯一赢家
 
@@ -132,7 +131,7 @@ HASE 当前方案的优势包括：
 | Phase | 主要目标 | 可关联的 AI / Common Capability |
 |---|---|---|
 | **1. Planning** | 明确目标、范围、需求与优先级 | Knowledge access、需求总结、Evidence、决策记录 |
-| **2. Estimation** | 评估工作量、复杂度、依赖与风险 | 历史数据、System Intelligence、依赖分析、风险识别 |
+| **2. Estimation** | 评估工作量、复杂度、依赖与风险 | 历史数据、SOL、依赖分析、风险识别 |
 | **3. Discovery** | 理解文档、代码、系统关系与影响范围 | Knowledge Retrieval、Code Analysis、Application Mapping、Data Lineage、Change Impact |
 | **4. Build** | 设计、开发和工程自动化 | Coding assistant、Skill、API、Engineering Automation |
 | **5. Testing** | 测试规划、生成、执行与结果验证 | Test generation、Program Validation、Evidence、Quality Evaluation |
@@ -149,7 +148,7 @@ HASE 当前方案的优势包括：
 
 - 复用现有 Group AI，而不是另建一套重叠的 AI Foundation；
 - 通过 Group AI API 使用 LLM，并逐步申请生产所需的模型、身份和配额；
-- 允许现有 Knowledge 和 System Intelligence 能力继续演进；
+- 允许现有 Knowledge 和 SOL 能力继续演进；
 - 不要求所有团队迁移到同一个 Knowledge Backend；
 - 不要求所有 Capability 使用同一个 UI；
 - 将 Dify、Git Markdown、Confluence 和未来其他来源视为不同 Provider；
@@ -181,7 +180,7 @@ HASE 当前方案的优势包括：
 - Provider 内部的 Retrieval 实现
 - UI
 - 团队特定的 Workflow、Skill、Tool 与业务流程
-- 领域专属的 System Intelligence 或 Engineering Capability
+- 领域专属的 SOL 或 Engineering Capability
 
 可以用一句话概括：
 
@@ -194,8 +193,7 @@ flowchart TB
     V["Value Streams<br/>Legacy Systems · New Systems · Business Use Cases"]
 
     K["Knowledge Capability<br/>Dify · Git · Confluence · Other"]
-    S["System Intelligence<br/>Code · Flow · Lineage · Impact"]
-    E["End-to-End SDLC Capability<br/>Plan · Estimate · Discover · Build · Test · Deploy · Maintain"]
+    S["SOL<br/>Code · Flow · Lineage · Impact"]
 
     W["Value Stream-owned Delivery<br/>Use Case · Workflow · Skill · Tool · Domain Integration<br/>Evidence · Evaluation · Production Support"]
     A["Group AI API<br/>LLM API · Approved Models · Production Identity · Quota<br/>可用能力以实际服务范围为准"]
@@ -203,10 +201,8 @@ flowchart TB
 
     V --> K
     V --> S
-    V --> E
     K --> W
     S --> W
-    E --> W
     W --> A
     A --> G
 ```
@@ -365,7 +361,7 @@ AMH 目前可以通过已有 Digital Account 支持部分能力；HASE 缺少类
 ## 十一、管理层核心结论
 
 1. **相关团队和方案已经完成第一轮集中 Alignment，当前 Landscape 已基本看清。**
-2. **AMH、HASE 和 System Intelligence 是互补能力，不应被简单看成竞争方案。**
+2. **AMH、HASE 和 SOL 是互补能力，不应被简单看成竞争方案。**
 3. **现有 Group AI 应作为统一基础能力和 LLM API 提供方，无需重复建设。**
 4. **Planning、Estimation、Discovery、Build、Testing、Deployment 和 Maintenance 同时适用于旧系统和新系统。**
 5. **每个 Value Stream 需要贴合自己的实际场景设计 Workflow、Skill 和 Tool，并对价值与生产运行负责。**
