@@ -125,8 +125,12 @@ public class RegistryService {
             resolved = resolveBindings(user, current.logicalKbId(), command.bindings());
             rejectIncompatibleBindings(resolved);
             if (mixedModelEligibility(resolved, modelEligible)) {
+                modelEligible = false;
                 capability = "browse_only";
             }
+        } else if (command.modelEligible() == null) {
+            modelEligible = current.modelEligible();
+            capability = current.capability();
         }
 
         LogicalKnowledgeBaseRecord updated =
@@ -253,14 +257,8 @@ public class RegistryService {
             throw new DraftValidationException(
                     "CANONICAL_REQUIRED", "A draft with sources must have exactly one canonical binding.");
         }
-        String owner = resolved.getFirst().credentialOwner();
         JsonNode region = parseJson(resolved.getFirst().regionConstraintsJson());
         for (ResolvedBinding binding : resolved) {
-            if (!owner.equals(binding.credentialOwner())) {
-                throw new DraftValidationException(
-                        "INCOMPATIBLE_BINDINGS",
-                        "Bindings on one knowledge base must share one credential Owner.");
-            }
             JsonNode other = parseJson(binding.regionConstraintsJson());
             if (!regionEquals(region, other)) {
                 throw new DraftValidationException(

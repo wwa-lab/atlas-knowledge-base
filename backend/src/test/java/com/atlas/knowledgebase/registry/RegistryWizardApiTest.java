@@ -190,11 +190,22 @@ class RegistryWizardApiTest {
                                         }
                                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.capability").value("browse_only"));
+                .andExpect(jsonPath("$.capability").value("browse_only"))
+                .andExpect(jsonPath("$.config_version").value(2));
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"config_version\":2,\"name\":\"Mixed eligibility v2\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Mixed eligibility v2"))
+                .andExpect(jsonPath("$.capability").value("browse_only"))
+                .andExpect(jsonPath("$.config_version").value(3));
     }
 
     @Test
-    void mismatchedCredentialOwnersAre422() throws Exception {
+    void distinctCredentialOwnersWithSharedRegionAreAccepted() throws Exception {
         LoggedIn owner = login(true);
         String logicalKbId = createDraft(owner, "Split owners");
         mockMvc.perform(
@@ -225,8 +236,9 @@ class RegistryWizardApiTest {
                                         }
                                         """
                                                 .formatted(owner.userId())))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.code").value("INCOMPATIBLE_BINDINGS"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.config_version").value(2));
+        assertThat(bindingRepository.findByLogicalKbId(logicalKbId)).hasSize(2);
     }
 
     @Test
