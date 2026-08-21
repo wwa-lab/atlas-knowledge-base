@@ -153,6 +153,65 @@ public class LogicalKnowledgeBaseRepository {
         throw conflictOrState(logicalKbId, expectedVersion, "draft");
     }
 
+    /**
+     * Activates a draft, optionally forcing capability (Git without {@code .kb} → browse_only).
+     */
+    @Transactional
+    public LogicalKnowledgeBaseRecord activate(
+            String logicalKbId, int expectedVersion, String capability, boolean modelEligible) {
+        Instant now = Instant.now();
+        int updated =
+                jdbcTemplate.update(
+                        """
+                        UPDATE logical_knowledge_base
+                        SET lifecycle = 'active',
+                            capability = ?,
+                            model_eligible = ?,
+                            config_version = config_version + 1,
+                            activated_at = ?,
+                            updated_at = ?
+                        WHERE logical_kb_id = ? AND config_version = ? AND lifecycle = 'draft'
+                        """,
+                        capability,
+                        modelEligible ? 1 : 0,
+                        Timestamp.from(now),
+                        Timestamp.from(now),
+                        logicalKbId,
+                        expectedVersion);
+        if (updated == 1) {
+            return findById(logicalKbId).orElseThrow();
+        }
+        throw conflictOrState(logicalKbId, expectedVersion, "draft");
+    }
+
+    @Transactional
+    public LogicalKnowledgeBaseRecord suspend(String logicalKbId) {
+        Instant now = Instant.now();
+        int updated =
+                jdbcTemplate.update(
+                        """
+                        UPDATE logical_knowledge_base
+                        SET lifecycle = 'suspended', updated_at = ?
+                        WHERE logical_kb_id = ? AND lifecycle IN ('draft', 'active')
+                        """,
+                        Timestamp.from(now),
+                        logicalKbId);
+        if (updated == 1) {
+            return findById(logicalKbId).orElseThrow();
+        }
+        LogicalKnowledgeBaseRecord current =
+                findById(logicalKbId)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalArgumentException(
+                                                "logical knowledge base not found: " + logicalKbId));
+        if ("suspended".equals(current.lifecycle())) {
+            return current;
+        }
+        throw new IllegalStateException(
+                "logical knowledge base " + logicalKbId + " is " + current.lifecycle());
+    }
+
     private RuntimeException conflictOrState(
             String logicalKbId, int expectedVersion, String requiredLifecycle) {
         LogicalKnowledgeBaseRecord current =
