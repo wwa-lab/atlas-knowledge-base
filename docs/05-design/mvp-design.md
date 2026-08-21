@@ -26,11 +26,10 @@ into module responsibilities, workflows, validation, error handling, and UI
 flows for slice `mvp`.
 
 Behavior in this document stays stack-agnostic. Concrete runtime products live
-in ADR-0002–0006.
+in ADR-0002–0007.
 
-The repository contains no Atlas application implementation. This design makes
-no claim that runtime code already exists. Provider and model capabilities remain
-spike-gated.
+TASK-001–010 are already on `main`. This amendment does not change runtime
+code. Provider and model capabilities remain spike-gated.
 
 ## Source Architecture
 
@@ -79,14 +78,15 @@ spike-gated.
 - Consumes corporate SSO assertions into Atlas identity
 - Starts JIT least-privilege provider authorization for GitHub/Confluence
 - Stores tokens only via Secret Boundary adapter
-- Exposes Settings projection: identity, model eligibility, connection state/scope/expiry/last verified
+- Exposes Settings projection: identity, local-gateway online/offline, connection state/scope/expiry/last verified
 - On expiry: preserve non-sensitive KB name/Owner metadata, disable retrieval, prompt reconnect
 - On leakage/compromise: revoke provider tokens, terminate related sessions, set reconnect-required, write content-free security audit
 
 ### Model Entitlement Gate
 
-- Separates per-user model authorization from Atlas identity and KB authorization
-- Blocks model-send when entitlement fails even if source read succeeds
+- Treats a live local-gateway registration for the current SSO subject as generation eligibility (ADR-0007)
+- Blocks model-send when no live registration exists, even if source read succeeds, except the `local`/`non-prod` mock stub without real excerpts
+- Does not store Copilot tokens or add a Copilot bind UI
 
 ### Registry Module
 
@@ -118,7 +118,7 @@ spike-gated.
 - Applies Reciprocal Rank Fusion as product ranking constraint (internals ADR)
 - Builds coverage map; partial vs fail-closed branching
 - Assembles disagreement section for canonical conflicts; mirror divergence as sync error
-- Sends minimum authorized model-eligible evidence to model channel; streams answer
+- Sends minimum authorized model-eligible evidence on the live local-gateway channel; streams answer; refuses generation when the gateway is offline
 - Does not store incomplete/cancelled generation as completed; safe idempotent retry
 
 ### Evidence Module
@@ -214,7 +214,7 @@ Ordinary users cannot open self-registration for datasets/repos/Spaces.
 
 ### Settings
 
-Show corporate identity, model eligibility, provider connection state/scope/expiry/last verified, reconnect/revoke.
+Show corporate identity, local-gateway online/offline, provider connection state/scope/expiry/last verified, reconnect/revoke. No Copilot account-binding page.
 
 ### Evidence Drawer
 
@@ -228,7 +228,7 @@ Activation review (no hard-gate override) → impact preview for disable/kill sw
 
 ### Grounded chat turn ordering
 
-1. Validate session and model entitlement
+1. Validate session and live local-gateway registration (or use mock stub on `local`/`non-prod` without real excerpts)
 2. Validate scope (1–5 Chat-ready, authorized, healthy enough, freshness)
 3. Re-authorize every KB/binding
 4. Fan-out retrieval
@@ -276,7 +276,7 @@ Activation review (no hard-gate override) → impact preview for disable/kill sw
 | GitHub Enterprise | Delegated user auth + API + webhook/poll | Secret boundary | Connector budget/backoff/circuit breaker |
 | Confluence | User-context API + event/poll | Secret boundary | Same |
 | Dify | Retrieval/metadata API | Declared credential owner; no default AMH reuse | Same |
-| Model channel | Streaming generation | Secret boundary + per-user entitlement | Cancel supported; no infinite retry |
+| Model channel | Dispatch on registered local SME gateway channel (ADR-0007) | Copilot tokens stay on the gateway; Atlas stores registration metadata only | Cancel/timeout abort; no infinite retry |
 | Correction/security intakes | Outbound route/link | N/A | Manual follow-up outside Atlas |
 
 Failed spike ⇒ Source Profile remains Suspended; real content must not flow through failed channel.

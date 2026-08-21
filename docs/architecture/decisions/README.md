@@ -17,7 +17,10 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 | ADR-0004 | MVP backend technology stack (Spring Boot + JDK 21) | Accepted |
 | ADR-0005 | Database product and version strategy (H2 local / Oracle 19c; Flyway all planes) | Accepted |
 | ADR-0006 | Secret boundary and environment separation | Accepted |
+| ADR-0007 | Local SME model gateway for grounded generation | Accepted |
 
-Stack ADRs ADR-0002–0006 are Accepted. `design-to-tasks` and scaffolding may
-proceed. Security still fills the concrete secret-manager product name; DBA
-still confirms the Oracle 19c patch/RU. Local secret-ref stub is allowed.
+Stack ADRs ADR-0002–0006 are Accepted. ADR-0007 amends model-channel topology
+and Copilot credential location. `design-to-tasks` and scaffolding may proceed.
+Security still fills the concrete secret-manager product name; DBA still
+confirms the Oracle 19c patch/RU. Local secret-ref stub is allowed. Copilot
+tokens stay on the per-user gateway (ADR-0007), not in Atlas secret_ref.

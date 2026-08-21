@@ -4,6 +4,10 @@
 
 Accepted
 
+Amended 2026-08-21 by ADR-0007: GitHub/Confluence **provider** tokens remain in
+the server-side secret boundary. GitHub Copilot credentials for grounded
+generation must not enter Atlas; they remain on the user's local SME gateway.
+
 ## Date
 
 2026-08-20
@@ -35,6 +39,11 @@ Forces:
 3. Local development may use a **non-production secret backend or sealed local
    overlays** that implement the same reference interface; it must not read
    production secrets.
+4. **Model credentials (GitHub Copilot)** used for grounded Chat are **not**
+   stored in this secret boundary. ADR-0007: they remain only on the per-user
+   local gateway; Atlas must not store, log, or forward Copilot tokens. Atlas
+   may persist gateway registration metadata (SSO subject, channel id, expiry)
+   without the model secret.
 
 ### Environment separation
 
@@ -48,7 +57,8 @@ Forces:
 3. Database engine, version, and Flyway-on-all-planes strategy follow ADR-0005
    (`local` H2; `non-prod`/`prod` Oracle 19c family).
 4. Real internal content must not flow through connectors/model channels whose
-   spikes failed, regardless of environment.
+   spikes failed, regardless of environment (ADR-0007: real excerpts reach the
+   local gateway only after TASK-022).
 
 ## Alternatives Considered
 
@@ -56,6 +66,7 @@ Forces:
 |---|---|
 | Store secrets in `.env` committed to git | Violates security requirements |
 | Browser-held provider tokens | Explicitly forbidden by accepted spec |
+| Store Copilot tokens in Atlas secret_ref | Rejected by ADR-0007; breaks the SME local-gateway path |
 | Same secret store namespace for local and prod | High leakage risk |
 | Invent a bespoke encrypted file store as long-term product | Bypass company Security standards |
 
@@ -89,4 +100,4 @@ Forces:
 - `docs/03-spec/mvp-spec.md` (FR-07, FR-10, FR-67)
 - `docs/04-architecture/mvp-architecture.md`
 - `docs/05-design/mvp-design.md`
-- ADR-0004, ADR-0005
+- ADR-0004, ADR-0005, ADR-0007

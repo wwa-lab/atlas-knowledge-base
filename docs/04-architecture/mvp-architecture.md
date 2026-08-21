@@ -4,9 +4,10 @@
 
 - **Architecture Summary**: Atlas Knowledge Base MVP is a governed access and
   orchestration layer over Dify, Git Markdown, and Confluence. It authenticates
-  users through corporate SSO, holds provider credentials only server-side,
-  retrieves currently authorized evidence through independent Source Profile
-  adapters, produces cited answers via an approved enterprise model channel, and
+  users through corporate SSO, holds GitHub/Confluence provider credentials only
+  server-side, retrieves currently authorized evidence through independent Source Profile
+  adapters, produces cited answers via an approved enterprise model channel
+  implemented as the user's local SME Go gateway (ADR-0007), and
   never becomes the authoritative store or editor of source content.
 - **Design Objective**: Keep permission, provenance, version, coverage, and
   conflict transparent while failing closed on security and authorization
@@ -32,8 +33,9 @@ its companion data-flow as the MVP logical architecture baseline after
 findings. Frontend/backend/database stack and environment matrix remain ADR-gated
 and are not selected by this acceptance.
 
-The repository contains no Atlas application implementation. This document makes
-no claim that runtime components already exist.
+`[USER-STATED]` On 2026-08-21 the product owner accepted ADR-0007. This
+architecture's model-channel and secret-boundary wording is amended accordingly.
+The Atlas application remains the modular monolith in ADR-0002.
 
 ---
 
@@ -51,7 +53,7 @@ no claim that runtime components already exist.
 
 ### Key Non-Functional Drivers
 
-- Browser never holds provider tokens; opaque `__Host-` session cookie only
+- Browser never holds provider tokens; opaque `__Host-` session cookie only; Copilot tokens never enter Atlas (ADR-0007)
 - Untrusted retrieved content and prompt-injection containment
 - Separate decisions for source read access versus model-send authorization
 - Content-free ordinary audit and de-identified analytics
@@ -90,10 +92,10 @@ no claim that runtime components already exist.
 | GitHub Enterprise | Delegated auth, Browse, `.kb` Chat retrieval, webhooks/polling, historical commits |
 | Confluence (company variant) | User-context retrieval, Space scope, versions, existing correction workflow |
 | Dify + AMH pipeline | Retrieval over existing corpus; ingestion remains external |
-| Enterprise model channel | Streaming grounded generation under per-user entitlement |
+| Local SME Go gateway | Outbound registration to Atlas; Copilot-backed streaming generation (ADR-0007) |
 | HASE `kb-correct` / contribution | Git content/citation correction routing |
 | Company security process | Classification approval and security-incident intake |
-| Approved secret boundary | Server-side provider and model credential storage (product via ADR) |
+| Approved secret boundary | Server-side GitHub/Confluence provider credential storage (product via ADR); not Copilot tokens |
 
 ### System Boundary
 
@@ -101,8 +103,8 @@ Inside Atlas: session/BFF trust boundary, registry of logical knowledge bases an
 bindings, authorization rechecks, Browse and Chat orchestration, citation/
 evidence metadata, governance controls, content-free audit/telemetry, and issue
 routing. Outside Atlas: source content authority, team ingestion/vectorization
-pipelines, source correction editors, corporate SSO, the enterprise model
-channel, and company security workflows. Atlas may cache short-lived evidence
+pipelines, source correction editors, corporate SSO, the per-user local SME
+gateway (ADR-0007), and company security workflows. Atlas may cache short-lived evidence
 under isolation rules but must not become a full-document source of truth.
 
 ---
@@ -140,12 +142,15 @@ under isolation rules but must not become a full-document source of truth.
 │  Persistence & Metadata                                              │
 │  KB/Binding registry · chat/citation ids · content-free audit        │
 │  Optional short-lived permission-isolated evidence cache (ADR)       │
+│  Gateway registration (subject, channel, expiry; no Copilot token)   │
 └───────────┬───────────────┬────────────────────┬─────────────────────┘
             │               │                    │
             ▼               ▼                    ▼
 ┌─────────────────┐ ┌───────────────┐ ┌──────────────────────────────┐
-│ Secret Boundary │ │ Model Channel │ │ Sources: Dify · GitHub ·     │
-│ (ADR product)   │ │ (enterprise)  │ │ Confluence (+ webhooks/poll) │
+│ Secret Boundary │ │ Local SME     │ │ Sources: Dify · GitHub ·     │
+│ (provider toks; │ │ Go gateway    │ │ Confluence (+ webhooks/poll) │
+│  ADR-0006)      │ │ (ADR-0007;    │ │                              │
+│                 │ │  outbound)    │ │                              │
 └─────────────────┘ └───────────────┘ └──────────────────────────────┘
 ```
 
@@ -158,7 +163,7 @@ The system is organized into these logical layers:
 - **Application Capability Layer** — Identity/providers, registry/activation, Chat/RAG orchestration, evidence, issues, governance
 - **Connector Adapter Plane** — Provider-neutral contracts with Dify, Git Markdown, and Confluence adapters that are independently flaggable, degradable, suspendable, and rollback-able
 - **Persistence & Metadata Layer** — Registry, configuration versions, chat/citation identifiers and state, content-free audit/ops telemetry; optional isolated evidence cache
-- **External Integration Layer** — SSO, secret boundary, model channel, source systems, correction and security workflows
+- **External Integration Layer** — SSO, secret boundary (provider tokens), local SME model gateway, source systems, correction and security workflows
 
 ---
 
@@ -169,7 +174,7 @@ The system is organized into these logical layers:
 - **Chat Experience**: Default authenticated landing; scope selector (1–5 logical KBs); streaming answer; coverage/conflict presentation; cancel/retry
 - **Knowledge Base Catalog & Detail**: Discovery, filters, Browse-only Git tree/preview, Chat-ready entry, access-request path display
 - **Registration Wizard**: Owner Draft flow through Basics → Sources → Access & Classification → Connection Test → Content Audit → Review & Submit
-- **Settings**: Corporate identity, model eligibility, provider connection state, reconnect/revoke
+- **Settings**: Corporate identity, local-gateway online/offline, provider connection state, reconnect/revoke
 - **Evidence Drawer**: Exact excerpt and metadata; re-authorized original navigation
 - **Admin Governance Surfaces**: Activation review, impact preview for disable/kill switch/retire/rollback `[ASSUMPTION]` may share UI shell with Owner wizard under role gates
 
@@ -177,7 +182,7 @@ The system is organized into these logical layers:
 
 - **Identity & Session Service**: SSO assertion consumption, Atlas session lifecycle, CSRF, private history isolation
 - **Provider Connection Service**: JIT OAuth/delegated connect, scope enforcement, reconnect-required, token compromise response
-- **Model Entitlement Gate**: Separates per-user model authorization from Atlas identity and KB authorization
+- **Model Entitlement Gate**: Treats a live local-gateway registration for the current SSO subject as generation eligibility; separate from Atlas identity and KB authorization; no Copilot bind UI
 - **Registry Service**: Logical KB and binding CRUD for Drafts, configuration versioning, discoverability, capability, lifecycle/health
 - **Activation & Validation Service**: Connection Test, Content Audit, hard-gate evaluation; rejects Admin override of security/evidence gates
 - **Discovery & Browse Service**: Authorization-aware catalog and detail; Browse-only Git operations without model send
@@ -189,7 +194,7 @@ The system is organized into these logical layers:
 ### Orchestration / Execution Engine
 
 - **Retrieval Orchestrator**: Fan-out to selected bindings; independent timeout/quota/concurrency/backoff/circuit-breaker; provenance-preserving merge/dedup; coverage accounting
-- **Answer Generation Orchestrator**: Sends only minimum authorized model-eligible evidence to the enterprise model channel; streams tokens; never treats prior AI answers as evidence
+- **Answer Generation Orchestrator**: Sends only minimum authorized model-eligible evidence as a generic chat/completion payload on the user's live gateway channel; streams tokens; cancel aborts the gateway; never treats prior AI answers as evidence; refuses generation when no live registration exists (ADR-0007)
 - **Reconciliation Worker**: Processes webhooks/events and periodic reconciliation for update/move/delete/ACL; triggers re-authorization and retrieval exclusion
 
 ### Configuration / Administration Modules
@@ -210,8 +215,8 @@ The system is organized into these logical layers:
 - **Git Markdown Adapter**: Browse tree/preview; Contracted Chat over validated `.kb` + pinned-commit hits; no whole-repo clone per query; webhook/poll cache refresh
 - **Confluence Adapter**: User-context Space-scoped retrieval; page/attachment version locators; navigation-only for unsupported attachments
 - **SSO Adapter**: Corporate identity and optional Owner-approved group mapping when provider user-level auth is unavailable
-- **Model Channel Adapter**: Streaming/cancellation under approved training/retention/region terms
-- **Secret Boundary Adapter**: Store/retrieve provider and model credentials without exposing them to browser or ordinary logs
+- **Model Channel Adapter**: Atlas-side SME-compatible registration and completion dispatch on the user's live local-gateway channel; streaming/cancellation; no Copilot tokens in Atlas (ADR-0007)
+- **Secret Boundary Adapter**: Store/retrieve GitHub/Confluence provider credentials without exposing them to browser or ordinary logs; Copilot credentials are out of scope
 
 ---
 
@@ -225,6 +230,7 @@ The system is organized into these logical layers:
 | Binding | Provider-backed source attachment | `binding_id`, provider profile, source identity, role, auth method, health, freshness, locator rule, credential owner, feature flag/kill switch |
 | Atlas Session | Authenticated user session | Opaque session id, SSO identity, idle/absolute expiry |
 | Provider Connection | Delegated provider authorization | Provider, scope, expiry, last verified, reconnect-required |
+| Gateway Registration | Live local SME gateway channel | SSO subject, channel id, expiry/heartbeat, Atlas plane; at most one live row per subject; no Copilot token |
 | Chat / Answer | Private conversation results | Logical KB scope, configuration version, binding set, citation ids, completion state |
 | Citation / Evidence Metadata | Traceable claim support | Locator, version, excerpt metadata, Owner, classification, verification times |
 | Issue Report | Routed feedback | Category, non-sensitive diagnostics, routing target |
@@ -245,7 +251,8 @@ The system is organized into these logical layers:
 - Runtime health: `Healthy | Degraded | Unavailable` (independent of lifecycle)
 - Binding runtime: enabled / Disabled (Disable is not a lifecycle state)
 - Git capability: Basic Browse ↔ Contracted Chat only after schema/permission/citation/evaluation/Owner activation
-- Generation: processing → streamed → completed | incomplete-cancelled
+- Generation: processing → streamed → completed | incomplete-cancelled | failed-timeout | aborted-replaced
+- Gateway registration: live | expired | replaced (at most one live per SSO subject)
 - Correction memory: `active` eligible as separate evidence; `conflicted` excluded and surfaced as conflict
 
 ### Persistence Responsibilities
@@ -255,7 +262,8 @@ The system is organized into these logical layers:
 - Evidence Service may persist locator/citation metadata; must not persist complete GitHub/Confluence bodies as source of truth
 - Audit/Telemetry modules persist content-free operational and security events
 - Optional evidence cache, if used, is short-lived, encrypted, and permission-isolated (ADR)
-- Secret Boundary persists provider/model credentials outside the browser
+- Secret Boundary persists GitHub/Confluence provider credentials outside the browser; Copilot credentials stay on the local gateway (ADR-0007)
+- Chat Orchestration may persist gateway registration metadata (subject, channel, expiry, plane) without model secrets
 
 ### Edge-case traces for architectural rules
 
@@ -306,17 +314,17 @@ The system is organized into these logical layers:
 - **Data exchanged**: Dataset/document/chunk ids, original-version mapping, exclusion/remediation lists
 - **Responsibility boundary**: AMH remains owner of ingestion/vectorization; mixed-ACL datasets must be split before activation
 
-### Enterprise Model Channel
+### Local SME Model Gateway
 
-- **Interaction Pattern**: Streaming generation and cancellation under per-user entitlement
-- **Triggered by**: Chat Orchestration after retrieval and model-send authorization
-- **Data exchanged**: Minimum authorized evidence + question context; streamed tokens; error/cancel signals
-- **Responsibility boundary**: Shared model credential must not bypass entitlement; channel spike-gated
+- **Interaction Pattern**: Gateway authenticates with corporate SSO, opens an outbound long-lived connection to Atlas, and receives generic chat/completion requests; tokens stream back; cancel/timeout abort generation
+- **Triggered by**: Chat Orchestration after retrieval and model-send authorization, when a live registration exists and the model-channel kill switch is off
+- **Data exchanged**: Minimum authorized evidence + question context; streamed tokens; error/cancel/timeout signals. Copilot tokens never cross into Atlas
+- **Responsibility boundary**: Per-user gateway holds Copilot credentials; Atlas implements the SME-cloud-compatible cloud side; config-only URL on the gateway; spike-gated (TASK-022); one live registration per SSO subject; one Atlas plane per gateway process
 
 ### Approved Secret Boundary
 
-- **Interaction Pattern**: Server-side store/retrieve of provider and model credentials
-- **Responsibility boundary**: Never written to browser storage, URLs, ordinary logs, analytics, or user-visible errors; concrete product via ADR
+- **Interaction Pattern**: Server-side store/retrieve of GitHub/Confluence provider credentials
+- **Responsibility boundary**: Never written to browser storage, URLs, ordinary logs, analytics, or user-visible errors; concrete product via ADR-0006; Copilot tokens are out of scope (ADR-0007)
 
 ### Correction And Security Workflows
 
@@ -341,7 +349,7 @@ The system is organized into these logical layers:
 3. Retrieval Orchestrator fans out in parallel under per-connector budgets.
 4. Merge via RRF product constraint; preserve provenance; build coverage map.
 5. On security/auth failure: fail closed. On ordinary partial failure: disclosed partial path. On canonical conflict: disagreement section.
-6. Model Entitlement Gate + model-send authorization; stream answer; store identifiers/state only if completed.
+6. Model Entitlement Gate requires a live local-gateway registration (or the `local`/`non-prod` mock stub without real excerpts) plus model-send authorization. If offline, refuse generation. If live, dispatch generic chat/completion on that channel, stream tokens, abort on cancel/timeout/replace, and store identifiers/state only if completed.
 
 ### State Transitions
 
@@ -365,7 +373,7 @@ The system is organized into these logical layers:
 - Independent connector timeout/quota/concurrency/backoff/circuit-breaker; no infinite retry
 - Safe idempotent retry for incomplete requests
 - Quota exhaustion publishes retry-after and degrades only the affected connector when the logical access boundary remains complete for remaining safe sources
-- Kill switch / disable stops new retrieval immediately after impact preview and confirm
+- Kill switch / disable stops new retrieval immediately after impact preview and confirm; model-channel kill switch stops all gateway generation (registrations may remain)
 
 ---
 
@@ -376,6 +384,7 @@ The system is organized into these logical layers:
 | Interface | Consumer | Purpose |
 |---|---|---|
 | Authenticated web application API | Presentation | Session, Settings, catalog, Browse, Chat, evidence, issues, Owner wizard, Admin governance |
+| Local gateway registration channel | Per-user SME Go gateway | SSO-authenticated outbound session; completion dispatch and token stream (ADR-0007) |
 | Provider webhook endpoints | GitHub/Confluence (as available) | Change/ACL signals for reconciliation |
 | SSO callback | Corporate SSO | Session establishment |
 
@@ -396,8 +405,8 @@ Exact resource shapes and transport choices are deferred to design/contracts and
 | GitHub Enterprise | Provider APIs + webhooks/polling | Git Adapter / Reconciliation |
 | Confluence | Native user-context APIs + events/poll | Confluence Adapter / Reconciliation |
 | Dify | Retrieval/metadata APIs | Dify Adapter |
-| Model channel | Streaming generation API | Answer Generation Orchestrator |
-| Secret boundary | Server-side secret API | Provider Connection / Model adapters |
+| Local SME gateway | Completion dispatch on the registered outbound channel | Answer Generation Orchestrator |
+| Secret boundary | Server-side secret API | Provider Connection (not Copilot) |
 | Correction/security intakes | Links or ticket handoff | Issue Routing |
 
 ### Event / Polling / Callback Patterns
@@ -414,7 +423,7 @@ Exact resource shapes and transport choices are deferred to design/contracts and
 - **Supported Environments**: `[ASSUMPTION]` at least one non-production and one production boundary; exact matrix open
 - **Runtime Assumptions**: Logical modular runtime; physical split optional later. No deployment topology selected here
 - **Configuration Separation**: Environment-specific connector flags, budgets, and endpoints injected at runtime; not baked as product decisions into source content
-- **Secrets Handling**: Server-side approved secret boundary only; compromise triggers token revoke, session terminate, reconnect-required, content-free security audit
+- **Secrets Handling**: GitHub/Confluence tokens in the server-side secret boundary; Copilot tokens stay on the local gateway (ADR-0007). Provider compromise still triggers token revoke, session terminate, reconnect-required, and content-free security audit
 - **Operational Concerns**: Kill switch, disable/retire, rollback drills required before pilot; connector telemetry without bodies; Source Profile may remain Suspended if spikes fail
 - **Mock/synthetic data**: May support development when a gate fails, where company policy allows; real internal content must not flow through failed channels
 
@@ -431,7 +440,7 @@ Exact resource shapes and transport choices are deferred to design/contracts and
 
 ### Secret Protection
 
-- Provider/model credentials only in secret boundary
+- GitHub/Confluence provider credentials only in the secret boundary; Copilot credentials only on the local gateway
 - Browser holds opaque session cookie only (`__Host-`, Secure, HttpOnly, SameSite, CSRF)
 - Credentials never in repository content, ordinary logs, analytics, or user-visible errors
 
@@ -511,5 +520,6 @@ These product constraints require ADRs; this architecture does not select the pr
 - Next SDD stage: detailed design via `architecture-to-design` → `docs/05-design/mvp-design.md` plus data-model and contracts as required
 - Companion data-flow: `docs/04-architecture/mvp-data-flow.md`
 - Do not reopen ordinary-Git Chat or Atlas-owned Git index generation
-- Carry FR-63–FR-71 and Required ADRs as non-optional constraints into design
+- Carry FR-63–FR-80 and Required ADRs as non-optional constraints into design
+- Treat ADR-0007 as the model-channel topology
 - Connector/model spikes remain blockers for activation feasibility, not for continuing design of spike-gated Suspended paths

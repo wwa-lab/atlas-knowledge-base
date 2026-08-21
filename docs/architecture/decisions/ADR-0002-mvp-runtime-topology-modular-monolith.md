@@ -4,6 +4,10 @@
 
 Accepted
 
+Amended 2026-08-21 by ADR-0007: the Atlas **application** remains one modular
+monolith. Per-user local Go model gateways are additional client-side runtimes,
+not Atlas deployables and not a split of this monolith.
+
 ## Date
 
 2026-08-20
@@ -34,6 +38,8 @@ Boundaries:
 - Module packages/namespaces follow the design module list
 - Connector adapters remain isolatable for feature flags and kill switches
 - A future ADR may split services without changing external API contracts first
+- Grounded generation uses the per-user local SME Go gateway in ADR-0007; that
+  gateway is outside this monolith and is not an Atlas microservice
 
 ## Alternatives Considered
 
@@ -58,7 +64,8 @@ Boundaries:
 
 ## Migration / Compatibility
 
-- No runtime exists yet; adopting this ADR only constrains scaffolding layout
+- Atlas application runtime exists (TASK-001–010 on `main`); this ADR only
+  constrains scaffolding layout of that monolith
 - If superseded by a split-runtime ADR, migrate along API contracts and adapter interfaces
 
 ## Review Triggers
@@ -72,3 +79,4 @@ Boundaries:
 - `docs/04-architecture/mvp-architecture.md`
 - `docs/05-design/mvp-design.md`
 - `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`
+- ADR-0007 (local SME model gateway)

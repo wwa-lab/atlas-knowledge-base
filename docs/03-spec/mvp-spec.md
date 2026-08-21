@@ -4,7 +4,7 @@
 > **Upstream requirements:** `docs/01-requirements/mvp-requirements.md`
 > **Product baseline:** `docs/product/atlas-knowledge-base-product-spec-v0.4-cn.md`
 > **Spec status:** Accepted
-> **Last updated:** 2026-08-20
+> **Last updated:** 2026-08-21
 > **Accepted:** 2026-08-20
 > **Slice:** `mvp`
 
@@ -16,13 +16,19 @@ specification consolidates that accepted set.
 the MVP behavior baseline after `review-doc-quality` reported Ready with minor
 fixes and no Critical or Major findings.
 
+`[USER-STATED]` On 2026-08-21 the product owner accepted ADR-0007: grounded
+generation uses the per-user local SME Go gateway; Chat remains in Atlas;
+Copilot credentials do not enter Atlas. FR-03, FR-04, FR-07, FR-39, FR-72–FR-80
+record that amendment. `/api/v1` field names are unchanged in this
+revision.
+
 `[USER-STATED]` Ordinary GitHub Markdown repositories remain Browse-only in MVP.
 Chat requires a team-generated, validated `.kb` contract. Atlas does not
 auto-bootstrap an index contract.
 
-The repository contains no Atlas application implementation. This specification
-makes no claim that runtime behavior already exists. Provider and model
-capabilities remain spike-gated until real-environment evidence exists.
+TASK-001–010 are already on `main`. This amendment does not change runtime
+code. Provider and model capabilities remain spike-gated until real-environment
+evidence exists.
 
 ---
 
@@ -73,7 +79,7 @@ conflict, revocation, and security boundaries.
 **Supporting actors** (indirectly involved or upstream/downstream):
 - **Corporate SSO / IAM:** Authoritative employee identity and employment status
 - **Source systems (Dify, GitHub Enterprise, Confluence):** Authoritative content, versions, permissions, and corrections
-- **Enterprise model channel:** Approved model invocation subject to per-user entitlement
+- **Enterprise model channel:** Approved Copilot generation via the user's local SME Go gateway (ADR-0007), subject to live registration and the model-channel spike
 - **Company security process:** Classification approval and security-incident intake
 - **Existing correction workflows:** HASE `kb-correct` / contribution flow; Confluence page workflow; Dify Owner remediation
 
@@ -119,11 +125,11 @@ conflict, revocation, and security boundaries.
 
 - **FR-01**: The system shall authenticate users through corporate SSO and use only that identity for the Atlas session. *(Source: US-001; REQ-AUTH-001)*
 - **FR-02**: Chat shall be the default authenticated landing experience. *(Source: US-001; REQ-CHAT-001)*
-- **FR-03**: Model authorization shall be separate from Atlas identity and knowledge-base authorization. A shared model credential shall not bypass per-user entitlement. *(Source: US-001; REQ-AUTH-002, REQ-AUTH-003)*
-- **FR-04**: Settings shall show corporate identity session, model-channel eligibility, and GitHub/Confluence connection state, granted scope, expiry, and last verified time. *(Source: US-001; REQ-SET-001)*
+- **FR-03**: Model authorization shall be separate from Atlas identity and knowledge-base authorization. A shared model credential shall not bypass per-user entitlement. Copilot credentials shall remain on the user's local SME gateway and shall not be stored by Atlas (ADR-0007). *(Source: US-001; REQ-AUTH-002, REQ-AUTH-003; ADR-0007)*
+- **FR-04**: Settings shall show corporate identity session, local-gateway online/offline as model-channel eligibility, and GitHub/Confluence connection state, granted scope, expiry, and last verified time. Settings shall not add a Copilot account-binding page. Gateway online/offline detail is visible only to that user. Existing `GET /settings` field `model_channel.eligible` keeps its name; its meaning is this live-registration state. *(Source: US-001; REQ-SET-001; ADR-0007)*
 - **FR-05**: Provider authorization shall start just-in-time on first selection, use least privilege per provider, and shall not silently expand scope later. *(Source: US-001; REQ-CRED-005, REQ-CRED-006)*
 - **FR-06**: GitHub and Confluence access shall prefer delegated current-user identity. When a provider cannot supply user-level authorization, only an auditable, revocable, KB Owner-approved SSO group mapping is allowed. *(Source: US-001; REQ-AUTH-013, REQ-AUTH-009)*
-- **FR-07**: The browser shall hold only an opaque Atlas session. Provider tokens shall not be written to Local Storage, Session Storage, URL, logs, or analytics. Provider credentials shall remain in an encrypted server-side approved secret boundary. The concrete secret-manager product requires an ADR. *(Source: US-001; REQ-CRED-001, REQ-CRED-002)*
+- **FR-07**: The browser shall hold only an opaque Atlas session. Provider tokens shall not be written to Local Storage, Session Storage, URL, logs, or analytics. GitHub and Confluence provider credentials shall remain in an encrypted server-side approved secret boundary. Copilot credentials shall not enter that boundary (ADR-0007). The concrete secret-manager product requires an ADR. *(Source: US-001; REQ-CRED-001, REQ-CRED-002; ADR-0006, ADR-0007)*
 - **FR-08**: The Atlas session shall use a short-lived `__Host-`, Secure, HttpOnly, SameSite cookie with idle and absolute expiry and CSRF protection. Exact idle and absolute lifetimes remain an open Security approval item. *(Source: US-001; REQ-CRED-003)*
 - **FR-09**: Expired source authorization shall preserve allowed non-sensitive name and Owner metadata, disable retrieval, and prompt reconnect. *(Source: US-001; REQ-CRED-007)*
 - **FR-10**: Token leakage, revocation, or compromise shall revoke provider tokens, terminate related Atlas sessions, set affected bindings to reconnect-required, and write content-free security audit events. *(Source: US-001 / review carry-forward; REQ-CRED-004)*
@@ -164,7 +170,7 @@ conflict, revocation, and security boundaries.
 - **FR-36**: Retrievers shall return their own Top-K results in parallel. Fusion shall use Reciprocal Rank Fusion as a product ranking constraint; component choices require an ADR. Dedup may merge answer evidence but must preserve every retrieval provenance path. Raw retrieval scores shall not be shown to ordinary users. *(Source: US-004; REQ-RAG-003, REQ-RAG-013, REQ-RAG-014, REQ-RAG-015, REQ-SRC-008)*
 - **FR-37**: Answer language shall default to the question language. Direct quotations keep the source language; translations are labeled. *(Source: US-004; REQ-RAG-007, REQ-RAG-008)*
 - **FR-38**: Under the approved normal-load profile, the UI shall show an explicit processing state within 2 seconds, streamed output shall begin within 5 seconds, and completion shall be at or below 20 seconds at P95. The system shall not hide errors or incomplete coverage to satisfy performance metrics. Incomplete or cancelled generation shall not be stored as a completed answer. Retry of incomplete requests shall be safe and idempotent. Each connector shall have independent timeout, quota, concurrency, backoff, and circuit-breaker budgets; connector-specific completeness/latency thresholds are calibrated from pilots and are not invented here. *(Source: US-004; REQ-PERF-001, REQ-PERF-002, REQ-PERF-003, REQ-PERF-004, REQ-PERF-005, REQ-CHAT-008, REQ-CHAT-009)*
-- **FR-39**: Only the minimum authorized, model-eligible, version-stable evidence needed for the grounded answer may be sent to the approved enterprise model channel. *(Source: US-004; REQ-RAG-016, REQ-SEC-006)*
+- **FR-39**: Only the minimum authorized, model-eligible, version-stable evidence needed for the grounded answer may be sent to the approved enterprise model channel. That channel is the user's live local SME gateway using generic chat/completion payloads (ADR-0007). Real internal excerpts shall not be sent until TASK-022 and company policy pass. *(Source: US-004; REQ-RAG-016, REQ-SEC-006; ADR-0007)*
 
 ### Evidence And Original Navigation
 
@@ -210,6 +216,18 @@ conflict, revocation, and security boundaries.
 - **FR-70**: Product analytics shall be de-identified and limited to feature use, latency, failure category, knowledge-base count, and citation interaction, without question/answer/chunk/page-body content by default. MVP retains connector operational telemetry without billing or chargeback dashboards. *(Source: US-007; REQ-ANALYTICS-001, REQ-ANALYTICS-002, REQ-OPS-001)*
 - **FR-71**: Pilot and release gates require: versioned evaluation datasets for Dify, Git, Confluence, and cross-connector covering the required case classes; citation correctness ≥95%; grounded-answer pass rate ≥80%; authorization leakage = 0; separate scoring of citation, groundedness, completeness, refusal, authorization safety, coverage disclosure, and latency; versioned prompt/model/retrieval/KB-config changes with regression and security tests; each Source Profile through authentication/revocation, citation/original navigation, real-scale quality, latency/timeout/retry, delete/move/ACL propagation, degraded UX, kill switch/rollback, and Owner sign-off; completed spikes; one real-scale KB per Source Profile; and the four-week pilot with sustained-use metric approved before launch. Connector-specific numeric thresholds are empirical and not invented here. *(Source: Cross-cutting; REQ-EVAL-001, REQ-EVAL-002, REQ-EVAL-003, REQ-EVAL-004, REQ-EVAL-005, REQ-EVAL-006, REQ-EVAL-007, REQ-EVAL-008, REQ-EVAL-009, REQ-PILOT-001, REQ-PILOT-002, REQ-DONE-001, REQ-SEC-008, REQ-SEC-009)*
 
+### Local SME Model Gateway
+
+- **FR-72**: Users shall chat in Atlas. Retrieval, authorization, citations, evidence, and audit shall remain in Atlas. Atlas shall not move Chat into the SME web application. *(Source: US-001, US-004; ADR-0007)*
+- **FR-73**: Real grounded generation shall use the existing per-user local Go gateway. Atlas shall not call Copilot from the server, shall not ship a parallel gateway, and shall not operate a shared gateway or a shared Copilot token. The same gateway process may register to SME cloud and to one Atlas plane at once. Each gateway process shall register to at most one Atlas plane (`local` / `non-prod` / `prod`). *(Source: US-001, US-004; ADR-0007)*
+- **FR-74**: The gateway shall authenticate with the same corporate SSO subject as the Atlas session and shall open an outbound long-lived connection to Atlas. Atlas shall dispatch completions only on that channel and shall not dial the user's private IP or forward via SME cloud. Atlas shall implement the SME-cloud-compatible registration and completion protocol; the gateway change for Atlas is configuration of the Atlas URL. Payload shall be generic chat/completion. If the model-channel spike shows the protocol cannot carry that payload, config-only reuse is invalid. *(Source: US-001, US-004; ADR-0007)*
+- **FR-75**: Atlas shall keep at most one live registration per SSO subject. Heartbeat or TTL expiry shall take the registration offline. A new registration shall replace the previous one. Replacement during generation shall abort the in-flight completion as incomplete or failed and allow safe retry. *(Source: US-001, US-004; ADR-0007)*
+- **FR-76**: Without a live registration, Chat shall not generate except via the `local`/`non-prod` mock stub in FR-78. Browse and retrieval remain available. The composer shall be blocked or fail immediately; asks shall not queue until the gateway returns. If the gateway is registered but emits no tokens, Atlas shall time out, abort gateway-side generation, record generation failure, and allow retry. User cancel shall abort gateway-side generation; streaming shall be end-to-end. Incomplete or cancelled generation shall not be stored as a completed answer (FR-38). *(Source: US-004; REQ-CHAT-008, REQ-CHAT-009, REQ-FAIL-006; ADR-0007)*
+- **FR-77**: Successful Chat answers shall not display "generated via local gateway". Offline and failure states shall show the reason. Only the current user may see their gateway online/offline detail; Admins may see the global model-channel kill switch and aggregate counts, not per-user live endpoints. *(Source: US-001; REQ-SET-001; ADR-0007)*
+- **FR-78**: `local` and `non-prod` may use an Atlas mock model stub that can stream and cancel. The stub shall not receive real internal excerpts. Production generation requires a live user gateway. *(Source: US-004; REQ-SEC-006; ADR-0007)*
+- **FR-79**: Stub Chat, registry, and connector work may proceed without a live gateway. Real internal excerpts may reach the gateway (and therefore Copilot) only after the model-channel spike (protocol compatibility and company policy) passes. *(Source: US-004; REQ-SEC-006; ADR-0007)*
+- **FR-80**: An Atlas Admin model-channel kill switch shall stop all gateway generation. Registrations may remain; send is refused; the UI states that generation is unavailable. This control is independent of source disable / retrieval kill switch (FR-53) and does not require the source impact-preview path. *(Source: US-006; ADR-0007)*
+
 ---
 
 ## Non-Functional Requirements
@@ -217,13 +235,13 @@ conflict, revocation, and security boundaries.
 > Requirements marked `[INFERRED]` were not explicitly stated but are standard expectations for
 > this class of system. Stated story/requirements values take precedence over defaults.
 
-- **Security**: Corporate SSO; opaque `__Host-` session cookie; server-side provider secrets; least-privilege JIT provider auth; fail-closed authorization; untrusted retrieved content / prompt-injection containment; separate model-send authorization; classification inheritance; zero authorization leakage on the release evaluation set; security gate before pilot.
-- **Reliability**: Independent per-connector timeout, quota, concurrency, backoff, and circuit breaker; safe idempotent retry; no infinite retry; independent Source Profile degrade/suspend/rollback; kill switch stops new retrieval immediately.
+- **Security**: Corporate SSO; opaque `__Host-` session cookie; server-side GitHub/Confluence provider secrets; Copilot credentials only on the local gateway (ADR-0007); least-privilege JIT provider auth; fail-closed authorization; untrusted retrieved content / prompt-injection containment; separate model-send authorization; classification inheritance; zero authorization leakage on the release evaluation set; security gate before pilot.
+- **Reliability**: Independent per-connector timeout, quota, concurrency, backoff, and circuit breaker; safe idempotent retry; no infinite retry; independent Source Profile degrade/suspend/rollback; kill switch stops new retrieval immediately; model-channel kill switch stops all gateway generation.
 - **Auditability**: Content-free ordinary audit with user, time, KB/binding/connector, authorization result, locator/version identifiers, model id, latency, status, error category, and governance events; no complete prompts/bodies in ordinary audit; security audit retention separate from chat retention.
 - **Observability**: Connector-level request/success/failure/timeout counts, rate-limit and quota signals, latency, concurrency/backoff/circuit-breaker state, and retry-after without query or source bodies.
 - **Performance**: Under the approved normal-load profile: processing state ≤2s, stream start ≤5s, completion ≤20s P95. Global targets remain; connector-specific thresholds are calibrated from pilots before activation.
 - **Accessibility**: WCAG 2.1 AA for listed surfaces; mobile supports the reduced authenticated journey above.
-- **Environment support**: Real corporate SSO, GitHub Enterprise, Confluence variant, Dify, and enterprise model channel are required for activation evidence. Mock/synthetic data may support development where policy allows when a gate fails. `[INFERRED]` Distinct non-production and production configuration boundaries are expected; exact environment matrix is an architecture concern.
+- **Environment support**: Real corporate SSO, GitHub Enterprise, Confluence variant, Dify, and the local SME model gateway (ADR-0007) are required for activation evidence. Mock/synthetic data and the Atlas model stub may support development where policy allows when a gate fails. `[INFERRED]` Distinct non-production and production configuration boundaries are expected; exact environment matrix is an architecture concern.
 - **Data handling**: No full-document GitHub/Confluence persistence as source of truth; evidence cache isolation ADR-gated; chat history default 90 days and user-deletable.
 
 ---
@@ -286,12 +304,12 @@ flowchart TD
 
 ### Main Flow
 
-1. An employee signs in with corporate SSO and lands on Chat. Settings show identity, model eligibility, and provider connection state.
+1. An employee signs in with corporate SSO and lands on Chat. Settings show identity, local-gateway online/offline, and provider connection state.
 2. On first provider selection, Atlas starts JIT least-privilege authorization. The browser never holds provider tokens.
 3. The user discovers authorized knowledge bases. Private entries stay hidden. Catalog entries may show a request path without Atlas granting access.
 4. Browse-only Git and model-ineligible bases remain browsable where authorized but cannot enter Chat or be sent to a model.
 5. A verified KB Owner registers a Draft through the wizard. Connector Owner authorization and Content Audit run. Atlas Admin activates only when hard gates pass; otherwise the knowledge base stays Draft.
-6. The user selects one to five Chat-ready logical knowledge bases and asks a question. Atlas re-authorizes every selected knowledge base and binding, retrieves in parallel, fuses with Reciprocal Rank Fusion as a product constraint, and returns a cited answer or an explicit refusal / partial / conflict outcome.
+6. The user selects one to five Chat-ready logical knowledge bases and asks a question. If the local gateway is offline, generation is refused and Browse/retrieval remain available. Otherwise Atlas re-authorizes every selected knowledge base and binding, retrieves in parallel, fuses with Reciprocal Rank Fusion as a product constraint, and streams a cited answer through the live gateway channel, or returns an explicit refusal / partial / conflict outcome.
 7. The user opens citations in the Evidence Drawer and may navigate to the authorized original after re-authorization. Moved/Unavailable is explicit.
 8. Ordinary connector failure yields disclosed partial coverage. Missing complete-binding access excludes the knowledge base for that turn. Permission/security failures fail closed. Revocation redacts history content.
 9. Admins may disable or kill-switch a source after impact preview. Unrelated knowledge bases remain available. Restoration requires re-validation.
@@ -309,6 +327,7 @@ flowchart TD
 | Binding / Source | Provider-backed attachment to a logical KB | `binding_id`, provider profile, source identity, role (canonical/mirror/supplemental), auth method, health, freshness policy, evidence-locator rule, credential owner, feature flag / kill switch |
 | Atlas Session | Authenticated user session | Opaque session id, SSO identity, idle/absolute expiry, CSRF protection |
 | Provider Connection | Delegated GitHub/Confluence authorization | Provider, granted scope, expiry, last verified, reconnect-required |
+| Gateway Registration | Live local SME gateway channel for generation | SSO subject, channel id, expiry/heartbeat, Atlas plane; at most one live row per subject |
 | Chat / Answer | Private conversation turn results | Scope of logical KBs, configuration version, binding set, citation ids, completion state |
 | Evidence / Citation | Traceable claim support | Locator, version, excerpt metadata, Owner, classification, verification time |
 | Issue Report | Lightweight routed feedback | Category, non-sensitive diagnostics, routing target |
@@ -370,7 +389,7 @@ flowchart TD
 - GitHub Enterprise: delegated auth, Browse tree/preview, `.kb` Chat retrieval, webhooks/polling, historical commit fetch
 - Confluence (company variant): user-context APIs, Space-scoped retrieval, page/attachment versions, existing correction workflow
 - Dify + AMH pipeline: retrieval over existing corpus; Atlas does not replace ingestion/vectorization
-- Enterprise model channel (intended GitHub Copilot Business/Enterprise subject to spike): streaming generation under per-user entitlement
+- Local SME Go gateway (intended GitHub Copilot Business/Enterprise on the user machine, subject to TASK-022): outbound registration to Atlas; streaming generation under the same SSO subject
 - HASE `kb-correct` / contribution flow: Git corrections
 - Company security workflow: classification approval and incident intake
 
@@ -378,13 +397,13 @@ flowchart TD
 - SSO authentication (inbound to Atlas session)
 - Provider delegated authorization and resource APIs (outbound)
 - Dify retrieval/metadata APIs (outbound; spike-gated)
-- Model channel streaming/cancellation APIs (outbound; spike-gated)
+- Model gateway registration and completion-dispatch (inbound long-lived channel from the local gateway; spike-gated)
 - Webhook/event receivers and reconciliation jobs for update/move/delete/ACL (inbound/outbound as applicable)
 
 **Credentials / secrets:**
 - Atlas session cookie: browser-held opaque session only
 - Provider access/refresh tokens: server-side approved secret boundary only; product requires ADR
-- Model-channel credentials: server-side; must not bypass per-user entitlement
+- Model-channel credentials: Copilot tokens remain only on the local gateway; Atlas stores registration metadata only (ADR-0007)
 - AMH vectorization service account: not reused by default for Atlas bindings
 
 **Dependency assumptions:**
@@ -465,6 +484,8 @@ The following are explicitly excluded from this feature:
 | OQ-12 | What operational definition of sustained use will the pilot use? | US-006 / REQ-PILOT-002 | Product |
 | OQ-13 | What request-ID format should support appear on the report receipt? | US-007 | Eng / Support |
 | OQ-14 | Which security mailbox or intake path should system/security reports use? | US-007 | Security |
+| OQ-15 | Does the existing SME gateway wire protocol accept generic chat/completion payloads without a gateway code change? | US-004 / ADR-0007 | Model-channel spike |
+| OQ-16 | Is the outbound long-lived channel WebSocket, long-poll, or another SME-compatible transport? | US-004 / ADR-0007 | Model-channel spike |
 
 ---
 
@@ -474,6 +495,7 @@ Before `spec-to-architecture` treats a Source Profile or model channel as feasib
 
 1. Complete Dify, GitHub Enterprise, Confluence, and model-channel spikes from the requirements validation gates.
 2. Record ADRs for the eight architecture-impacting decision areas listed in requirements §18.7.
-3. Carry FR-10, FR-28, FR-54, and FR-63–FR-71 as system constraints, not optional appendix items.
+3. Carry FR-10, FR-28, FR-54, FR-63–FR-80 as system constraints, not optional appendix items.
 4. Do not reopen ordinary-Git Chat or Atlas-owned Git index generation.
 5. Keep open numeric thresholds as named gates; do not invent connector-specific numbers.
+6. Treat ADR-0007 as the model-channel topology; do not restore server-side Copilot tokens without a superseding ADR.
