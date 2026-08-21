@@ -31,10 +31,10 @@
 | 能力方向 | 已验证价值 | 当前适用对象 / 场景 | 主要限制与待验证项 |
 |---|---|---|---|
 | **AMH Knowledge Base** | Dify + GitHub Copilot 已经过上万份真实文档验证，对多数常见企业文档类型具备较好的适用性 | 当前更适合 IT 用户、已有 GitHub Copilot 许可的用户，以及大规模文档 Knowledge Retrieval | 面向 RTF / BIZ 用户时，GitHub Copilot 不是自然入口；仍需补充非 GitHub 体验、授权覆盖和业务流程集成。复杂 OCR / Layout 的质量仍需持续提升 |
-| **HASE AI Knowledge Workspace** | Git Markdown + Skill + Copilot，Lightweight、Quick start、Developer-friendly，基础设施依赖较低 | 适合以 Markdown 为主、已使用 GitHub Workflow 的技术知识，以及小到中等规模的快速落地 | 当前方案只支持 Markdown；同时受 GitHub 容量与工作方式约束。普通 Git 单对象超过 100 MiB 会被阻止，仓库理想情况下应小于 1 GB，并强烈建议小于 5 GB[^github-limits]。大规模 Retrieval、权限、生命周期与索引维护仍需验证 |
+| **HASE AI Knowledge Workspace** | Git Markdown + Skill + Copilot，Lightweight、Quick start、Developer-friendly，基础设施依赖较低 | 适合以 Markdown 为主、已使用 GitHub Workflow 的技术知识，以及小到中等规模的快速落地 | 当前方案只支持 Markdown；同时受 GitHub 容量与工作方式约束。普通 Git 单文件约 100 MB（GitHub 官方限制为 100 MiB），仓库理想情况下应小于 1 GB，并强烈建议小于 5 GB[^github-limits]。大规模 Retrieval、权限、生命周期与索引维护仍需验证 |
 | **SOL** | 提出了 Object 360、Code Explanation、Application Mapping、Flow、Lineage、Impact Analysis 和 Diagnosis 等目标能力 | 适合代码、系统关系、数据流、影响分析和运行诊断等 System Knowledge 场景 | 需要按具体 Value Stream 明确优先 Use Case、数据来源、交互入口、Evidence 和生产责任 |
 
-[^github-limits]: [GitHub Docs — About large files on GitHub](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github)：网页上传单文件上限为 25 MiB；普通 Git 对超过 100 MiB 的文件进行阻止；仓库理想情况下小于 1 GB，并强烈建议小于 5 GB。资料核对日期：2026-08-21。
+[^github-limits]: [GitHub Docs — About large files on GitHub](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github)：网页上传单文件上限为 25 MiB；普通 Git 对超过 100 MiB 的文件进行阻止（管理层展示中简写为约 100 MB）；仓库理想情况下小于 1 GB，并强烈建议小于 5 GB。资料核对日期：2026-08-21。
 
 ## 三、这次 Alignment 得到的主要认识
 
@@ -76,7 +76,7 @@ HASE 当前方案的优势包括：
 - Markdown 对 LLM 友好
 - 适合 Git 管理的技术与工程知识
 
-当前方案主要支持 Markdown，并天然更适合 GitHub 用户和技术知识。普通 Git 单对象超过 100 MiB 会被 GitHub 阻止；官方建议仓库保持较小，理想情况下小于 1 GB，并强烈建议小于 5 GB。这里的 5 GB 是官方建议值，不是单一硬上限。[^github-limits]
+当前方案主要支持 Markdown，并天然更适合 GitHub 用户和技术知识。普通 Git 单文件约 100 MB（GitHub 官方限制为 100 MiB）；官方建议仓库保持较小，理想情况下小于 1 GB，并强烈建议小于 5 GB。这里的 5 GB 是官方建议值，不是单一硬上限。[^github-limits]
 
 未来走向更大规模时，需要进一步验证：
 
