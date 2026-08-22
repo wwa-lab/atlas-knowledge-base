@@ -86,7 +86,12 @@ function currentBindingFingerprint(): string {
   return bindingFingerprint(bindings.value)
 }
 
-const isDraftDirty = computed(() => Boolean(draft.value) && (lastSavedFingerprint.value === null || draftFingerprint() !== lastSavedFingerprint.value))
+const isDraftDirty = computed(() => {
+  if (!draft.value) return false
+  const draftChanged = lastSavedFingerprint.value === null || draftFingerprint() !== lastSavedFingerprint.value
+  const bindingsNotPersisted = bindings.value.length > 0 && lastSavedBindingFingerprint.value === null
+  return draftChanged || bindingsNotPersisted
+})
 
 function safeApiPath(value: string | undefined): string | undefined {
   if (!value?.trim()) return undefined

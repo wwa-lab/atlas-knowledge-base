@@ -48,3 +48,12 @@ Review comment:
 
 - [P2] Avoid replacing bindings after Content Audit — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:205-205
   When an owner has already run Content Audit and then edits anything before final handoff, `saveDraft(true)` sends the full `bindings` array again. The backend PATCH replaces bindings by deleting/reinserting them, but audited bindings are referenced by `content_audit_result`, so this normal post-audit edit path can fail instead of allowing a fresh audit or safe handoff. Track that an audit has run and either avoid sending unchanged bindings, lock binding edits after audit, or use a backend path that can update audited bindings safely.
+
+## Gate A — fresh review after audited-handoff fix (verbatim)
+
+The wizard can mark unsent source bindings as saved, which breaks a normal back-and-edit flow and prevents the owner from successfully validating the configured sources.
+
+Review comment:
+
+- [P2] Don't skip saving bindings that were never sent — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:192-194
+  If an owner creates a draft, goes back to Basics, and saves metadata before the Sources step, `saveDraft(false)` records the full draft fingerprint even though the PATCH omits `bindings`. Later `saveDraft(true)` can hit this early return while `lastSavedBindingFingerprint` is still null, so the binding set is never sent and the connection test/audit runs against a draft with no sources. Keep the draft dirty for binding saves until the binding fingerprint has actually been persisted.
