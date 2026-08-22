@@ -2,7 +2,7 @@ package com.atlas.knowledgebase.issues;
 
 import java.time.Instant;
 
-/** Immutable persistence row for the content-free issue report. */
+/** Immutable persistence row for an issue report and its separately governed reporter note. */
 public record IssueReportRecord(
         String issueId,
         String userId,
@@ -10,5 +10,6 @@ public record IssueReportRecord(
         String citationId,
         String category,
         String diagnosticsJson,
+        String reportNote,
         String routeTarget,
         Instant createdAt) {}

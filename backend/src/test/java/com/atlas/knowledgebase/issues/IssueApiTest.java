@@ -84,6 +84,7 @@ class IssueApiTest {
                 reports.findById(latestIssueId(owner.userId())).orElseThrow();
         assertThat(report.category()).isEqualTo("citation");
         assertThat(report.routeTarget()).isEqualTo("kb_correct_flow");
+        assertThat(report.reportNote()).isEqualTo("Line range looks wrong");
         assertThat(report.diagnosticsJson())
                 .doesNotContain("Line range looks wrong")
                 .doesNotContain("secret prompt body")
@@ -173,6 +174,20 @@ class IssueApiTest {
         postIssue(owner, fixture.messageId(), fixture.citationId(), "unsupported")
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("CATEGORY_INVALID"));
+    }
+
+    @Test
+    void messageOnlyReportsRequireCompletedAnswers() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        Fixture fixture = fixture(owner, "git_markdown");
+        jdbcTemplate.update(
+                "UPDATE chat_message SET status = ?, completed_at = NULL WHERE message_id = ?",
+                "failed",
+                fixture.messageId());
+
+        postIssue(owner, fixture.messageId(), null, "retrieval")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("ISSUE_MESSAGE_NOT_FOUND"));
     }
 
     private org.springframework.test.web.servlet.ResultActions postIssue(

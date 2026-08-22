@@ -308,11 +308,15 @@ governed mutation, so a failed stale-state or source-validation check rolls it b
 | citation_id | String | Yes | Related citation |
 | category | Enum | No | `content` \| `citation` \| `retrieval` \| `permission_connection` \| `model` \| `system_security` |
 | diagnostics | JSON | No | Allow-listed ids only |
+| report_note | CLOB | Yes | Explicit reporter-authored context, application-bounded; separate from diagnostics and ordinary audit |
 | route_target | String | No | Owner/Connector/Atlas/Security target |
 | created_at | Timestamp | No | Created |
 
 - **PK:** `issue_id`
 - Must not automatically store full prompt/evidence/answer body
+- `report_note` is explicit user-authored issue context, capped by the API and kept out of
+  allow-listed diagnostics, ordinary audit details, and automatic prompt/evidence/answer
+  attachments.
 
 ### audit_event
 

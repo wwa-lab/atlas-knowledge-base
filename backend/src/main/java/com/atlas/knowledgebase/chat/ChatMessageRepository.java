@@ -94,6 +94,7 @@ public class ChatMessageRepository {
                           AND t.user_id = ?
                           AND t.deleted_at IS NULL
                           AND m.message_role = 'assistant'
+                          AND m.status = 'completed'
                         """,
                         ROW_MAPPER,
                         messageId,

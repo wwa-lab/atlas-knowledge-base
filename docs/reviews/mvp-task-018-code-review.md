@@ -251,3 +251,130 @@ None identified.
 ## Gate A Verdict
 - **Pass**
 - **Critical/Major remaining:** None
+
+---
+
+# Code vs Design Review Report — TASK-018 (Gate B)
+
+## Review Scope
+- **Design reviewed:** `docs/05-design/mvp-design.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`, `docs/03-spec/mvp-spec.md`, `docs/02-user-stories/mvp-user-stories.md`, `docs/06-tasks/mvp-tasks.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` (`TASK-018`)
+- **Code / files inspected:** `backend/src/main/java/com/atlas/knowledgebase/issues/*`, `backend/src/main/java/com/atlas/knowledgebase/chat/ChatMessageRepository.java`, `backend/src/test/java/com/atlas/knowledgebase/issues/IssueApiTest.java`, schema in `backend/src/main/resources/db/migration/V2__core_entities.sql`
+- **Review objective:** Independent Gate B review of PR #36 (`git diff origin/main...HEAD`, excluding `docs/reviews/mvp-task-018-code-review.md`) against the accepted TASK-018 issue-routing contract.
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 82%
+- **Verdict:** Partially aligned
+- **Rationale:** The implementation correctly enforces authenticated session + CSRF, hides cross-user ownership, keeps persisted diagnostics/audit content-free, and maps the main provider/category routes required by TASK-018. Two contract gaps remain: the user-supplied `note` is accepted then discarded everywhere, and message-only reports are not restricted to completed answers even though the accepted story/spec define issue reporting “from an answer.” Those are behavioral gaps in the report-creation contract, not just test omissions.
+
+---
+
+## Areas of Good Alignment
+- Cross-user message/citation ownership is fail-closed and does not disclose whether another user’s content exists. `findOwnedAssistantById` scopes to the caller’s thread and `findOwnedByCitationId` does the same for citations.
+- Content-free persistence is preserved. `issue_report.diagnostics`, API response `diagnostics`, and `audit_event.details` exclude prompt, answer, excerpt, and the free-text note.
+- Category routing matches the accepted source workflow split for Git, Confluence, Dify, Connector Owner, Atlas team, and security intake.
+- Mutating `/api/v1/issues` requests inherit the existing session + CSRF boundary and the focused test suite covers CSRF rejection and cross-user denial.
+
+---
+
+## Misalignments and Gaps
+
+### Major
+`note` is part of the accepted request contract but is dropped completely
+- **Design / task expected:** The accepted API contract for `POST /issues` includes a `note` field in the request body (`docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md:849-856`). An issue report is supposed to be a routed feedback object, not just a route lookup.
+- **Code currently does:** `IssueService.create()` validates `command.note()` and then never persists it, never includes it in any routed payload, and never audits any content-free surrogate for it. The storage model also has no `note` column or alternate destination. See `IssueService.java:77-78`, `124-133`, `197-222`; `IssueReportRecord.java:5-14`; `V2__core_entities.sql:204-216`.
+- **Why it matters:** The endpoint currently accepts user-authored issue context and silently discards it. That means operators only receive category + IDs, not the user’s actual problem statement. This weakens the core “report issue” behavior rather than being an optional embellishment.
+- **Recommended fix:** Persist the note in a deliberately scoped way that still respects the “no automatic full prompt/evidence/answer body” rule, and add tests proving the note survives report creation without leaking sensitive answer/source bodies.
+
+### Minor
+Message-only reports are not limited to completed answers
+- **Design / task expected:** US-007 / FR-58 define issue reporting “from an answer,” and the citation ownership query already enforces `m.status = 'completed'`.
+- **Code currently does:** `ChatMessageRepository.findOwnedAssistantById()` accepts any assistant message in the user’s active thread, including `processing`, `streaming`, `failed`, or `incomplete_cancelled` rows. `IssueService.create()` uses that method for message-only categories, then echoes `message.status()` into diagnostics. See `ChatMessageRepository.java:85-102`, `IssueService.java:80-89`, `143-166`.
+- **Why it matters:** The accepted surface is answer-scoped, but the implementation broadens it to non-answer assistant placeholders and failed attempts. That creates contract drift and a path the tests do not cover.
+- **Recommended fix:** Restrict message ownership lookup for issue reporting to completed assistant answers, or explicitly update the accepted design/spec if non-completed assistant states are intended to be reportable.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Session + CSRF protection on `POST /issues` | Implemented |
+| Cross-user ownership protection | Implemented |
+| Category validation | Implemented |
+| Provider/category route mapping | Implemented |
+| Content-free diagnostics | Implemented |
+| Content-free audit | Implemented |
+| No prompt/evidence/answer-body attachment | Implemented |
+| Persisting a meaningful routed report payload | Partial |
+| Restricting reports to answer/citation context | Partial |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: category classification, allow-listed diagnostics, source/connector/Atlas/security route mapping, content-free persistence, CSRF/session inheritance.
+- Tasks partially implemented: complete routed-report payload semantics; strict answer-only scope for message-only reports.
+- Tasks not yet reflected in code: none beyond the gaps above.
+- Code changes not clearly mapped to any task: none identified.
+
+**Behaviors implemented but not clearly supported by design:**
+- Accepting message-only reports for non-completed assistant rows.
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified
+- **Misplaced responsibilities:** None identified
+- **Coupling issues:** None identified
+- **Hidden shortcuts:** Silent note discard is a behavioral shortcut in the report path.
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** Partially aligned; report creation works, but message-only reporting is broader than the accepted “from an answer” scope.
+- **Validation behavior:** Mostly aligned; identifier/category/note-length validation is present and cross-user lookups fail closed.
+- **Retry / skip / resume / failure handling:** Not applicable
+- **User-visible behavior:** The endpoint accepts a `note` field that has no downstream effect.
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned
+- **External system handling:** Aligned within current MVP stub scope; route targets are emitted, not externally dispatched.
+- **Secret / credential safety:** Aligned
+- **Logging / audit hooks:** Aligned for content-free issue-report audit
+- **Error propagation at integration boundaries:** Aligned with shared API error envelope
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge / testing / next implementation step — Conditional
+- **Blockers before proceeding:** Preserve the user-entered `note` in the report flow.
+- **Acceptable deviations:** None beyond documented Minor gap.
+- **Required corrections:** Ensure the accepted request contract does not silently drop `note`.
+
+---
+
+## Recommended Fixes
+1. Add durable, scoped handling for `note` so `POST /issues` creates an actual report rather than only a route+diagnostics record.
+2. Tighten message-only issue creation to completed assistant answers, or update the accepted artifacts if broader state coverage is intended.
+3. Extend `IssueApiTest` to prove note persistence semantics and reject or define non-completed message behavior.
+
+## Minimal Fix Path
+- Extend the report persistence model/service to carry `note` safely.
+- Add one regression test asserting the note survives report creation without leaking prompt/answer/source bodies.
+- Add one regression test for message-only reporting against a non-completed assistant message and enforce the intended outcome.
+
+---
+
+## Open Risks / Questions
+- The accepted docs show `note` in the API contract but do not yet specify exactly where it must be stored or surfaced; severity reduced from Critical to Major for that ambiguity.
+- If product intent is to allow issue reports on failed/processing assistant states, the spec/design should say so explicitly; right now the accepted wording points to completed answers.
+
+## Verification
+- `git diff --check origin/main...HEAD -- . ':(exclude)docs/reviews/mvp-task-018-code-review.md'` — passed
+- `./mvnw -q -pl backend -Dtest=IssueApiTest test` — passed
+
+## Gate B Verdict
+- **Pass:** No
+- **Reason:** One Major design-contract gap remains (`note` is accepted then discarded). The branch is close, but not ready for Gate B pass on the accepted TASK-018 contract.

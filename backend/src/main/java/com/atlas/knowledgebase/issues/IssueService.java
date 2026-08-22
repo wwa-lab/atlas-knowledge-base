@@ -75,7 +75,7 @@ public class IssueService {
                     "ISSUE_CONTEXT_REQUIRED", "Provide the assistant message_id or citation_id that has the issue.");
         }
         IssueCategory category = IssueCategory.parse(command.category());
-        validateNote(command.note());
+        String reportNote = normalizeNote(command.note());
 
         ChatMessageRecord message =
                 messageId == null
@@ -129,6 +129,7 @@ public class IssueService {
                         citation == null ? null : citation.citationId(),
                         category.wireName(),
                         writeJson(diagnostics),
+                        reportNote,
                         routeTarget,
                         clock.instant()));
         audit(user, issueId, category, routeTarget, context);
@@ -248,15 +249,16 @@ public class IssueService {
         return normalized;
     }
 
-    private void validateNote(String value) {
+    private String normalizeNote(String value) {
         if (value == null || value.isBlank()) {
-            return;
+            return null;
         }
         String normalized = value.trim();
         if (normalized.length() > MAX_NOTE_LENGTH) {
             throw IssueException.validation(
                     "NOTE_TOO_LONG", "note must be at most " + MAX_NOTE_LENGTH + " characters.");
         }
+        return normalized;
     }
 
     private String firstString(String json) {

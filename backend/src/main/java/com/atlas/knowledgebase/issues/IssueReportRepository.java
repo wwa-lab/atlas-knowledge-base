@@ -20,6 +20,7 @@ public class IssueReportRepository {
                             rs.getString("citation_id"),
                             rs.getString("category"),
                             rs.getString("diagnostics"),
+                            rs.getString("report_note"),
                             rs.getString("route_target"),
                             rs.getTimestamp("created_at").toInstant());
 
@@ -36,8 +37,8 @@ public class IssueReportRepository {
                 """
                 INSERT INTO issue_report (
                   issue_id, user_id, message_id, citation_id, category, diagnostics,
-                  route_target, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  report_note, route_target, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 report.issueId(),
                 report.userId(),
@@ -45,6 +46,7 @@ public class IssueReportRepository {
                 report.citationId(),
                 report.category(),
                 report.diagnosticsJson(),
+                report.reportNote(),
                 report.routeTarget(),
                 Timestamp.from(created));
         return findById(report.issueId()).orElseThrow();
