@@ -4,6 +4,7 @@ import { RouterLink, RouterView } from 'vue-router'
 
 <template>
   <div class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="app-header">
       <p class="app-title">Atlas Knowledge Base</p>
       <nav aria-label="Primary">
@@ -14,7 +15,7 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/admin">Admin</RouterLink>
       </nav>
     </header>
-    <main class="app-main">
+    <main id="main-content" class="app-main" tabindex="-1">
       <RouterView />
     </main>
   </div>

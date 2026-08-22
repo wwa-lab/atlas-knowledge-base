@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import {
@@ -101,6 +101,8 @@ const preview = ref<BrowsePreview | null>(null)
 const browseLoading = ref(false)
 const previewLoading = ref(false)
 const selectedPath = ref('')
+const detailTitle = ref<HTMLElement | null>(null)
+const catalogTitle = ref<HTMLElement | null>(null)
 let catalogRequestId = 0
 
 const selectedId = computed(() => {
@@ -159,7 +161,11 @@ async function loadDetail(logicalKbId: string | undefined): Promise<void> {
   error.value = ''
   try {
     const loaded = await request<CatalogDetail>(`/api/v1/knowledge-bases/${encodeURIComponent(logicalKbId)}`)
-    if (selectedId.value === logicalKbId) detail.value = loaded
+    if (selectedId.value === logicalKbId) {
+      detail.value = loaded
+      await nextTick()
+      detailTitle.value?.focus()
+    }
   } catch (cause) {
     if (selectedId.value === logicalKbId) {
       error.value = cause instanceof CatalogApiError || cause instanceof Error
@@ -231,22 +237,27 @@ function filterLabel(value: string | undefined): string {
   return displayStatus(value)
 }
 
+function domId(prefix: string, value: string): string {
+  return `${prefix}-${value.replace(/[^A-Za-z0-9_-]/g, '-')}`
+}
+
 onMounted(() => {
   void loadCatalog()
 })
 
 watch(selectedId, (value) => {
   void loadDetail(value)
+  if (!value) void nextTick(() => catalogTitle.value?.focus())
 }, { immediate: true })
 </script>
 
 <template>
-  <section class="catalog-page">
+  <section class="catalog-page" :aria-labelledby="isDetail ? 'catalog-detail-title' : 'catalog-title'">
     <template v-if="!isDetail">
       <header class="catalog-header">
         <div>
           <p class="eyebrow">Discovery and Browse</p>
-          <h1>Knowledge bases</h1>
+          <h1 id="catalog-title" ref="catalogTitle" tabindex="-1">Knowledge bases</h1>
           <p class="lede">
             Find authorized sources, inspect their capability and health, and open source-provided content.
             Search matches logical metadata only.
@@ -255,7 +266,7 @@ watch(selectedId, (value) => {
         <span class="thread-status">{{ items.length }} visible</span>
       </header>
 
-      <form class="catalog-filters" @submit.prevent="loadCatalog()">
+      <form class="catalog-filters" aria-label="Filter knowledge bases" @submit.prevent="loadCatalog()">
         <label class="filter-search">
           <span>Search metadata</span>
           <input v-model="filters.q" type="search" placeholder="Name, Owner, or description" />
@@ -315,7 +326,7 @@ watch(selectedId, (value) => {
         No discoverable knowledge bases match these filters.
       </p>
 
-      <ul v-if="items.length" class="catalog-grid">
+      <ul v-if="items.length" class="catalog-grid" aria-label="Knowledge base results">
         <li v-for="item in items" :key="item.logical_kb_id" class="catalog-card">
           <article>
             <div class="catalog-card-heading">
@@ -329,8 +340,8 @@ watch(selectedId, (value) => {
             </div>
             <p v-if="item.description" class="catalog-description">{{ item.description }}</p>
             <p v-else class="empty-small">Description is not available for this access level.</p>
-            <div v-if="item.source_badges?.length" class="badge-row" aria-label="Source providers">
-              <span v-for="badge in item.source_badges" :key="badge" class="count-badge">{{ badge }}</span>
+            <div v-if="item.source_badges?.length" class="badge-row" role="list" aria-label="Source providers">
+              <span v-for="badge in item.source_badges" :key="badge" class="count-badge" role="listitem">{{ badge }}</span>
             </div>
             <dl class="catalog-facts">
               <div><dt>Owner</dt><dd>{{ item.owner || 'Not reported' }}</dd></div>
@@ -379,7 +390,7 @@ watch(selectedId, (value) => {
           <div>
             <button class="button button-secondary" type="button" @click="closeDetail">← Back to catalog</button>
             <p class="eyebrow">{{ detail.logical_kb_id }}</p>
-            <h1>{{ detail.name }}</h1>
+            <h1 id="catalog-detail-title" ref="detailTitle" tabindex="-1">{{ detail.name }}</h1>
             <p v-if="detail.description" class="lede">{{ detail.description }}</p>
           </div>
           <RouterLink
@@ -453,6 +464,8 @@ watch(selectedId, (value) => {
                 v-if="detail.content?.browse_available && detail.access?.authorized === true"
                 class="button button-secondary"
                 type="button"
+                aria-controls="source-tree"
+                :aria-expanded="Boolean(tree)"
                 :disabled="browseLoading"
                 @click="loadTree"
               >
@@ -469,24 +482,25 @@ watch(selectedId, (value) => {
               <p v-if="safeExternalUrl(tree.original_url)" class="original-link">
                 <a :href="safeExternalUrl(tree.original_url)" target="_blank" rel="noreferrer">Open original source</a>
               </p>
-              <ul class="tree-list" aria-label="Source tree">
+              <ul id="source-tree" class="tree-list" aria-label="Source tree">
                 <li v-for="entry in tree.entries ?? []" :key="entry.path">
                   <button
                     v-if="entry.type === 'file'"
                     class="tree-entry tree-entry-file"
                     type="button"
                     :class="{ 'tree-entry-selected': selectedPath === entry.path }"
+                    :aria-current="selectedPath === entry.path ? 'true' : undefined"
                     @click="loadPreview(entry.path)"
                   >
-                    📄 {{ entry.path }}
+                    <span aria-hidden="true">📄</span> {{ entry.path }}
                   </button>
-                  <span v-else class="tree-entry">📁 {{ entry.path }}</span>
+                  <span v-else class="tree-entry"><span aria-hidden="true">📁</span> {{ entry.path }}</span>
                 </li>
               </ul>
               <p v-if="previewLoading" class="notice notice-muted" role="status">Loading preview…</p>
-              <article v-if="preview" class="preview-panel">
+              <article v-if="preview" class="preview-panel" :aria-labelledby="domId('preview-title', selectedPath)">
                 <div class="panel-heading">
-                  <h3>{{ preview.path }}</h3>
+                  <h3 :id="domId('preview-title', selectedPath)">{{ preview.path }}</h3>
                   <a v-if="safeExternalUrl(preview.original_url)" :href="safeExternalUrl(preview.original_url)" target="_blank" rel="noreferrer">Original</a>
                 </div>
                 <pre>{{ preview.markdown || 'No preview content was returned.' }}</pre>

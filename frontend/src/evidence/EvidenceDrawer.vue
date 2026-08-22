@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { AtlasApiError, errorCode, request } from '../api/atlasApi'
 import { safeExternalUrl } from '../catalog/catalogUtils'
@@ -33,6 +33,9 @@ type OpenOriginalResult = {
 
 const props = defineProps<{ citationId: string }>()
 const emit = defineEmits<{ close: [] }>()
+const drawer = ref<HTMLElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
+const previousFocus = ref<HTMLElement | null>(null)
 const evidence = ref<EvidenceProjection | null>(null)
 const loading = ref(true)
 const opening = ref(false)
@@ -41,6 +44,16 @@ const originalUrl = ref('')
 const openStatus = ref('')
 let loadRequestId = 0
 let openRequestId = 0
+
+const focusableSelector = [
+  'button:not([disabled])',
+  'a[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'summary',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
 
 const locatorText = computed(() => {
   if (!evidence.value?.locator) return 'Not reported'
@@ -109,6 +122,47 @@ function resetOpenState(): void {
   openStatus.value = ''
 }
 
+function trapFocus(event: KeyboardEvent): void {
+  if (event.key !== 'Tab') return
+  const container = drawer.value
+  if (!container) return
+  const focusable = Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
+  if (focusable.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (!container.contains(document.activeElement)) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first).focus()
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+    return
+  }
+  trapFocus(event)
+}
+
+onMounted(() => {
+  previousFocus.value = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  void nextTick(() => closeButton.value?.focus())
+})
+
+onBeforeUnmount(() => {
+  previousFocus.value?.focus()
+})
+
 watch(() => props.citationId, () => {
   resetOpenState()
   void load()
@@ -116,13 +170,22 @@ watch(() => props.citationId, () => {
 </script>
 
 <template>
-  <aside class="evidence-drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title">
+  <aside
+    ref="drawer"
+    class="evidence-drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="evidence-title"
+    aria-describedby="evidence-description"
+    @keydown="handleKeydown"
+  >
     <div class="evidence-drawer-header">
       <div>
         <p class="eyebrow">Private evidence</p>
         <h2 id="evidence-title">Evidence Drawer</h2>
+        <p id="evidence-description" class="sr-only">Review verified provenance and open the source original. Press Escape to close.</p>
       </div>
-      <button class="button button-secondary" type="button" aria-label="Close Evidence Drawer" @click="emit('close')">Close</button>
+      <button ref="closeButton" class="button button-secondary" type="button" aria-label="Close Evidence Drawer" @click="emit('close')">Close</button>
     </div>
     <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
     <div v-if="loading" class="loading-state" role="status" aria-live="polite">Re-authorizing evidence…</div>
