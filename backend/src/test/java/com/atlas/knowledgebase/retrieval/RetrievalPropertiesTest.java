@@ -16,6 +16,9 @@ class RetrievalPropertiesTest {
         properties.setProviderTimeouts(
                 Map.of("dify", Duration.ofSeconds(1), "confluence", Duration.ofSeconds(3)));
         properties.setProviderConcurrency(Map.of("dify", 2, "confluence", 5));
+        properties.setProviderQuotaLimits(Map.of("dify", 10, "confluence", 25));
+        properties.setProviderQuotaWindows(
+                Map.of("dify", Duration.ofMinutes(1), "confluence", Duration.ofMinutes(5)));
         properties.setProviderEnabled(Map.of("dify", true, "confluence", false));
         properties.setProviderBackoffs(
                 Map.of("dify", Duration.ofMillis(250), "confluence", Duration.ofSeconds(2)));
@@ -29,6 +32,8 @@ class RetrievalPropertiesTest {
         assertThat(properties.timeoutFor("confluence")).isEqualTo(Duration.ofSeconds(3));
         assertThat(properties.concurrencyFor("dify")).isEqualTo(2);
         assertThat(properties.concurrencyFor("confluence")).isEqualTo(5);
+        assertThat(properties.quotaLimitFor("dify")).isEqualTo(10);
+        assertThat(properties.quotaWindowFor("confluence")).isEqualTo(Duration.ofMinutes(5));
         assertThat(properties.enabled("dify")).isTrue();
         assertThat(properties.enabled("confluence")).isFalse();
         assertThat(properties.backoffFor("dify")).isEqualTo(Duration.ofMillis(250));
@@ -42,6 +47,8 @@ class RetrievalPropertiesTest {
         RetrievalProperties properties = new RetrievalProperties();
         properties.setProviderTimeouts(Map.of("dify", Duration.ZERO));
         properties.setProviderConcurrency(Map.of("dify", 0));
+        properties.setProviderQuotaLimits(Map.of("dify", 0));
+        properties.setProviderQuotaWindows(Map.of("dify", Duration.ZERO));
         properties.setProviderEnabled(Map.of("dify", true));
         properties.setProviderBackoffs(Map.of("dify", Duration.ZERO));
         properties.setProviderCircuitFailureThresholds(Map.of("dify", 0));

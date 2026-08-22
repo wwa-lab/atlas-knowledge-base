@@ -138,6 +138,7 @@ public class RetrievalOrchestrator {
             BindingWork item = authorization.item();
             String logicalKbId = item.kb().logicalKbId();
             String bindingId = item.binding().bindingId();
+            captureRetryAfter(retryAfter, bindingId, authorization.result().retryAfter());
             switch (authorization.result().outcome()) {
                 case AUTHORIZED -> {
                     retrievalWork.add(item);
@@ -151,10 +152,12 @@ public class RetrievalOrchestrator {
                     }
                 }
                 case QUOTA -> {
-                    providerExecution.recordFailure(
-                            item.binding().providerProfile(), authorization.result().retryAfter());
+                    recordFailure(
+                            item.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.QUOTA,
+                            authorization.result().retryAfter(),
+                            authorization.providerRejected());
                     quotaLimited.add(bindingId);
-                    retryAfter.put(bindingId, authorization.result().retryAfter().toString());
                     quotaKbs.add(logicalKbId);
                     if (blockKb == null) {
                         blockKb = logicalKbId;
@@ -162,7 +165,11 @@ public class RetrievalOrchestrator {
                     }
                 }
                 case TIMEOUT -> {
-                    providerExecution.recordFailure(item.binding().providerProfile(), null);
+                    recordFailure(
+                            item.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.TIMEOUT,
+                            null,
+                            authorization.providerRejected());
                     timedOut.add(bindingId);
                     unavailableKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -171,7 +178,11 @@ public class RetrievalOrchestrator {
                     }
                 }
                 case FAILED -> {
-                    providerExecution.recordFailure(item.binding().providerProfile(), null);
+                    recordFailure(
+                            item.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.RETRIEVAL,
+                            null,
+                            authorization.providerRejected());
                     failed.add(bindingId);
                     unavailableKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -190,7 +201,11 @@ public class RetrievalOrchestrator {
                     audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "fail_closed");
                 }
                 case UNKNOWN -> {
-                    providerExecution.recordFailure(item.binding().providerProfile(), null);
+                    recordFailure(
+                            item.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.UNKNOWN,
+                            null,
+                            authorization.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -233,20 +248,31 @@ public class RetrievalOrchestrator {
             cancellation.throwIfCancelled();
             String bindingId = outcome.binding().bindingId();
             String logicalKbId = outcome.logicalKbId();
+            captureRetryAfter(retryAfter, bindingId, outcome.result().retryAfter());
             switch (outcome.result().outcome()) {
                 case QUOTA -> {
-                    providerExecution.recordFailure(
-                            outcome.binding().providerProfile(), outcome.result().retryAfter());
+                    recordFailure(
+                            outcome.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.QUOTA,
+                            outcome.result().retryAfter(),
+                            outcome.providerRejected());
                     quotaLimited.add(bindingId);
-                    retryAfter.put(bindingId, outcome.result().retryAfter().toString());
                     quotaKbs.add(logicalKbId);
                 }
                 case TIMEOUT -> {
-                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
+                    recordFailure(
+                            outcome.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.TIMEOUT,
+                            null,
+                            outcome.providerRejected());
                     timedOut.add(bindingId);
                 }
                 case FAILED -> {
-                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
+                    recordFailure(
+                            outcome.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.RETRIEVAL,
+                            null,
+                            outcome.providerRejected());
                     failed.add(bindingId);
                 }
                 case SECURITY -> {
@@ -266,7 +292,11 @@ public class RetrievalOrchestrator {
                             "fail_closed");
                 }
                 case UNKNOWN -> {
-                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
+                    recordFailure(
+                            outcome.binding().providerProfile(),
+                            ProviderExecution.UnavailabilityCause.UNKNOWN,
+                            null,
+                            outcome.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -359,7 +389,8 @@ public class RetrievalOrchestrator {
         BindingRecord binding = item.binding();
         Retriever retriever = retrievers.find(binding.providerProfile()).orElse(null);
         if (retriever == null) {
-            return new BindingAuthorization(item, Retriever.AuthorizationResult.failed());
+            return new BindingAuthorization(
+                    item, Retriever.AuthorizationResult.failed(), false);
         }
         Retriever.AuthorizationResult result =
                 retriever.authorize(
@@ -372,7 +403,7 @@ public class RetrievalOrchestrator {
                                 binding.sourceIdentityJson(),
                                 timeout,
                                 cancellation));
-        return new BindingAuthorization(item, result);
+        return new BindingAuthorization(item, result, false);
     }
 
     private BindingOutcome retrieveOne(
@@ -385,11 +416,13 @@ public class RetrievalOrchestrator {
         BindingRecord binding = item.binding();
         LogicalKnowledgeBaseRecord kb = item.kb();
         if (!"chat_ready".equals(kb.capability()) || !kb.modelEligible()) {
-            return new BindingOutcome(kb.logicalKbId(), binding, Retriever.Result.failed());
+            return new BindingOutcome(
+                    kb.logicalKbId(), binding, Retriever.Result.failed(), false);
         }
         Retriever retriever = retrievers.find(binding.providerProfile()).orElse(null);
         if (retriever == null) {
-            return new BindingOutcome(kb.logicalKbId(), binding, Retriever.Result.failed());
+            return new BindingOutcome(
+                    kb.logicalKbId(), binding, Retriever.Result.failed(), false);
         }
         Retriever.Result result =
                 retriever.retrieve(
@@ -403,7 +436,7 @@ public class RetrievalOrchestrator {
                                 binding.sourceIdentityJson(),
                                 timeout,
                                 cancellation));
-        return new BindingOutcome(kb.logicalKbId(), binding, result);
+        return new BindingOutcome(kb.logicalKbId(), binding, result, false);
     }
 
     private BindingAuthorization awaitAuthorization(PendingAuthorization pending) {
@@ -411,13 +444,18 @@ public class RetrievalOrchestrator {
             return providerExecution.await(pending.call());
         } catch (TimeoutException e) {
             return new BindingAuthorization(
-                    pending.item(), Retriever.AuthorizationResult.timeout());
+                    pending.item(), Retriever.AuthorizationResult.timeout(), false);
         } catch (ExecutionException e) {
+            Throwable cause = unwrap(e.getCause());
+            if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
+                return new BindingAuthorization(
+                        pending.item(), classifyUnavailableAuthorization(unavailable), true);
+            }
             return new BindingAuthorization(
-                    pending.item(), classifyAuthorizationFailure(e.getCause()));
+                    pending.item(), classifyAuthorizationFailure(cause), false);
         } catch (InterruptedException e) {
             return new BindingAuthorization(
-                    pending.item(), Retriever.AuthorizationResult.unknown());
+                    pending.item(), Retriever.AuthorizationResult.unknown(), false);
         }
     }
 
@@ -428,17 +466,28 @@ public class RetrievalOrchestrator {
             return new BindingOutcome(
                     pending.item().kb().logicalKbId(),
                     pending.item().binding(),
-                    Retriever.Result.timeout());
+                    Retriever.Result.timeout(),
+                    false);
         } catch (ExecutionException e) {
+            Throwable cause = unwrap(e.getCause());
+            if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
+                return new BindingOutcome(
+                        pending.item().kb().logicalKbId(),
+                        pending.item().binding(),
+                        classifyUnavailable(unavailable),
+                        true);
+            }
             return new BindingOutcome(
                     pending.item().kb().logicalKbId(),
                     pending.item().binding(),
-                    classifyFailure(e.getCause()));
+                    classifyFailure(cause),
+                    false);
         } catch (InterruptedException e) {
             return new BindingOutcome(
                     pending.item().kb().logicalKbId(),
                     pending.item().binding(),
-                    Retriever.Result.unknown());
+                    Retriever.Result.unknown(),
+                    false);
         }
     }
 
@@ -446,9 +495,6 @@ public class RetrievalOrchestrator {
         Throwable cause = unwrap(error);
         if (cause instanceof TimeoutException) {
             return Retriever.AuthorizationResult.timeout();
-        }
-        if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
-            return Retriever.AuthorizationResult.quota(unavailable.retryAfter());
         }
         if (cause instanceof RetrieverException retrieverException) {
             return switch (retrieverException.outcome()) {
@@ -465,9 +511,6 @@ public class RetrievalOrchestrator {
         if (cause instanceof TimeoutException) {
             return Retriever.Result.timeout();
         }
-        if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
-            return Retriever.Result.quota(unavailable.retryAfter());
-        }
         if (cause instanceof RetrieverException retrieverException) {
             return switch (retrieverException.outcome()) {
                 case SECURITY -> Retriever.Result.security();
@@ -476,6 +519,43 @@ public class RetrievalOrchestrator {
             };
         }
         return Retriever.Result.unknown();
+    }
+
+    private Retriever.AuthorizationResult classifyUnavailableAuthorization(
+            ProviderExecution.ProviderUnavailableException unavailable) {
+        return switch (unavailable.cause()) {
+            case QUOTA -> Retriever.AuthorizationResult.quota(unavailable.retryAfter());
+            case TIMEOUT -> Retriever.AuthorizationResult.timeout(unavailable.retryAfter());
+            case RETRIEVAL -> Retriever.AuthorizationResult.failed(unavailable.retryAfter());
+            case UNKNOWN -> Retriever.AuthorizationResult.unknown(unavailable.retryAfter());
+        };
+    }
+
+    private Retriever.Result classifyUnavailable(
+            ProviderExecution.ProviderUnavailableException unavailable) {
+        return switch (unavailable.cause()) {
+            case QUOTA -> Retriever.Result.quota(unavailable.retryAfter());
+            case TIMEOUT -> Retriever.Result.timeout(unavailable.retryAfter());
+            case RETRIEVAL -> Retriever.Result.failed(unavailable.retryAfter());
+            case UNKNOWN -> Retriever.Result.unknown(unavailable.retryAfter());
+        };
+    }
+
+    private void captureRetryAfter(
+            Map<String, String> retryAfter, String bindingId, Duration duration) {
+        if (duration != null) {
+            retryAfter.put(bindingId, duration.toString());
+        }
+    }
+
+    private void recordFailure(
+            String providerProfile,
+            ProviderExecution.UnavailabilityCause cause,
+            Duration retryAfter,
+            boolean providerRejected) {
+        if (!providerRejected) {
+            providerExecution.recordFailure(providerProfile, cause, retryAfter);
+        }
     }
 
     private Throwable unwrap(Throwable error) {
@@ -536,7 +616,9 @@ public class RetrievalOrchestrator {
     private record BindingWork(LogicalKnowledgeBaseRecord kb, BindingRecord binding) {}
 
     private record BindingAuthorization(
-            BindingWork item, Retriever.AuthorizationResult result) {}
+            BindingWork item,
+            Retriever.AuthorizationResult result,
+            boolean providerRejected) {}
 
     private record PendingAuthorization(
             BindingWork item, ProviderExecution.TimedCall<BindingAuthorization> call) {}
@@ -545,5 +627,8 @@ public class RetrievalOrchestrator {
             BindingWork item, ProviderExecution.TimedCall<BindingOutcome> call) {}
 
     private record BindingOutcome(
-            String logicalKbId, BindingRecord binding, Retriever.Result result) {}
+            String logicalKbId,
+            BindingRecord binding,
+            Retriever.Result result,
+            boolean providerRejected) {}
 }

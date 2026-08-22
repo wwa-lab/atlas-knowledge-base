@@ -69,8 +69,16 @@ public interface Retriever {
             return new AuthorizationResult(AuthorizationOutcome.TIMEOUT, null);
         }
 
+        public static AuthorizationResult timeout(Duration retryAfter) {
+            return new AuthorizationResult(AuthorizationOutcome.TIMEOUT, retryAfter);
+        }
+
         public static AuthorizationResult failed() {
             return new AuthorizationResult(AuthorizationOutcome.FAILED, null);
+        }
+
+        public static AuthorizationResult failed(Duration retryAfter) {
+            return new AuthorizationResult(AuthorizationOutcome.FAILED, retryAfter);
         }
 
         public static AuthorizationResult security() {
@@ -79,6 +87,10 @@ public interface Retriever {
 
         public static AuthorizationResult unknown() {
             return new AuthorizationResult(AuthorizationOutcome.UNKNOWN, null);
+        }
+
+        public static AuthorizationResult unknown(Duration retryAfter) {
+            return new AuthorizationResult(AuthorizationOutcome.UNKNOWN, retryAfter);
         }
     }
 
@@ -153,8 +165,16 @@ public interface Retriever {
             return new Result(Outcome.TIMEOUT, List.of(), List.of(), null);
         }
 
+        public static Result timeout(Duration retryAfter) {
+            return new Result(Outcome.TIMEOUT, List.of(), List.of(), retryAfter);
+        }
+
         public static Result failed() {
             return new Result(Outcome.FAILED, List.of(), List.of(), null);
+        }
+
+        public static Result failed(Duration retryAfter) {
+            return new Result(Outcome.FAILED, List.of(), List.of(), retryAfter);
         }
 
         public static Result security() {
@@ -164,14 +184,19 @@ public interface Retriever {
         public static Result unknown() {
             return new Result(Outcome.UNKNOWN, List.of(), List.of(), null);
         }
+
+        public static Result unknown(Duration retryAfter) {
+            return new Result(Outcome.UNKNOWN, List.of(), List.of(), retryAfter);
+        }
     }
 
     private static Duration normalizeRetryAfter(boolean required, Duration retryAfter) {
-        if (!required) {
+        if (retryAfter == null && !required) {
             return null;
         }
         if (retryAfter == null || retryAfter.isZero() || retryAfter.isNegative()) {
-            throw new IllegalArgumentException("a positive retryAfter is required for quota outcomes");
+            throw new IllegalArgumentException(
+                    "retryAfter must be positive when present and is required for quota outcomes");
         }
         return retryAfter;
     }

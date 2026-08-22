@@ -8,8 +8,10 @@ import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.AtlasUserRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,6 +27,7 @@ class RetrievalOrchestratorTest {
     @Autowired private LogicalKnowledgeBaseRepository knowledgeBases;
     @Autowired private BindingRepository bindings;
     @Autowired private RetrievalProperties properties;
+    @Autowired private ProviderExecution providerExecution;
 
     @Test
     void timeoutIsPartialCoverageAndDoesNotFailClosed() {
@@ -138,6 +141,83 @@ class RetrievalOrchestratorTest {
         @SuppressWarnings("unchecked")
         List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
         assertThat(quotaLimited).containsExactly(limitedBinding.bindingId());
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void providerNeutralQuotaBudgetProducesQuotaCoverage() {
+        Instant now = Instant.parse("2026-08-22T03:00:55Z");
+        AtlasUserRecord user = owner("usr_ret_budget_quota", now);
+        LogicalKnowledgeBaseRecord kb =
+                chatReadyKb("lkb_ret_budget_quota", user.userId(), now);
+        BindingRecord binding =
+                binding(
+                        "bnd_ret_budget_quota",
+                        kb.logicalKbId(),
+                        "confluence",
+                        "{}",
+                        now);
+        properties.setProviderQuotaLimits(Map.of("confluence", 1));
+
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.QUOTA);
+        @SuppressWarnings("unchecked")
+        List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
+        assertThat(quotaLimited).containsExactly(binding.bindingId());
+        @SuppressWarnings("unchecked")
+        List<String> timedOut = (List<String>) turn.coverage().get("timed_out");
+        assertThat(timedOut).isEmpty();
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void timeoutBackoffStaysTimedOutAndRejectedCallsDoNotProlongIt() throws Exception {
+        Instant now = Instant.parse("2026-08-22T03:00:57Z");
+        AtlasUserRecord user = owner("usr_ret_timeout_backoff", now);
+        LogicalKnowledgeBaseRecord kb =
+                chatReadyKb("lkb_ret_timeout_backoff", user.userId(), now);
+        BindingRecord binding =
+                binding(
+                        "bnd_ret_timeout_backoff", kb.logicalKbId(), "dify", "{}", now);
+        properties.setProviderBackoffs(Map.of("dify", Duration.ofMillis(200)));
+        providerExecution.recordFailure(
+                "dify", ProviderExecution.UnavailabilityCause.TIMEOUT, null);
+
+        assertTimeoutCoverage(retrieve(user, "first", List.of(kb.logicalKbId())), binding);
+        Thread.sleep(100);
+        assertTimeoutCoverage(retrieve(user, "second", List.of(kb.logicalKbId())), binding);
+        Thread.sleep(140);
+
+        RetrievalTurn recovered = retrieve(user, "third", List.of(kb.logicalKbId()));
+        @SuppressWarnings("unchecked")
+        List<String> successful = (List<String>) recovered.coverage().get("successful");
+        assertThat(successful).containsExactly(binding.bindingId());
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void retrievalBackoffStaysFailedInsteadOfBecomingQuota() {
+        Instant now = Instant.parse("2026-08-22T03:00:59Z");
+        AtlasUserRecord user = owner("usr_ret_failure_backoff", now);
+        LogicalKnowledgeBaseRecord kb =
+                chatReadyKb("lkb_ret_failure_backoff", user.userId(), now);
+        BindingRecord binding =
+                binding(
+                        "bnd_ret_failure_backoff", kb.logicalKbId(), "git_markdown", "{}", now);
+        properties.setProviderBackoffs(Map.of("git_markdown", Duration.ofSeconds(1)));
+        providerExecution.recordFailure(
+                "git_markdown", ProviderExecution.UnavailabilityCause.RETRIEVAL, null);
+
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed).containsExactly(binding.bindingId());
+        @SuppressWarnings("unchecked")
+        List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
+        assertThat(quotaLimited).isEmpty();
+        assertPositiveRetryAfter(turn, binding.bindingId());
     }
 
     @Test
@@ -439,6 +519,24 @@ class RetrievalOrchestratorTest {
         return users.insert(
                 new AtlasUserRecord(
                         userId, "sso-" + userId, "Owner", null, "[\"end_user\",\"kb_owner\"]", true, now, now));
+    }
+
+    private void assertTimeoutCoverage(RetrievalTurn turn, BindingRecord binding) {
+        @SuppressWarnings("unchecked")
+        List<String> timedOut = (List<String>) turn.coverage().get("timed_out");
+        assertThat(timedOut).containsExactly(binding.bindingId());
+        @SuppressWarnings("unchecked")
+        List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
+        assertThat(quotaLimited).isEmpty();
+        assertPositiveRetryAfter(turn, binding.bindingId());
+    }
+
+    private void assertPositiveRetryAfter(RetrievalTurn turn, String bindingId) {
+        @SuppressWarnings("unchecked")
+        Map<String, String> retryAfter =
+                (Map<String, String>) turn.coverage().get("retry_after");
+        assertThat(retryAfter).containsKey(bindingId);
+        assertThat(Duration.parse(retryAfter.get(bindingId))).isPositive();
     }
 
     private RetrievalTurn retrieve(

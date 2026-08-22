@@ -12,6 +12,8 @@ public class RetrievalProperties {
 
     private Map<String, Duration> providerTimeouts = new LinkedHashMap<>();
     private Map<String, Integer> providerConcurrency = new LinkedHashMap<>();
+    private Map<String, Integer> providerQuotaLimits = new LinkedHashMap<>();
+    private Map<String, Duration> providerQuotaWindows = new LinkedHashMap<>();
     private Map<String, Boolean> providerEnabled = new LinkedHashMap<>();
     private Map<String, Duration> providerBackoffs = new LinkedHashMap<>();
     private Map<String, Integer> providerCircuitFailureThresholds = new LinkedHashMap<>();
@@ -39,6 +41,28 @@ public class RetrievalProperties {
 
     public Map<String, Boolean> getProviderEnabled() {
         return Map.copyOf(providerEnabled);
+    }
+
+    public Map<String, Integer> getProviderQuotaLimits() {
+        return Map.copyOf(providerQuotaLimits);
+    }
+
+    public void setProviderQuotaLimits(Map<String, Integer> providerQuotaLimits) {
+        this.providerQuotaLimits =
+                providerQuotaLimits == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerQuotaLimits);
+    }
+
+    public Map<String, Duration> getProviderQuotaWindows() {
+        return Map.copyOf(providerQuotaWindows);
+    }
+
+    public void setProviderQuotaWindows(Map<String, Duration> providerQuotaWindows) {
+        this.providerQuotaWindows =
+                providerQuotaWindows == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerQuotaWindows);
     }
 
     public void setProviderEnabled(Map<String, Boolean> providerEnabled) {
@@ -112,6 +136,23 @@ public class RetrievalProperties {
         return concurrency;
     }
 
+    public int quotaLimitFor(String providerProfile) {
+        Integer limit = providerQuotaLimits.get(providerProfile);
+        if (limit == null || limit < 1) {
+            throw new IllegalStateException(
+                    "A positive retrieval quota limit is required for provider "
+                            + providerProfile);
+        }
+        return limit;
+    }
+
+    public Duration quotaWindowFor(String providerProfile) {
+        return positiveDuration(
+                providerQuotaWindows.get(providerProfile),
+                "retrieval quota window",
+                providerProfile);
+    }
+
     public Duration backoffFor(String providerProfile) {
         return positiveDuration(
                 providerBackoffs.get(providerProfile), "retrieval backoff", providerProfile);
@@ -139,6 +180,8 @@ public class RetrievalProperties {
                 provider -> {
                     timeoutFor(provider);
                     concurrencyFor(provider);
+                    quotaLimitFor(provider);
+                    quotaWindowFor(provider);
                     enabled(provider);
                     backoffFor(provider);
                     circuitFailureThresholdFor(provider);

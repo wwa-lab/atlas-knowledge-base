@@ -34,6 +34,15 @@ atlas:
       dify: 4
       git_markdown: 4
       confluence: 4
+    # Fixed-window request quotas are fixture-only, not pilot or production decisions.
+    provider-quota-limits:
+      dify: 1000
+      git_markdown: 1000
+      confluence: 1000
+    provider-quota-windows:
+      dify: 1m
+      git_markdown: 1m
+      confluence: 1m
     provider-enabled:
       dify: true
       git_markdown: true

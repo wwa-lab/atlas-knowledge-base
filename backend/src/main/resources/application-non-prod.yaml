@@ -20,6 +20,14 @@ atlas:
       dify: ${ATLAS_RETRIEVAL_DIFY_CONCURRENCY}
       git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CONCURRENCY}
       confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CONCURRENCY}
+    provider-quota-limits:
+      dify: ${ATLAS_RETRIEVAL_DIFY_QUOTA_LIMIT}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_QUOTA_LIMIT}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_QUOTA_LIMIT}
+    provider-quota-windows:
+      dify: ${ATLAS_RETRIEVAL_DIFY_QUOTA_WINDOW}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_QUOTA_WINDOW}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_QUOTA_WINDOW}
     provider-enabled:
       dify: ${ATLAS_RETRIEVAL_DIFY_ENABLED}
       git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_ENABLED}
