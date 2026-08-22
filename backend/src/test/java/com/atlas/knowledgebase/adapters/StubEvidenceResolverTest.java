@@ -46,10 +46,14 @@ class StubEvidenceResolverTest {
         var locator = fixtureGit(false);
         var identity = mapper.readTree("{\"repo\":\"org/repo\",\"atlas_fixture\":true}");
 
-        assertThat(resolver.authorize(new EvidenceResolver.AuthorizationRequest("git_markdown", locator, identity)))
+        assertThat(resolver.authorize(new EvidenceResolver.AuthorizationRequest(
+                                "git_markdown", locator, identity, context())))
                 .isEqualTo(EvidenceResolver.AuthorizationResult.authorized());
         assertThat(resolver.authorize(new EvidenceResolver.AuthorizationRequest(
-                                "git_markdown", locator, mapper.readTree("{\"repo\":\"org/repo\"}"))))
+                                "git_markdown",
+                                locator,
+                                mapper.readTree("{\"repo\":\"org/repo\"}"),
+                                context())))
                 .isEqualTo(EvidenceResolver.AuthorizationResult.unknown());
     }
 
@@ -94,18 +98,30 @@ class StubEvidenceResolverTest {
         var markedIdentity = mapper.readTree("{\"repo\":\"org/repo\",\"atlas_fixture\":true,\"evidence_resolution_fixture\":\"ok\"}");
 
         assertThat(resolver.resolve(new EvidenceResolver.Request(
-                                "git_markdown", liveLocator, markedIdentity, EvidenceResolver.Operation.OPEN)))
+                                "git_markdown",
+                                liveLocator,
+                                markedIdentity,
+                                context(),
+                                EvidenceResolver.Operation.OPEN)))
                 .isEqualTo(EvidenceResolver.Result.unknown(EvidenceResolver.VerificationMode.NONE));
 
         var locator = fixtureGit(false);
         var unmarkedIdentity = mapper.readTree("{\"repo\":\"org/repo\",\"evidence_resolution_fixture\":\"ok\"}");
         assertThat(resolver.resolve(new EvidenceResolver.Request(
-                                "git_markdown", locator, unmarkedIdentity, EvidenceResolver.Operation.OPEN)))
+                                "git_markdown",
+                                locator,
+                                unmarkedIdentity,
+                                context(),
+                                EvidenceResolver.Operation.OPEN)))
                 .isEqualTo(EvidenceResolver.Result.unknown(EvidenceResolver.VerificationMode.NONE));
 
         var noSetting = mapper.readTree("{\"repo\":\"org/repo\",\"atlas_fixture\":true}");
         assertThat(resolver.resolve(new EvidenceResolver.Request(
-                                "git_markdown", locator, noSetting, EvidenceResolver.Operation.OPEN)))
+                                "git_markdown",
+                                locator,
+                                noSetting,
+                                context(),
+                                EvidenceResolver.Operation.OPEN)))
                 .isEqualTo(EvidenceResolver.Result.unknown(EvidenceResolver.VerificationMode.FIXTURE));
     }
 
@@ -115,7 +131,8 @@ class StubEvidenceResolverTest {
                 "git_markdown",
                 locator,
                 mapper.readTree("{\"repo\":\"org/repo\",\"atlas_fixture\":true,"
-                        + "\"evidence_authorization_fixture\":\"" + outcome + "\"}"));
+                        + "\"evidence_authorization_fixture\":\"" + outcome + "\"}"),
+                context());
     }
 
     private EvidenceResolver.Request request(
@@ -127,7 +144,12 @@ class StubEvidenceResolverTest {
                 locator,
                 mapper.readTree("{\"repo\":\"org/repo\",\"atlas_fixture\":true,"
                         + "\"evidence_resolution_fixture\":\"" + outcome + "\"}"),
+                context(),
                 operation);
+    }
+
+    private static EvidenceResolver.AuthorizationContext context() {
+        return new EvidenceResolver.AuthorizationContext("usr_1", "bnd_1", "app");
     }
 
     private EvidenceLocatorValidator.ValidatedLocator fixtureGit(boolean moved) {

@@ -588,6 +588,13 @@ title text and URL/provider naming are never used to infer fixture status.
 Missing, unprovable, or mismatched continuity returns `503`. A definitive
 current-user denial from the matching live adapter returns `403`. Message-time
 binding/config snapshots are diagnostic drift input only and never authority.
+Both adapter authorization and exact-resolution calls receive an immutable,
+non-secret context containing current `user_id`, authoritative `binding_id`,
+and current `auth_method`. Adapters resolve delegated access from that context;
+raw provider tokens and ambient HTTP/session state are forbidden. Validated
+locator and source-identity accessors return defensive copies, and the Evidence
+service retains the immutable validated coordinates used for projection and
+move validation.
 
 ### Resolver verification modes
 
@@ -941,6 +948,8 @@ Git capability: browse_only <-> chat_ready (gates + Owner activation)
   `ok`/`moved`/`unavailable`/`unknown` HTTP mapping; derived move-locator hash;
   required answer-time fields + current KB name + source-time null + safe action;
   required-metadata path omission; all-invalid `NO_GROUNDED_EVIDENCE`;
+  explicit user/binding/auth-method resolver context without raw tokens;
+  adapter mutation cannot change validated coordinates or source identity;
   completion-invariant rollback; legacy required-field null returns `503`; no
   latest substitution; exact content-free audit allow-list; one citation per
   provenance path; atomic winning citation set; retry replacement; cancelled/

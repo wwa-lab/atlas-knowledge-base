@@ -3,7 +3,9 @@ package com.atlas.knowledgebase.evidence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +46,14 @@ class EvidenceLocatorValidatorTest {
         assertThat(validated.fixtureMarked()).isTrue();
         assertThat(validated.locator().path("path").asText()).isEqualTo("docs/runbook.md");
         assertThat(validated.movedToLocator()).isPresent();
+
+        JsonNode exposedLocator = validated.locator();
+        ((ObjectNode) exposedLocator).put("path", "mutated.md");
+        JsonNode exposedTarget = validated.movedToLocator().orElseThrow();
+        ((ObjectNode) exposedTarget).put("path", "mutated-target.md");
+        assertThat(validated.locator().path("path").asText()).isEqualTo("docs/runbook.md");
+        assertThat(validated.movedToLocator().orElseThrow().path("path").asText())
+                .isEqualTo("docs/archive/runbook.md");
     }
 
     @Test

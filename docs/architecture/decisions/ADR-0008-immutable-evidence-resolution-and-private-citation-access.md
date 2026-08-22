@@ -54,6 +54,11 @@ activation gates.
    Dify, Git, and Confluence adapters. The Evidence service owns private citation
    lookup, current authorization, validation, outcome mapping, and auditing; an
    adapter owns provider-specific exact-version verification and navigation.
+   Both authorization and resolution requests carry an immutable, non-secret
+   authorization context containing the current Atlas `user_id`, authoritative
+   `binding_id`, and `auth_method`. A live adapter uses that context to select
+   user-scoped delegated access without receiving a raw token or depending on
+   ambient HTTP/session state.
 2. TASK-016 implements the port plus a deterministic **fixture resolver** that
    exists only in automated tests and the `local` plane, accepts only synthetic
    fixture citations/excerpts, and never handles real internal excerpts or
@@ -66,6 +71,10 @@ activation gates.
    type, or a violated range/pair constraint fails closed as validation leading
    to an `unknown` resolution outcome. It must never dispatch to a provider or
    produce navigation.
+   Validated locator and authoritative source-identity values remain owned by
+   the Evidence service. Adapter-facing accessors return defensive copies so an
+   adapter cannot mutate coordinates after validation or alter the projection,
+   move comparison, or navigation decision.
 4. Resolution statuses have these meanings:
    - `ok`: the resolver verified the exact immutable cited version and, for the
      open-original operation, may return navigation to only that version;

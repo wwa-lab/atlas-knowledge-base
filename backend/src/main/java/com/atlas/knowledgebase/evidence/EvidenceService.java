@@ -164,12 +164,19 @@ public final class EvidenceService {
                 throw new UnknownState();
             }
             String bindingRole = bindingRole(citation);
+            requireText(binding.authMethod());
+            EvidenceResolver.AuthorizationContext authorizationContext =
+                    new EvidenceResolver.AuthorizationContext(
+                            user.userId(), binding.bindingId(), binding.authMethod());
             EvidenceResolver resolver =
                     resolvers.find(citation.provider()).orElseThrow(UnknownState::new);
             EvidenceResolver.AuthorizationResult authorization =
                     resolver.authorize(
                             new EvidenceResolver.AuthorizationRequest(
-                                    citation.provider(), locator, sourceIdentity));
+                                    citation.provider(),
+                                    locator,
+                                    sourceIdentity,
+                                    authorizationContext));
             if (authorization.outcome() == EvidenceResolver.AuthorizationOutcome.ACCESS_DENIED) {
                 throw denied(user, citation, action);
             }
@@ -183,6 +190,7 @@ public final class EvidenceService {
                     bindingRole,
                     locator,
                     sourceIdentity,
+                    authorizationContext,
                     resolver,
                     operation);
         } catch (EvidenceException exception) {
@@ -206,6 +214,7 @@ public final class EvidenceService {
                                             prepared.citation().provider(),
                                             prepared.locator(),
                                             prepared.sourceIdentity(),
+                                            prepared.authorizationContext(),
                                             prepared.operation()));
             requireResultBoundary(prepared.locator(), result);
         } catch (RuntimeException exception) {
@@ -503,6 +512,7 @@ public final class EvidenceService {
             String bindingRole,
             EvidenceLocatorValidator.ValidatedLocator locator,
             JsonNode sourceIdentity,
+            EvidenceResolver.AuthorizationContext authorizationContext,
             EvidenceResolver resolver,
             EvidenceResolver.Operation operation) {}
 

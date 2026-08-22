@@ -22,10 +22,28 @@ public interface EvidenceResolver {
     record AuthorizationRequest(
             String providerProfile,
             EvidenceLocatorValidator.ValidatedLocator locator,
-            JsonNode authoritativeSourceIdentity) {
+            JsonNode authoritativeSourceIdentity,
+            AuthorizationContext authorizationContext) {
         public AuthorizationRequest {
             requireRequest(providerProfile, locator, authoritativeSourceIdentity);
+            if (authorizationContext == null) {
+                throw new IllegalArgumentException("authorization context is required");
+            }
             authoritativeSourceIdentity = authoritativeSourceIdentity.deepCopy();
+        }
+
+        @Override
+        public JsonNode authoritativeSourceIdentity() {
+            return authoritativeSourceIdentity.deepCopy();
+        }
+    }
+
+    /** User-scoped adapter context. Raw provider credentials never cross this port. */
+    record AuthorizationContext(String userId, String bindingId, String authMethod) {
+        public AuthorizationContext {
+            requireText(userId, "user id");
+            requireText(bindingId, "binding id");
+            requireText(authMethod, "authorization method");
         }
     }
 
@@ -59,13 +77,22 @@ public interface EvidenceResolver {
             String providerProfile,
             EvidenceLocatorValidator.ValidatedLocator locator,
             JsonNode authoritativeSourceIdentity,
+            AuthorizationContext authorizationContext,
             Operation operation) {
         public Request {
             requireRequest(providerProfile, locator, authoritativeSourceIdentity);
+            if (authorizationContext == null) {
+                throw new IllegalArgumentException("authorization context is required");
+            }
             if (operation == null) {
                 throw new IllegalArgumentException("evidence operation is required");
             }
             authoritativeSourceIdentity = authoritativeSourceIdentity.deepCopy();
+        }
+
+        @Override
+        public JsonNode authoritativeSourceIdentity() {
+            return authoritativeSourceIdentity.deepCopy();
         }
     }
 
@@ -202,6 +229,12 @@ public interface EvidenceResolver {
         }
         if (!providerProfile.equals(locator.providerProfile())) {
             throw new IllegalArgumentException("provider profile and locator do not match");
+        }
+    }
+
+    private static void requireText(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + " is required");
         }
     }
 }

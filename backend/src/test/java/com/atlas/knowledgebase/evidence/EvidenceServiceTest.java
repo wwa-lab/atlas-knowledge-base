@@ -18,6 +18,7 @@ import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -238,6 +239,41 @@ class EvidenceServiceTest {
                                 assertThat(error.details())
                                         .containsEntry("verification_mode", "provider")
                                         .containsEntry("provider_verified", false));
+    }
+
+    @Test
+    void adapterReceivesUserScopedContextAndCannotMutateDrawerCoordinates() {
+        arrangeOwnedCitation();
+        when(access.authorized(user, kb())).thenReturn(true);
+        when(resolver.authorize(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(
+                        invocation -> {
+                            EvidenceResolver.AuthorizationRequest request = invocation.getArgument(0);
+                            assertThat(request.authorizationContext())
+                                    .isEqualTo(
+                                            new EvidenceResolver.AuthorizationContext(
+                                                    user.userId(), "bnd_1", "app"));
+                            ((ObjectNode) request.locator().locator())
+                                    .put("path", "adapter-mutated.md");
+                            ((ObjectNode) request.authoritativeSourceIdentity())
+                                    .put("repo", "evil/repo");
+                            return EvidenceResolver.AuthorizationResult.authorized();
+                        });
+        when(resolver.resolve(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(
+                        invocation -> {
+                            EvidenceResolver.Request request = invocation.getArgument(0);
+                            assertThat(request.authorizationContext().userId())
+                                    .isEqualTo(user.userId());
+                            ((ObjectNode) request.locator().locator())
+                                    .put("path", "resolver-mutated.md");
+                            return EvidenceResolver.Result.fixtureOk(null);
+                        });
+
+        Map<String, Object> projection = service.drawer(user, citation.citationId());
+
+        assertThat(((JsonNode) projection.get("locator")).path("path").asText())
+                .isEqualTo("a.md");
     }
 
     private void arrangeOwnedCitation() {

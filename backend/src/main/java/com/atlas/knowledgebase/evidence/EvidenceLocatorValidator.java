@@ -311,6 +311,16 @@ public final class EvidenceLocatorValidator {
                     ? Optional.empty()
                     : movedToLocator.map(JsonNode::deepCopy);
         }
+
+        @Override
+        public JsonNode locator() {
+            return locator.deepCopy();
+        }
+
+        @Override
+        public Optional<JsonNode> movedToLocator() {
+            return movedToLocator.map(JsonNode::deepCopy);
+        }
     }
 
     public static final class InvalidLocatorException extends RuntimeException {

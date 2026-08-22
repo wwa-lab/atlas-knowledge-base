@@ -198,3 +198,206 @@ None identified.
 Fix the live move-target boundary before any provider adapter is built, then establish request-boundary evidence auditing so all authenticated attempts are recorded exactly once. These changes should precede merge; afterward, rerun the complete backend suite and proceed to the required fresh-context Gate B.
 
 Gate A: Fail
+
+## Gate A — Round 2 (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** TASK-016; Citation And Evidence Contract; MVP requirements, US-005, FR-40–FR-45, architecture, Flow 5, data model, design, ADR-0008, and traceability.
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`, TASK-016.
+- **Code / files inspected:** Entire `git diff origin/main...HEAD` at `d019626`, including Evidence ports/services/controllers, validation, authorization continuity, auditing, citation persistence, Chat completion/replay, fixtures, tests, and changed SDD artifacts.
+- **Review objective:** Independently verify the prior blockers and identify any remaining merge-blocking design or architecture gaps.
+- **Verification:** `git diff --check origin/main...HEAD` passed. `./mvnw -q test` passed.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 84%
+- **Verdict:** Partially aligned
+- **Rationale:** The previous audit, move-target-validation, and live-exception-classification gaps are resolved. Most TASK-016 behavior is implemented correctly, including private lookup, strict locators, fixture isolation, atomic citation persistence, safe projections, and content-free auditing. The new provider-neutral resolver port nevertheless cannot perform explicit current-user delegated authorization, and its validated locator remains mutable across the adapter boundary. Both conflict with ADR-0008’s frozen boundary before TASK-019–021 adapters are introduced.
+
+---
+
+## Areas of Good Alignment
+
+- Private citation lookup is scoped through a completed assistant message in the current user’s active thread, with indistinguishable missing/cross-user `404` behavior.
+- Persisted locator parsing enforces closed schemas, duplicate-key rejection, bounded size/depth, provider-specific types and constraints, Git path safety, fixture markers, and source-identity continuity.
+- Local/test fixture resolution is profile-isolated and machine-marked; non-local planes without live adapters fail closed.
+- GET returns persisted historical metadata and a safe internal POST action, not an external URL.
+- POST rejects client-supplied locator/version/URL data and permits navigation only for an `ok` result.
+- The previous move-target blocker is resolved: adapter-returned targets now undergo central closed-schema, marker, nested-mapping, and stable-identity validation.
+- The previous exception-mode deviation is resolved: dispatched live resolver failures produce `provider/false`.
+- The previous audit blocker is resolved: `EvidenceRequestAuditFilter` wraps session/CSRF handling, uses a request marker to avoid duplicate events, and tests bad-CSRF and malformed-JSON attempts.
+- Citation candidates are filtered before model dispatch, omissions are disclosed, every valid RRF provenance path becomes a citation, and all-invalid evidence prevents model invocation.
+- Winning assistant completion and complete citation-set replacement share one transaction; losing callbacks do not alter citations.
+- Completed retry replay reads persisted citation summaries.
+- No migration, evidence cache, or full-source-body store was introduced.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### The resolver port cannot perform current-user provider authorization
+
+- **Design / task expected:** ADR-0008 and the accepted contract require each GET and POST to re-authorize the current user at the matching live provider/source boundary. TASK-019–021 are supposed to replace adapter capability without redesigning the TASK-016 port.
+- **Code currently does:** `EvidenceResolver.AuthorizationRequest` and `EvidenceResolver.Request` contain only provider profile, locator, source identity, and operation (`EvidenceResolver.java:22–25`, `58–62`). `EvidenceService` therefore calls the adapter without the authenticated user, binding authorization method, or an opaque user-scoped provider-access context (`EvidenceService.java:169–172`, `203–209`). The existing `KbAccessService` only implements an Owner/Admin placeholder and explicitly states that provider re-authorization is absent (`KbAccessService.java:9–13`). Provider connections are keyed by user ID, so a live adapter cannot select the current user’s delegated connection from this request.
+- **Why it matters:** A Git or Confluence adapter cannot distinguish users, select their delegated credential, or return a definitive current-user authorization result without hidden HTTP/thread-local coupling or a shared credential. This breaks the accepted access-control boundary and makes the frozen port unusable for TASK-020/021 as designed.
+- **Recommended fix:** Pass an explicit immutable user-scoped authorization context through both resolver operations—at minimum current `user_id`, `binding_id`, and `auth_method`, or an opaque delegated-access handle resolved by the service. Never pass raw tokens. Add tests proving two users or a revoked user connection can produce different authorization outcomes for the same source coordinates.
+
+#### Validated locators remain mutable after validation
+
+- **Design / task expected:** The Evidence service owns validation, and persisted locator/version coordinates remain immutable across authorization, resolution, projection, and move validation.
+- **Code currently does:** `ValidatedLocator` deep-copies its `JsonNode` only during construction (`EvidenceLocatorValidator.java:300–313`), but the generated record accessors return the same mutable node and optional move-target node. The same `ValidatedLocator` instance crosses `authorize`, `resolve`, central result checks, and Drawer projection (`EvidenceService.java:155–187`, `203–210`, `228–255`). A live adapter can therefore mutate a previously validated locator in place before it is projected or used as the source identity for move-target validation.
+- **Why it matters:** Accidental adapter normalization or mutation can bypass the closed-schema guarantee and cause GET to expose coordinates different from the persisted immutable citation. It also weakens the central identity comparison that was added to fix the previous move-target blocker.
+- **Recommended fix:** Represent validated locators with immutable typed values or canonical serialized bytes, or provide defensive-copy accessors and pass independent immutable copies to adapters. All projection and hashing should use the service-owned validated instance. Add a fake resolver test that attempts in-place mutation and prove the returned/persisted locator remains unchanged.
+
+### Minor
+
+#### Citation excerpts have no enforceable short-excerpt boundary
+
+- **Design / task expected:** Citation metadata may retain a short excerpt, but Evidence must not become a full-document copy. Candidates exceeding their persistence boundary must be omitted before model dispatch.
+- **Code currently does:** `CitationAssembler` validates excerpts using `Integer.MAX_VALUE` and persists them into a CLOB (`CitationAssembler.java:154–156`, `162–176`).
+- **Why it matters:** A faulty future retriever can persist a complete Git or Confluence document as an “excerpt.” The accepted documents do not define an exact byte limit, so severity is reduced for design ambiguity.
+- **Recommended fix:** Freeze a maximum UTF-8 excerpt size in the contract, then reject/omit oversized candidates before model dispatch rather than truncating them.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Current-user private citation lookup and indistinguishable 404 | Implemented |
+| Current KB and binding state checks | Implemented |
+| Current-user live-provider authorization | Partial — resolver port lacks user-scoped context |
+| Closed immutable locator validation | Partial — initial validation is strong, but the validated object remains mutable |
+| Local/test fixture and non-local fail-closed behavior | Implemented |
+| Drawer projection and safe POST action | Implemented |
+| Exact-original outcome mapping | Implemented |
+| Provider-returned move-target validation | Implemented |
+| Provenance-complete citation assembly | Implemented |
+| Atomic completion/retry citation replacement | Implemented |
+| Content-free audit for authenticated attempts | Implemented |
+| Resolver verification-mode semantics | Implemented |
+| No-cache/full-body boundary | Partial — no cache/body store exists, but excerpt size is unbounded |
+
+**Task coverage:**
+
+- **Tasks clearly implemented:** Citation persistence/projection, private endpoints, locator validation, current registry/source continuity, fixture resolution, immutable outcome mapping, move-target validation, audit writes, atomic completion, retry replay, and no-cache behavior.
+- **Tasks partially implemented:** Extensible current-user provider re-authorization and immutable adapter-boundary locator handling.
+- **Tasks not yet reflected in code:** None otherwise within TASK-016; real provider calls correctly remain TASK-019–021.
+- **Code changes not clearly mapped to any task:** None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- None identified.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** The resolver port omits the current-user authorization context required by its responsibility; mutable validated locators cross the adapter boundary.
+- **Misplaced responsibilities:** A future adapter would need ambient HTTP/session state to recover the current user, coupling provider code to transport context.
+- **Coupling issues:** TASK-019–021 cannot implement delegated provider authorization without changing the supposedly frozen TASK-016 port.
+- **Hidden shortcuts:** Owner/Admin KB authorization is currently the only explicit user-aware check; it cannot substitute for provider/source authorization.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Atomic completion, retry replacement, cancellation, and losing-callback behavior align.
+- **Validation behavior:** Strong for persisted and returned move locators, but not immutable after validation; excerpt size is unbounded.
+- **Retry / skip / resume / failure handling:** Aligned.
+- **User-visible behavior:** Drawer/open response shapes and Moved/Unavailable/no-latest behavior align for the fixture implementation.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Not aligned for live providers because user-scoped authorization context is absent and validated input is mutable.
+- **External system handling:** Safely deferred, but the port is not ready for correct delegated Git/Confluence adapters.
+- **Secret / credential safety:** No secrets are exposed; however, the adapter cannot select a user-scoped secret reference without explicit user context.
+- **Logging / audit hooks:** Required TASK-016 content-free audit behavior is aligned.
+- **Error propagation at integration boundaries:** Aligned, including `provider/false` for inconclusive live dispatch.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for testing:** Yes.
+- **Suitable for merge:** No.
+- **Suitable for next implementation step:** No.
+- **Blockers before proceeding:** Add explicit current-user authorization context to the resolver port; make validated locators immutable across the adapter boundary.
+- **Acceptable deviations:** Fixture evidence may legitimately use `source_updated_at = null`; real adapters must later supply known source time. Full operational telemetry remains TASK-027.
+- **Required corrections:** The two Major findings above.
+
+---
+
+## Recommended Fixes
+
+1. Extend `EvidenceResolver.AuthorizationRequest` and `Request` with an immutable, user-scoped authorization context and pass it from `EvidenceService`.
+2. Make `ValidatedLocator` and move-target access structurally immutable or defensively copied, retaining a service-owned immutable value for projection and validation.
+3. Add current-user live-resolver contract tests and malicious/mutating fake-resolver tests.
+4. Freeze and enforce a short-excerpt byte limit.
+5. Re-run `git diff --check origin/main...HEAD` and `./mvnw -q test`.
+
+## Minimal Fix Path
+
+- Add `userId`, `bindingId`, and `authMethod`—or a purpose-built immutable authorization-context record—to both resolver request types.
+- Construct that context from the authenticated user and current authoritative binding; live adapters resolve user-scoped provider connections internally without receiving tokens.
+- Replace mutable `JsonNode` locator exposure with immutable canonical JSON/typed locator records or defensive accessors.
+- Add tests proving user context reaches both authorization and exact-resolution calls and that adapter mutation cannot alter the Drawer projection or move identity.
+
+---
+
+## Open Risks / Questions
+
+- `Retriever.Hit` has no source-updated timestamp and `CitationAssembler` currently stores `source_updated_at = null`. This is acceptable for synthetic fixtures but TASK-019–021 must add a truthful known-freshness path.
+- The passing Maven run still printed the previously recorded uncaught `ResponseBodyEmitter has already completed` exception from Chat SSE error handling. It did not fail tests and is not introduced by the relevant changed lines, but remains worth separate tracking.
+- The exact safe byte limit for a “short” citation excerpt remains unspecified.
+
+# Architecture Review: TASK-016 Evidence Drawer and Historical Resolve
+
+## Score: 76%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] The provider-neutral resolver port has no authenticated-user or delegated-access context, so live adapters cannot perform the accepted current-user provider authorization without ambient transport coupling or a shared credential — `EvidenceResolver.java:22–25`, `EvidenceResolver.java:58–62`, `EvidenceService.java:169–172`.
+- [ ] `ValidatedLocator` exposes mutable `JsonNode` state across authorization, resolution, central validation, and projection, allowing post-validation mutation of immutable citation coordinates — `EvidenceLocatorValidator.java:300–313`, `EvidenceService.java:155–187`, `EvidenceService.java:228–255`.
+
+### P1 (Fix Next Touch)
+
+- [ ] Citation excerpts have no bounded persistence boundary despite the short-excerpt/no-full-body rule — `CitationAssembler.java:154–156`. The contract must first define the exact limit.
+- [ ] Real-provider citation assembly has no path to preserve known `source_updated_at`; fixtures may use null, but provider adapter work must extend the retrieval metadata contract — `CitationAssembler.java:174`.
+
+### P2 (Track)
+
+- [ ] `ChatService` remains 810 lines and owns thread lifecycle, scope, SSE flights, retrieval, generation, retry/cancel, persistence coordination, and audit, exceeding the repository’s focused-file guideline despite the useful projector/completion extractions — `ChatService.java:35`.
+
+## Good Practices Confirmed
+
+- Evidence code is organized as a cohesive feature with controller, service, repository, validation, continuity, navigation, audit, and resolver-registry responsibilities separated.
+- The previous move-target validation P0 is resolved centrally.
+- The audit filter cleanly wraps session/CSRF handling and prevents duplicate writes.
+- DTO/domain values are mostly records with defensive list/map copies.
+- Completion and citation replacement use a clear transactional winner boundary.
+- Provider-specific behavior remains behind a registry and adapter port.
+- Fixture capability is profile-isolated and machine-marked.
+- Schema remains Flyway-governed with no speculative migration or cache.
+- Accepted direct response contracts correctly take precedence over the architecture skill’s generic envelope convention.
+
+## Recommendation
+
+Fix the resolver contract before TASK-019–021 by making current-user authorization explicit and locator values structurally immutable. Then rerun the full backend suite and a fresh independent review.
+
+Gate A: Fail
