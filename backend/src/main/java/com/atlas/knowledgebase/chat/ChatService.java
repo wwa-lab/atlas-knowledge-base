@@ -1,0 +1,589 @@
+package com.atlas.knowledgebase.chat;
+
+import com.atlas.knowledgebase.access.KbAccessService;
+import com.atlas.knowledgebase.adapters.ModelChannel;
+import com.atlas.knowledgebase.audit.AuditEventRecord;
+import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.registry.BindingRecord;
+import com.atlas.knowledgebase.registry.BindingRepository;
+import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
+import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
+import com.atlas.knowledgebase.session.AtlasUserRecord;
+import com.atlas.knowledgebase.session.SessionService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+@Service
+public class ChatService {
+
+    private static final int MIN_SCOPE = 1;
+    private static final int MAX_SCOPE = 5;
+    private static final long SSE_TIMEOUT_MS = 60_000L;
+
+    private final ChatThreadRepository threads;
+    private final ChatMessageRepository messages;
+    private final LogicalKnowledgeBaseRepository knowledgeBases;
+    private final BindingRepository bindings;
+    private final KbAccessService access;
+    private final ModelChannel modelChannel;
+    private final AuditEventRepository auditEvents;
+    private final ObjectMapper objectMapper;
+    private final Clock clock;
+    private final ConcurrentHashMap<String, InFlight> inFlight = new ConcurrentHashMap<>();
+
+    public ChatService(
+            ChatThreadRepository threads,
+            ChatMessageRepository messages,
+            LogicalKnowledgeBaseRepository knowledgeBases,
+            BindingRepository bindings,
+            KbAccessService access,
+            ModelChannel modelChannel,
+            AuditEventRepository auditEvents,
+            ObjectMapper objectMapper,
+            Clock clock) {
+        this.threads = threads;
+        this.messages = messages;
+        this.knowledgeBases = knowledgeBases;
+        this.bindings = bindings;
+        this.access = access;
+        this.modelChannel = modelChannel;
+        this.auditEvents = auditEvents;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
+    }
+
+    public Map<String, Object> list(AtlasUserRecord user) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (ChatThreadRecord thread : threads.findActiveByUserId(user.userId())) {
+            items.add(threadProjection(thread));
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("items", items);
+        body.put("last_valid_logical_kb_ids", lastValidScope(user));
+        return body;
+    }
+
+    public Map<String, Object> create(AtlasUserRecord user, List<String> requestedIds) {
+        List<String> scope =
+                requestedIds == null || requestedIds.isEmpty() ? lastValidScope(user) : requestedIds;
+        ResolvedScope resolved = resolveScope(user, scope);
+        Instant now = clock.instant();
+        ChatThreadRecord thread =
+                threads.insert(
+                        new ChatThreadRecord(
+                                "thr_" + SessionService.randomToken().substring(0, 16),
+                                user.userId(),
+                                null,
+                                writeJson(resolved.logicalKbIds()),
+                                null,
+                                now,
+                                now,
+                                null));
+        audit(user.userId(), resolved.logicalKbIds().getFirst(), "chat_create", "allow", "ok");
+        return threadProjection(thread);
+    }
+
+    public Map<String, Object> get(AtlasUserRecord user, String threadId) {
+        ChatThreadRecord thread = requireOwnThread(user, threadId);
+        Map<String, Object> body = threadProjection(thread);
+        List<Map<String, Object>> history = new ArrayList<>();
+        for (ChatMessageRecord message : messages.findByThreadId(threadId)) {
+            history.add(messageProjection(message));
+        }
+        body.put("messages", history);
+        return body;
+    }
+
+    public Map<String, Object> changeScope(
+            AtlasUserRecord user, String threadId, List<String> requestedIds, String mode) {
+        ChatThreadRecord thread = requireOwnThread(user, threadId);
+        ResolvedScope resolved = resolveScope(user, requestedIds);
+        boolean hasMessages = messages.countByThreadId(threadId) > 0;
+        Instant now = clock.instant();
+        if (!hasMessages) {
+            ChatThreadRecord updated = threads.updateScope(threadId, writeJson(resolved.logicalKbIds()), now);
+            return threadProjection(updated);
+        }
+        if (mode == null || mode.isBlank()) {
+            throw new ChatValidationException(
+                    "MODE_REQUIRED",
+                    "Changing scope after answers exist requires mode=branch or mode=new.");
+        }
+        if (!"branch".equals(mode) && !"new".equals(mode)) {
+            throw new ChatValidationException("MODE_INVALID", "mode must be branch or new.");
+        }
+        String branchedFrom = "branch".equals(mode) ? thread.threadId() : null;
+        ChatThreadRecord created =
+                threads.insert(
+                        new ChatThreadRecord(
+                                "thr_" + SessionService.randomToken().substring(0, 16),
+                                user.userId(),
+                                null,
+                                writeJson(resolved.logicalKbIds()),
+                                branchedFrom,
+                                now,
+                                now,
+                                null));
+        Map<String, Object> body = threadProjection(created);
+        if (branchedFrom != null) {
+            body.put("branched_from_thread_id", branchedFrom);
+        }
+        return body;
+    }
+
+    public void delete(AtlasUserRecord user, String threadId) {
+        requireOwnThread(user, threadId);
+        threads.softDelete(threadId, clock.instant());
+    }
+
+    public SseEmitter ask(AtlasUserRecord user, String threadId, String question) {
+        if (question == null || question.isBlank()) {
+            throw new ChatValidationException("QUESTION_REQUIRED", "question is required.");
+        }
+        if (!user.modelEntitled()) {
+            throw new ChatForbiddenException(
+                    "MODEL_NOT_ENTITLED",
+                    "Model-send is not entitled for this user.",
+                    "request_model_entitlement");
+        }
+        ChatThreadRecord thread = requireOwnThread(user, threadId);
+        ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
+        Instant now = clock.instant();
+        String requestId = "req_" + SessionService.randomToken().substring(0, 16);
+        ChatMessageRecord userMessage =
+                messages.insert(
+                        new ChatMessageRecord(
+                                "msg_" + SessionService.randomToken().substring(0, 16),
+                                threadId,
+                                "user",
+                                "completed",
+                                question,
+                                null,
+                                writeJson(resolved.logicalKbIds()),
+                                writeJson(resolved.bindingIds()),
+                                writeJson(resolved.configVersions()),
+                                null,
+                                null,
+                                resolved.classification(),
+                                requestId,
+                                now,
+                                now));
+        ChatMessageRecord assistant =
+                messages.insert(
+                        new ChatMessageRecord(
+                                "msg_" + SessionService.randomToken().substring(0, 16),
+                                threadId,
+                                "assistant",
+                                "processing",
+                                null,
+                                null,
+                                writeJson(resolved.logicalKbIds()),
+                                writeJson(resolved.bindingIds()),
+                                writeJson(resolved.configVersions()),
+                                null,
+                                null,
+                                resolved.classification(),
+                                requestId,
+                                now,
+                                null));
+        threads.touch(threadId, now);
+        audit(user.userId(), resolved.logicalKbIds().getFirst(), "chat_ask", "allow", "ok");
+        return startGeneration(user, assistant, question, resolved, false);
+    }
+
+    public Map<String, Object> cancel(AtlasUserRecord user, String threadId, String messageId) {
+        requireOwnThread(user, threadId);
+        ChatMessageRecord message =
+                messages.findById(messageId).orElseThrow(() -> new ChatNotFoundException(threadId));
+        if (!threadId.equals(message.threadId())) {
+            throw new ChatNotFoundException(threadId);
+        }
+        if (!"assistant".equals(message.role())) {
+            throw new ChatValidationException("NOT_ASSISTANT", "Only assistant messages can be cancelled.");
+        }
+        if ("completed".equals(message.status())) {
+            throw new ChatConflictException("ALREADY_COMPLETED", "Completed answers cannot be cancelled.");
+        }
+        if ("incomplete_cancelled".equals(message.status())) {
+            return Map.of("message_id", messageId, "status", "incomplete_cancelled");
+        }
+        InFlight flight = inFlight.get(messageId);
+        if (flight != null) {
+            flight.cancelled.set(true);
+        }
+        messages.updateStatus(messageId, "incomplete_cancelled", null, null, clock.instant());
+        if (flight != null) {
+            completeQuietly(flight.emitter);
+        }
+        return Map.of("message_id", messageId, "status", "incomplete_cancelled");
+    }
+
+    public SseEmitter retry(AtlasUserRecord user, String threadId, String messageId) {
+        if (!user.modelEntitled()) {
+            throw new ChatForbiddenException(
+                    "MODEL_NOT_ENTITLED",
+                    "Model-send is not entitled for this user.",
+                    "request_model_entitlement");
+        }
+        ChatThreadRecord thread = requireOwnThread(user, threadId);
+        ChatMessageRecord message =
+                messages.findById(messageId).orElseThrow(() -> new ChatNotFoundException(threadId));
+        if (!threadId.equals(message.threadId()) || !"assistant".equals(message.role())) {
+            throw new ChatNotFoundException(threadId);
+        }
+        if ("completed".equals(message.status())) {
+            return replayCompleted(message);
+        }
+        if ("processing".equals(message.status()) || "streaming".equals(message.status())) {
+            throw new ChatConflictException("IN_FLIGHT", "Wait for the in-flight generation or cancel it.");
+        }
+        ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
+        String question = latestUserQuestion(threadId, message);
+        messages.updateStatus(messageId, "processing", null, null, null);
+        ChatMessageRecord refreshed = messages.findById(messageId).orElseThrow();
+        return startGeneration(user, refreshed, question, resolved, true);
+    }
+
+    private SseEmitter replayCompleted(ChatMessageRecord message) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        try {
+            emitter.send(
+                    SseEmitter.event().name("final").data(finalPayload(message, message.answerText())));
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+        }
+        return emitter;
+    }
+
+    private SseEmitter startGeneration(
+            AtlasUserRecord user,
+            ChatMessageRecord assistant,
+            String question,
+            ResolvedScope resolved,
+            boolean retry) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
+        inFlight.put(assistant.messageId(), flight);
+        emitter.onCompletion(() -> inFlight.remove(assistant.messageId()));
+        emitter.onTimeout(
+                () -> {
+                    flight.cancelled.set(true);
+                    inFlight.remove(assistant.messageId());
+                });
+        Thread.ofVirtual()
+                .name("chat-gen-" + assistant.messageId())
+                .start(
+                        () ->
+                                runGeneration(
+                                        user, assistant, question, resolved, retry, flight));
+        return emitter;
+    }
+
+    private void runGeneration(
+            AtlasUserRecord user,
+            ChatMessageRecord assistant,
+            String question,
+            ResolvedScope resolved,
+            boolean retry,
+            InFlight flight) {
+        try {
+            messages.updateStatus(assistant.messageId(), "streaming", null, null, null);
+            StringBuilder answer = new StringBuilder();
+            modelChannel.generate(
+                    new ModelChannel.Request(assistant.requestId(), question, user.userId()),
+                    new ModelChannel.Listener() {
+                        @Override
+                        public void onToken(String delta) {
+                            if (flight.cancelled.get()) {
+                                return;
+                            }
+                            answer.append(delta);
+                            try {
+                                flight.emitter.send(SseEmitter.event().name("token").data(Map.of("delta", delta)));
+                            } catch (IOException e) {
+                                flight.cancelled.set(true);
+                            }
+                        }
+
+                        @Override
+                        public void onComplete(String completeAnswer) {
+                            if (flight.cancelled.get()) {
+                                persistCancelled(assistant.messageId());
+                                completeQuietly(flight.emitter);
+                                return;
+                            }
+                            Instant done = clock.instant();
+                            String coverage = writeJson(coverage(resolved.bindingIds()));
+                            messages.updateStatus(
+                                    assistant.messageId(), "completed", completeAnswer, coverage, done);
+                            ChatMessageRecord stored =
+                                    messages.findById(assistant.messageId()).orElseThrow();
+                            try {
+                                flight.emitter.send(
+                                        SseEmitter.event().name("final").data(finalPayload(stored, completeAnswer)));
+                                flight.emitter.complete();
+                            } catch (IOException e) {
+                                completeQuietly(flight.emitter);
+                            }
+                            audit(
+                                    user.userId(),
+                                    resolved.logicalKbIds().getFirst(),
+                                    retry ? "chat_retry" : "chat_complete",
+                                    "allow",
+                                    "ok");
+                        }
+
+                        @Override
+                        public void onCancelled() {
+                            persistCancelled(assistant.messageId());
+                            completeQuietly(flight.emitter);
+                        }
+
+                        @Override
+                        public boolean isCancelled() {
+                            return flight.cancelled.get();
+                        }
+                    });
+        } catch (RuntimeException e) {
+            if (!flight.cancelled.get()) {
+                messages.updateStatus(assistant.messageId(), "failed", null, null, clock.instant());
+                completeQuietly(flight.emitter);
+            }
+        } finally {
+            inFlight.remove(assistant.messageId());
+        }
+    }
+
+    private void persistCancelled(String messageId) {
+        ChatMessageRecord current = messages.findById(messageId).orElse(null);
+        if (current == null || "completed".equals(current.status())) {
+            return;
+        }
+        messages.updateStatus(messageId, "incomplete_cancelled", null, null, clock.instant());
+    }
+
+    private String latestUserQuestion(String threadId, ChatMessageRecord assistant) {
+        ChatMessageRecord latestUser = null;
+        for (ChatMessageRecord row : messages.findByThreadId(threadId)) {
+            if ("user".equals(row.role()) && !row.createdAt().isAfter(assistant.createdAt())) {
+                latestUser = row;
+            }
+        }
+        if (latestUser == null || latestUser.questionText() == null || latestUser.questionText().isBlank()) {
+            throw new ChatValidationException("QUESTION_REQUIRED", "No question is available to retry.");
+        }
+        return latestUser.questionText();
+    }
+
+    private ChatThreadRecord requireOwnThread(AtlasUserRecord user, String threadId) {
+        ChatThreadRecord thread =
+                threads.findById(threadId).orElseThrow(() -> new ChatNotFoundException(threadId));
+        if (thread.deletedAt() != null || !user.userId().equals(thread.userId())) {
+            throw new ChatNotFoundException(threadId);
+        }
+        return thread;
+    }
+
+    private List<String> lastValidScope(AtlasUserRecord user) {
+        for (ChatThreadRecord thread : threads.findActiveByUserId(user.userId())) {
+            List<String> ids = readIds(thread.selectedLogicalKbIdsJson());
+            if (ids.isEmpty() || ids.size() > MAX_SCOPE) {
+                continue;
+            }
+            boolean valid = true;
+            for (String id : ids) {
+                LogicalKnowledgeBaseRecord kb = knowledgeBases.findById(id).orElse(null);
+                if (kb == null || !access.chatEligible(user, kb)) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                return ids;
+            }
+        }
+        return List.of();
+    }
+
+    private ResolvedScope resolveScope(AtlasUserRecord user, List<String> requested) {
+        if (requested == null || requested.isEmpty()) {
+            throw new ChatValidationException(
+                    "SCOPE_REQUIRED", "Select at least one Chat-ready knowledge base.");
+        }
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String id : requested) {
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            unique.add(id);
+        }
+        if (unique.size() < MIN_SCOPE) {
+            throw new ChatValidationException(
+                    "SCOPE_REQUIRED", "Select at least one Chat-ready knowledge base.");
+        }
+        if (unique.size() > MAX_SCOPE) {
+            throw new ChatValidationException(
+                    "SCOPE_LIMIT", "A chat may select at most five logical knowledge bases.");
+        }
+        if (unique.size() != requested.stream().filter(id -> id != null && !id.isBlank()).count()) {
+            throw new ChatValidationException("SCOPE_DUPLICATE", "Duplicate knowledge bases are not allowed.");
+        }
+        List<String> logicalKbIds = List.copyOf(unique);
+        List<String> bindingIds = new ArrayList<>();
+        Map<String, Integer> versions = new LinkedHashMap<>();
+        String classification = null;
+        for (String logicalKbId : logicalKbIds) {
+            LogicalKnowledgeBaseRecord kb =
+                    knowledgeBases
+                            .findById(logicalKbId)
+                            .orElseThrow(
+                                    () ->
+                                            new ChatForbiddenException(
+                                                    "KB_UNAUTHORIZED",
+                                                    "Knowledge base is not authorized for Chat: " + logicalKbId,
+                                                    "request_access"));
+            if (!access.authorized(user, kb)) {
+                throw new ChatForbiddenException(
+                        "KB_UNAUTHORIZED",
+                        "Knowledge base is not authorized for Chat: " + logicalKbId,
+                        "request_access");
+            }
+            if (!access.chatEligible(user, kb)) {
+                throw new ChatValidationException(
+                        "NOT_CHAT_READY",
+                        "Knowledge base is not Chat-ready: " + logicalKbId);
+            }
+            versions.put(logicalKbId, kb.configVersion());
+            if (classification == null
+                    || (kb.classification() != null && kb.classification().compareTo(classification) > 0)) {
+                classification = kb.classification();
+            }
+            for (BindingRecord binding : bindings.findByLogicalKbId(logicalKbId)) {
+                if (binding.enabled() && !binding.killSwitch()) {
+                    bindingIds.add(binding.bindingId());
+                }
+            }
+        }
+        return new ResolvedScope(
+                logicalKbIds, List.copyOf(bindingIds), versions, classification == null ? "internal" : classification);
+    }
+
+    private Map<String, Object> threadProjection(ChatThreadRecord thread) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("thread_id", thread.threadId());
+        body.put("logical_kb_ids", readIds(thread.selectedLogicalKbIdsJson()));
+        if (thread.branchedFromThreadId() != null) {
+            body.put("branched_from_thread_id", thread.branchedFromThreadId());
+        }
+        return body;
+    }
+
+    private Map<String, Object> messageProjection(ChatMessageRecord message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message_id", message.messageId());
+        body.put("role", message.role());
+        body.put("status", message.status());
+        body.put("question", message.questionText());
+        if ("completed".equals(message.status())) {
+            body.put("answer", message.answerText());
+        } else {
+            body.put("answer", null);
+        }
+        body.put("request_id", message.requestId());
+        return body;
+    }
+
+    private Map<String, Object> finalPayload(ChatMessageRecord message, String answer) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message_id", message.messageId());
+        body.put("status", "completed");
+        body.put("answer", answer);
+        body.put("citations", List.of());
+        body.put("coverage", coverage(readIds(message.bindingSetJson())));
+        body.put("conflict", null);
+        body.put("classification", message.classification());
+        body.put("request_id", message.requestId());
+        return body;
+    }
+
+    private Map<String, Object> coverage(List<String> bindingIds) {
+        Map<String, Object> coverage = new LinkedHashMap<>();
+        coverage.put("successful", bindingIds);
+        coverage.put("failed", List.of());
+        coverage.put("timed_out", List.of());
+        return coverage;
+    }
+
+    private List<String> readIds(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> ids = objectMapper.readValue(json, new TypeReference<List<String>>() {});
+            return ids == null ? List.of() : List.copyOf(ids);
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Unable to serialize chat JSON", e);
+        }
+    }
+
+    private void audit(String userId, String logicalKbId, String action, String authorization, String status) {
+        try {
+            auditEvents.insert(
+                    new AuditEventRecord(
+                            "aud_" + SessionService.randomToken().substring(0, 16),
+                            clock.instant(),
+                            userId,
+                            logicalKbId,
+                            null,
+                            null,
+                            action,
+                            authorization,
+                            null,
+                            null,
+                            null,
+                            status,
+                            null,
+                            objectMapper.writeValueAsString(Map.of("action", action))));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Unable to serialize content-free audit details", e);
+        }
+    }
+
+    private static void completeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (RuntimeException ignored) {
+            // already completed
+        }
+    }
+
+    private record ResolvedScope(
+            List<String> logicalKbIds,
+            List<String> bindingIds,
+            Map<String, Integer> configVersions,
+            String classification) {}
+
+    private record InFlight(SseEmitter emitter, AtomicBoolean cancelled) {}
+}
