@@ -213,3 +213,75 @@ None identified.
 - Final HEAD remained `c69c0ed61297eccb4ab94d1343964cfd8e8d7251`.
 - Final worktree was clean.
 - No files were edited.
+
+## Gate A — Third rerun (verbatim)
+
+# Code vs Design Review Report — TASK-017
+
+## Review Scope
+
+- **Revision:** `e62b8e6a9b8d29d671062865787bb399a5e1c26d`
+- **Base:** `origin/main` at `edaa08efab5bcde4b0d2dabfc49b91554fc233c2`
+- **Reviewed:** Complete TASK-017 diff, accepted requirements/specification/architecture/API/tasks, ADR-0009
+- **Excluded:** `docs/reviews/mvp-task-017-code-review.md`
+- **Mode:** Review-only; no files edited
+- **Overall alignment:** Partially aligned; one concurrency gap remains in terminal Retire handling
+
+## Good Alignment
+
+- `retire_sibling_fingerprint` includes KB semantic state plus each sibling’s ID, config version, runtime flags, health, provider, and lifecycle-appropriate eligibility.
+- Both the fingerprint and `wouldRetireKnowledgeBase` use the same `requireActiveLifecycle` decision and `RetrievalEligibility` predicate for Active and Suspended KBs.
+- The new safe→unsafe test correctly proves that a sibling changed before confirmation yields `409 IMPACT_PREVIEW_STALE` with no target or lifecycle mutation.
+- Suspended KBs retain a safe sibling for remediation instead of being terminally retired.
+- Atomic preview claims, admin authorization, CSRF, content-free audit data, migration structure, rollback, and dispatch stopping remain aligned.
+
+## Findings
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Sibling fingerprint validation and the final retirement decision are still vulnerable to an in-transaction TOCTOU race
+
+- **Expected:** The lifecycle outcome applied by Retire must remain the outcome bound by the validated preview, including under concurrent sibling governance changes.
+- **Current flow:** `requirePreview` validates the fingerprint at [GovernanceService.java:336](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:336). Retire then updates only the target binding at [GovernanceService.java:198](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:198) and rereads all siblings for the final decision at [GovernanceService.java:201](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:201).
+- **Missing protection:** No sibling rows are locked, no aggregate KB/binding-set version is claimed, and no serializable isolation is configured. Under normal read-committed behavior, another transaction can change a sibling after fingerprint validation but before the final reread.
+- **Impact:** A safe sibling can become unsafe during that window, causing the KB to be terminally retired even though the validated preview predicted it would remain Active/Suspended. The inverse change can also alter a previewed retirement into retention.
+- **Why the new test does not cover it:** [GovernanceApiTest.java:360](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/governance/GovernanceApiTest.java:360) changes the sibling before confirmation starts, not between validation and the final decision.
+- **Recommended fix:** Lock the KB and relevant binding rows in a consistent order before validating the fingerprint and hold those locks through the mutation, with all sibling governance writers participating in the same locking protocol; alternatively use an aggregate semantic version/CAS that every binding mutation advances. Add a two-transaction test that pauses Retire after fingerprint validation and changes the sibling concurrently.
+
+### Minor
+
+- Atomic preview claim behavior remains structurally correct but still lacks an actual simultaneous-claim test.
+
+## Coverage Check
+
+| Area | Status |
+|---|---|
+| Fingerprint content and predicate consistency | Implemented |
+| Active/Suspended sibling eligibility | Implemented |
+| Sibling changed before confirmation | Implemented and tested |
+| Sibling changed during confirmation | Missing; Major gap |
+| Atomic preview claim | Implemented |
+| Auth / CSRF / API errors | Implemented |
+| Flyway migration / audit safety | Implemented |
+
+## Architecture Assessment
+
+- No architecture P0 was identified outside the concurrency boundary above.
+- Centralizing eligibility remains a good dependency choice.
+- The fingerprint is content-free and conservative: irrelevant semantic changes may stale a preview, but unsafe changes do not pass when they occur before confirmation.
+- The remaining issue is transaction-boundary consistency, not fingerprint field coverage.
+
+## Exact Verification
+
+- `./mvnw -q -pl backend -Dtest=GovernanceApiTest,RetrievalOrchestratorDispatchSnapshotTest test`
+  - **Passed**
+  - `GovernanceApiTest`: 10 tests, 0 failures/errors/skips
+  - `RetrievalOrchestratorDispatchSnapshotTest`: 30 tests, 0 failures/errors/skips
+- `git diff --check origin/main...HEAD -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md' ':(exclude)docs/reviews/mvp-task-017-code-review.md'`
+  - **Passed**
+- Final HEAD: `e62b8e6a9b8d29d671062865787bb399a5e1c26d`
+- Final worktree: clean.

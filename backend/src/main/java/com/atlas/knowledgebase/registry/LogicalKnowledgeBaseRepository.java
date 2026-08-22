@@ -88,6 +88,17 @@ public class LogicalKnowledgeBaseRepository {
                 .findFirst();
     }
 
+    /** Locks a KB row for a transaction that must serialize lifecycle and binding-set changes. */
+    public Optional<LogicalKnowledgeBaseRecord> findByIdForUpdate(String logicalKbId) {
+        return jdbcTemplate
+                .query(
+                        "SELECT * FROM logical_knowledge_base WHERE logical_kb_id = ? FOR UPDATE",
+                        ROW_MAPPER,
+                        logicalKbId)
+                .stream()
+                .findFirst();
+    }
+
     /** Active and Suspended KBs for catalog/detail. Draft and Retired are omitted. */
     public List<LogicalKnowledgeBaseRecord> findPublished() {
         return jdbcTemplate.query(
@@ -106,6 +117,7 @@ public class LogicalKnowledgeBaseRepository {
     @Transactional
     public LogicalKnowledgeBaseRecord updateDraft(
             String logicalKbId, int expectedVersion, LogicalKnowledgeBaseDraft draft) {
+        findByIdForUpdate(logicalKbId);
         Instant now = Instant.now();
         int updated =
                 jdbcTemplate.update(
@@ -144,6 +156,7 @@ public class LogicalKnowledgeBaseRepository {
      */
     @Transactional
     public LogicalKnowledgeBaseRecord activate(String logicalKbId, int expectedVersion) {
+        findByIdForUpdate(logicalKbId);
         Instant now = Instant.now();
         int updated =
                 jdbcTemplate.update(
@@ -171,6 +184,7 @@ public class LogicalKnowledgeBaseRepository {
     @Transactional
     public LogicalKnowledgeBaseRecord activate(
             String logicalKbId, int expectedVersion, String capability, boolean modelEligible) {
+        findByIdForUpdate(logicalKbId);
         Instant now = Instant.now();
         int updated =
                 jdbcTemplate.update(
@@ -198,6 +212,7 @@ public class LogicalKnowledgeBaseRepository {
 
     @Transactional
     public LogicalKnowledgeBaseRecord suspend(String logicalKbId) {
+        findByIdForUpdate(logicalKbId);
         Instant now = Instant.now();
         int updated =
                 jdbcTemplate.update(
@@ -227,6 +242,7 @@ public class LogicalKnowledgeBaseRepository {
     /** Moves an active or suspended knowledge base to the terminal Retired lifecycle. */
     @Transactional
     public LogicalKnowledgeBaseRecord retire(String logicalKbId) {
+        findByIdForUpdate(logicalKbId);
         Instant now = Instant.now();
         int updated =
                 jdbcTemplate.update(

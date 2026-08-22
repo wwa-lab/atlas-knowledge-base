@@ -104,9 +104,28 @@ public class BindingRepository {
                 .findFirst();
     }
 
+    /** Reads and locks one binding for a transaction that must serialize governance changes. */
+    public Optional<BindingRecord> findByIdForUpdate(String bindingId) {
+        return jdbcTemplate
+                .query(
+                        "SELECT * FROM binding WHERE binding_id = ? FOR UPDATE",
+                        ROW_MAPPER,
+                        bindingId)
+                .stream()
+                .findFirst();
+    }
+
     public List<BindingRecord> findByLogicalKbId(String logicalKbId) {
         return jdbcTemplate.query(
                 "SELECT * FROM binding WHERE logical_kb_id = ?", ROW_MAPPER, logicalKbId);
+    }
+
+    /** Locks every binding in a logical KB in a stable, transaction-local snapshot. */
+    public List<BindingRecord> findByLogicalKbIdForUpdate(String logicalKbId) {
+        return jdbcTemplate.query(
+                "SELECT * FROM binding WHERE logical_kb_id = ? ORDER BY binding_id FOR UPDATE",
+                ROW_MAPPER,
+                logicalKbId);
     }
 
     /** Captures the complete prior state for an immutable, auditable rollback target. */
@@ -175,6 +194,7 @@ public class BindingRepository {
 
     @Transactional
     public int deleteByLogicalKbId(String logicalKbId) {
+        findByLogicalKbIdForUpdate(logicalKbId);
         return jdbcTemplate.update("DELETE FROM binding WHERE logical_kb_id = ?", logicalKbId);
     }
 
@@ -182,7 +202,7 @@ public class BindingRepository {
     public BindingRecord update(String bindingId, int expectedVersion, BindingDraft draft) {
         Instant now = Instant.now();
         BindingRecord current =
-                findById(bindingId)
+                findByIdForUpdate(bindingId)
                         .orElseThrow(
                                 () -> new IllegalArgumentException("binding not found: " + bindingId));
         if (current.configVersion() != expectedVersion) {
@@ -232,7 +252,7 @@ public class BindingRepository {
     public BindingRecord updateRuntime(
             String bindingId, int expectedVersion, boolean enabled, boolean killSwitch) {
         BindingRecord current =
-                findById(bindingId)
+                findByIdForUpdate(bindingId)
                         .orElseThrow(
                                 () -> new IllegalArgumentException("binding not found: " + bindingId));
         if (current.configVersion() != expectedVersion) {
@@ -270,7 +290,7 @@ public class BindingRepository {
     public BindingRecord restore(
             String bindingId, int expectedVersion, BindingConfigHistoryRecord target) {
         BindingRecord current =
-                findById(bindingId)
+                findByIdForUpdate(bindingId)
                         .orElseThrow(
                                 () -> new IllegalArgumentException("binding not found: " + bindingId));
         if (current.configVersion() != expectedVersion) {

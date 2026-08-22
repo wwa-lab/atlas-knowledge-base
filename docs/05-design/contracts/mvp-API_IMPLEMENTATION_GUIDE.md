@@ -919,7 +919,8 @@ preview is rejected with `409`; confirmation never trusts client-supplied bindin
 server claims the preview through a unique database key in the same transaction as the mutation,
 so concurrent confirmations cannot both apply. Retire previews also bind a content-free sibling
 fingerprint calculated from the lifecycle-appropriate runtime gates; a change to a safe or unsafe
-sibling fails closed as `IMPACT_PREVIEW_STALE`.
+sibling fails closed as `IMPACT_PREVIEW_STALE`. The Retire transaction locks the KB and binding
+rows before validating that fingerprint and holds those locks through the lifecycle decision.
 
 ### POST `/admin/bindings/{binding_id}/kill-switch`
 

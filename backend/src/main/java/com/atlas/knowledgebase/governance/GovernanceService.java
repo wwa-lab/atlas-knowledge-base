@@ -313,6 +313,9 @@ public class GovernanceService {
                 bindingId,
                 actorUserId,
                 clock.instant());
+        if (expectedOperation == Operation.RETIRE) {
+            lockRetireState(details.path("logical_kb_id").asText(""));
+        }
         BindingRecord binding = requireBinding(bindingId);
         int expectedVersion = details.path("config_version").asInt(-1);
         if (expectedVersion != binding.configVersion()
@@ -343,6 +346,21 @@ public class GovernanceService {
             }
         }
         return new PreviewContext(binding, details);
+    }
+
+    private void lockRetireState(String logicalKbId) {
+        if (logicalKbId == null || logicalKbId.isBlank()) {
+            throw new GovernanceConflictException(
+                    "IMPACT_PREVIEW_INVALID", "The impact preview has no logical KB identity.");
+        }
+        knowledgeBases
+                .findByIdForUpdate(logicalKbId)
+                .orElseThrow(
+                        () ->
+                                new GovernanceNotFoundException(
+                                        "KNOWLEDGE_BASE_NOT_FOUND",
+                                        "Knowledge base was not found: " + logicalKbId));
+        bindings.findByLogicalKbIdForUpdate(logicalKbId);
     }
 
     private void requireRevalidation(BindingConfigHistoryRecord target, LogicalKnowledgeBaseRecord kb) {
