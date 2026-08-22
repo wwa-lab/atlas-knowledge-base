@@ -874,6 +874,220 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 # Gate A Merge Gate: Fail
 
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Revision reviewed:** `5d7840dc3e5b6d827b5db5a0ec358bada72fa2a8`
+- **Base revision:** `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83` (`origin/main`)
+- **Diff reviewed:** `git diff origin/main...HEAD`
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, specification, architecture, data flow/model, detailed design, API guide, traceability, ADR-0002/0004/0006/0007
+- **Tasks reviewed:** `TASK-015: Retrieval orchestrator (stubs first)`
+- **Code / files inspected:** All 40 changed files outside `docs/reviews/mvp-task-015-code-review.md`, including retrieval/adapters, Chat integration, configuration, and tests
+- **Excluded as evidence:** Existing review reports and PR narrative
+- **Review objective:** Determine whether TASK-015 faithfully implements per-turn authorization, parallel retrieval, coverage, fail-closed/partial/item-omit behavior, RRF, cancellation, and provider-neutral resilience semantics.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 74%
+- **Verdict:** Partially aligned
+- **Severity summary:** 0 Critical, 2 Major, 0 Minor
+- **Rationale:** The implementation establishes the intended module boundaries, fail-closed classification policy, cooperative cancellation path, fixture adapters, coverage map, and provenance-preserving RRF. Two execution-layer defects remain blocking: provider deadlines are not enforced independently and completed calls can be misclassified based on collection order; additionally, the provider-neutral resilience layer neither enforces a quota budget nor preserves the distinction between quota and backoff/circuit availability failures.
+
+---
+
+## Areas of Good Alignment
+
+- `ChatClassificationPolicy` fails closed on missing or unapproved classifications and refuses mixed classifications until an approved dominance taxonomy exists.
+- Deployed classification allow-lists and provider resilience values are environment-owned; empty required configuration fails startup.
+- `CancellationSource` is propagated from ask/retry through authorization and retrieval operations, and `ProviderExecution` attaches cancellation to every submitted provider future.
+- Chat terminal persistence uses conditional updates, preventing cancelled work from becoming a completed answer.
+- Stub retrieval is restricted to `local` and `non-prod`; fixture evidence is explicitly synthetic.
+- Browse-only, model-ineligible, disabled, kill-switched, unavailable, and freshness-indeterminate scopes do not reach retrieval/model generation.
+- Complete-binding denial blocks the whole logical KB, item-level omission preserves the KB, and security failures suspend the affected KB.
+- RRF uses a documented in-process implementation and preserves all provenance paths across its composite deduplication identity.
+- Coverage distinguishes successful, failed, timed-out, and quota-limited bindings and includes retry-after values.
+- Adapter registration fails on duplicate provider handlers and keeps provider protocols behind the adapter seam.
+- Ask/retry persists current scope, binding set, configuration versions, and resolved classification.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Provider deadlines and results depend on sequential collection order
+
+- **Design / task expected:** FR-36, FR-38, REQ-RAG-013, and TASK-015 require parallel retrieval under independent connector timeout budgets with accurate coverage.
+- **Code currently does:** Every call receives an absolute deadline at submission, but deadlines are enforced primarily when `ProviderExecution.await` is invoked. `RetrievalOrchestrator` awaits authorization and retrieval calls sequentially. At `ProviderExecution.java:132-135`, an expired collection-time deadline causes unconditional cancellation and timeout without determining whether the future completed successfully before its deadline. Conversely, a later future can run beyond its deadline until the orchestrator reaches it because no independent timeout task cancels it.
+- **Why it matters:** If an earlier binding consumes the timeout window, a later binding that completed promptly can be reported as timed out solely because it was collected later. This corrupts coverage, discards safe evidence, and can turn the required partial-answer path into `NO_EVIDENCE`. Operations that ignore their passed timeout may also exceed their own deadline while waiting to be collected.
+- **Recommended fix:** Enforce each call’s deadline independently of collection order—such as by scheduling cancellation at submission or recording completion time in a terminal wrapper—and collect terminal results without reclassifying on observation time. Add a test where one call blocks to its deadline while a later call completes immediately, plus the reverse ordering.
+
+#### Provider resilience does not enforce quota and conflates backoff/circuit rejection with quota
+
+- **Design / task expected:** FR-38, FR-51, FR-57, REQ-RAG-013, REQ-FAIL-005/006/007, and the accepted architecture require independent quota, concurrency, backoff, and circuit-breaker controls while distinguishing quota from retrieval/availability failures and publishing accurate retry timing.
+- **Code currently does:** `RetrievalProperties` defines timeout, concurrency, backoff, and circuit settings but no quota/rate budget. Quota exists only as an adapter-returned outcome. `ProviderState` retains only failure count and unavailable-until time; it does not retain why the provider is unavailable. Consequently, `RetrievalOrchestrator.java:450-451` and `468-469` map every `ProviderUnavailableException` to `QUOTA`, including backoff/circuit rejection caused by timeout, ordinary failure, or unknown failure.
+- **Why it matters:** Atlas does not enforce the required connector quota budget, and users/telemetry can be told that a provider is rate-limited when the actual cause is timeout-triggered backoff or an open circuit. That violates the accepted failure taxonomy and makes retry guidance and provider operations misleading.
+- **Recommended fix:** Add an explicit provider-neutral quota/rate-budget mechanism or contract, retain the originating failure category in provider state, and classify open-backoff/circuit rejections according to their cause while still carrying retry-after. Cover quota exhaustion, timeout backoff, ordinary-failure backoff, circuit open/close, concurrent failure updates, and provider isolation.
+
+### Minor
+
+None identified.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB/binding snapshot and authorization | Implemented |
+| Fail-closed classification boundary | Implemented |
+| Parallel authorization/retrieval dispatch | Partial — dispatch is parallel, deadline/result collection is incorrect |
+| Provider timeout isolation | Partial |
+| Provider concurrency isolation | Implemented |
+| Provider quota enforcement | Missing |
+| Backoff and circuit breaker | Partial — state exists, failure taxonomy is lost |
+| Cancellation through ask/retry/provider futures | Implemented for current synchronous stub path |
+| Complete-binding denial | Implemented |
+| Item-level omission | Implemented |
+| Security failure and KB suspension | Implemented |
+| Ordinary partial coverage | Implemented, subject to deadline-collection defect |
+| Retry-after publication | Partial — value exists, category can be incorrect |
+| RRF and provenance-preserving dedup | Implemented |
+| Browse-only/model-ineligible exclusion | Implemented |
+| Completed-only answer persistence | Implemented |
+
+**Task coverage:**
+
+- **Clearly implemented:** Fixture adapters, per-turn scope snapshots, classification gate, authorization/retrieval fan-out, coverage, fail-closed security handling, binding denial, item omission, RRF, Chat integration, cancellation token propagation.
+- **Partially implemented:** Independent provider deadlines, quota/backoff/circuit semantics.
+- **Not reflected in code:** Provider-neutral quota-budget enforcement.
+- **Code changes not clearly mapped to TASK-015:** None material.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- None identified. The strict same-classification rule is a conservative fail-closed policy while an approved dominance taxonomy is unavailable.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** `ProviderExecution` combines concurrency, deadlines, backoff, circuit state, and an implicit failure-category mapping that cannot preserve the required taxonomy.
+- **Hidden shortcuts:** Provider quota is represented only as a returned fixture/provider outcome rather than an enforced connector budget.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Mostly aligned; security failures suspend KBs, ordinary failures remain health/resilience outcomes, and cancelled messages are not completed.
+- **Validation behavior:** Aligned; Chat scope and classification are validated before retrieval/model send.
+- **Retry / skip / resume / failure handling:** Partial due to the two Major provider-execution findings.
+- **User-visible behavior:** Coverage and retry-after are exposed, but backoff/circuit failures can be mislabeled as quota.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Stub-only as permitted by TASK-015.
+- **Secret / credential safety:** Aligned; no credentials or real internal excerpts were introduced.
+- **Logging / audit hooks:** Content-free authorization/retrieval audit paths are present.
+- **Error propagation at integration boundaries:** Partial; typed security and ordinary adapter exceptions are handled, but provider-unavailable cause is collapsed into quota.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Suitable for further testing:** Yes
+- **Suitable for next real-adapter implementation step:** No
+- **Blockers before proceeding:**
+  1. Make provider deadlines and terminal result classification independent of collection order.
+  2. Add provider-neutral quota enforcement and preserve quota versus backoff/circuit failure semantics.
+- **Acceptable deviations:** Strict rejection of mixed classifications until an approved ordering/dominance policy exists.
+- **Required corrections:** Both Major findings above, with concurrent and race-oriented tests.
+
+---
+
+## Recommended Fixes
+
+1. Replace observation-time timeout logic with per-call deadline enforcement and completion-aware result collection in `ProviderExecution`.
+2. Add explicit quota configuration/enforcement and typed unavailability cause/state.
+3. Add tests for completed-later-collected futures, independent timeout cancellation, concurrent failure counting, circuit recovery, quota retry-after, and provider isolation.
+
+## Minimal Fix Path
+
+- Extend `TimedCall` or its underlying task with independently scheduled deadline cancellation and a recorded terminal result/completion time.
+- Ensure registration cleanup happens on every await path.
+- Extend provider state with an unavailability cause and introduce a configured quota limiter/budget.
+- Map provider rejection to `quota`, `timeout`, or `retrieval` based on the preserved cause.
+- Add focused unit tests; rerun `./mvnw -q test` and the repository diff check.
+
+---
+
+## Open Risks / Questions
+
+- `ModelChannel.generate` does not state whether implementations must block until a terminal callback. `ChatService` removes `inFlight` when `generate` returns, so a future asynchronous TASK-022 adapter could detach cancellation before completion. Current synchronous stub behavior is aligned, but TASK-022 must either preserve synchronous call lifetime or change ownership to terminal callbacks/futures.
+- The accepted spec/architecture says RRF/dedup internals require an ADR, while TASK-015 explicitly directs a documented simple in-process implementation and permits an internals ADR later. This conflict did not raise finding severity because the active task directly authorizes the implementation, but it should be reconciled before tuning or replacing the algorithm.
+- Approval of deployed `ATLAS_CHAT_APPROVED_CLASSIFICATIONS` values remains external and `[UNVERIFIED]`; the code correctly refuses empty/unapproved values.
+
+---
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 74%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] Parallel provider deadlines are coupled to sequential result observation, so safe completed work can be discarded and over-deadline work can continue until collected — `ProviderExecution.java:130-148`, `RetrievalOrchestrator.java:134-136`, `230-232` — violates independent fan-out and timeout isolation.
+- [ ] The resilience abstraction has no quota budget and cannot distinguish quota from timeout/failure-induced backoff or circuit-open state — `RetrievalProperties.java:13-18`, `ProviderExecution.java:92-116`, `RetrievalOrchestrator.java:445-469` — violates provider-neutral resilience and error-taxonomy boundaries.
+
+### P1 (Fix Next Touch)
+
+- [ ] Define `ModelChannel.generate` lifetime/cancellation semantics before TASK-022; asynchronous implementations would currently lose `inFlight` ownership when `generate` returns — `ModelChannel.java:12`, `ChatService.java:469-548`.
+
+### P2 (Track)
+
+None identified.
+
+## Good Practices Confirmed
+
+- Feature-based backend packages preserve the modular-monolith boundaries.
+- Provider protocols remain behind replaceable adapter interfaces.
+- DTO/value objects use records and defensive immutable copies.
+- Configuration is externalized per environment and provider profile.
+- Local/non-prod stubs are separated from future real adapters.
+- Error handling is typed and content-safe at the Chat boundary.
+- Cancellation ownership is explicit and shared across current retrieval futures.
+- RRF and retrieval scope objects are isolated from Chat persistence concerns.
+
+## Recommendation
+
+Correct the provider-execution primitive before TASK-019–021 build real adapters on it. The current boundary shape is reusable, but its deadline, quota, and failure-category semantics would otherwise compound across every connector.
+
+---
+
+## Verification Evidence
+
+- `git rev-parse HEAD` → `5d7840dc3e5b6d827b5db5a0ec358bada72fa2a8`
+- `git merge-base origin/main HEAD` → `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- `./mvnw -q test` → Pass; 131 tests, 0 failures, 0 errors, 0 skipped
+- Repository diff whitespace/conflict-marker check → Pass
+- Worktree remained unchanged
+- Oracle migration, frontend tests/build, and SDD-skill verification were not applicable to this diff
+
+# Gate A Merge Gate: Fail
+
 ---
 
 # Gate A — Post-Final-Gate-B Remediation Review
