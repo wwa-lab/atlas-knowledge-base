@@ -951,3 +951,44 @@ None identified.
 Fix the resolver contract before TASK-019–021 by making current-user authorization explicit and locator values structurally immutable. Then rerun the full backend suite and a fresh independent review.
 
 Gate A: Fail
+
+## Gate B — After authorization-hardening fixes (verbatim)
+
+Gate B: Pass
+
+Review-only Gate B completed at `addbf807c978077d48ba5ce459694793d3984b3a` for `git diff origin/main...HEAD`. The review used both required skills, accepted TASK-016 SDD artifacts, and ADR-0008. `docs/reviews/mvp-task-016-code-review.md` was excluded from behavioral evidence. No files were changed.
+
+Overall assessment: implementation aligns with the accepted TASK-016 scope and ADR-0008. No Critical, Major, P0, or P1 blockers were found.
+
+Independently verified fixes:
+
+- Both locator/source-identity mappers use strict `FAIL_ON_TRAILING_TOKENS`, with focused tests.
+- `CitationAssembler` safely falls back to the KB owner ID when the owner display name is missing or blank.
+- Resolver authorization runtime failures, null results, and `UNKNOWN` outcomes fail closed and emit one audit event.
+- Live/provider results require `PROVIDER`; fixture results require `FIXTURE`.
+- Request-level audit covers pre-controller failures such as malformed bodies and CSRF rejection.
+- Move targets are revalidated for provider, schema, marker, and stable identity continuity.
+- Resolver calls carry an explicit immutable `AuthorizationContext`; no ambient/raw-token authorization state is used.
+- Locator, source identity, and request data use defensive copies.
+- Private citation lookup is current-user scoped and avoids cross-user leakage.
+- GET/POST outcome mappings match the contract: OK, MOVED/409, UNAVAILABLE/410, and UNKNOWN/503.
+- Citation replacement is transactionally coupled to the winning completion; failed completion paths do not persist citation rows.
+- Audit payloads remain content-free and do not expose URLs, raw locators, or evidence body data.
+- Fixture resolver activation is restricted to local/test profiles; live environments fail closed without live adapters.
+
+Architecture review: Pass. The controller/service/repository and provider-adapter boundaries are coherent, immutable records are used appropriately, authorization remains service-owned, and no evidence cache or unauthorized latest-source substitution was introduced.
+
+Non-blocking P2 follow-ups:
+
+1. Make retry citation cleanup an explicit repository/state-machine invariant, even though the current valid state machine makes stale citation rows unreachable for retryable messages.
+2. Freeze and enforce a concrete maximum excerpt size before production adapters are added; the current accepted design only specifies a short excerpt qualitatively.
+3. Centralize the `/api/v1/citations` path if future API versioning or additional citation routes are introduced.
+
+Verification completed:
+
+- Focused TASK-016/security tests passed with zero failures and zero errors, including the resolver, validator, continuity, citation completion, evidence service, chat API, concurrency, and retrieval-scope suites.
+- `git diff --check` passed.
+- Worktree remained clean.
+- Full Maven was not rerun, consistent with the instruction and already-green focused/CI evidence.
+
+Final disposition: suitable to merge; no required corrections remain.
