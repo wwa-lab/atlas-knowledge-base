@@ -55,6 +55,28 @@ class RetrievalOrchestratorTest {
     }
 
     @Test
+    void allOrdinaryFailuresBlockGenerationWithoutGroundedEvidence() {
+        Instant now = Instant.parse("2026-08-22T03:00:30Z");
+        AtlasUserRecord user = owner("usr_ret_all_timeout", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_all_timeout", user.userId(), now);
+        BindingRecord binding =
+                binding(
+                        "bnd_ret_all_timeout",
+                        kb.logicalKbId(),
+                        "dify",
+                        "{\"retrieval_fixture\":\"timeout\"}",
+                        now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.NO_EVIDENCE);
+        assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> timedOut = (List<String>) turn.coverage().get("timed_out");
+        assertThat(timedOut).containsExactly(binding.bindingId());
+    }
+
+    @Test
     void missingBindingAccessExcludesTheWholeKnowledgeBase() {
         Instant now = Instant.parse("2026-08-22T03:01:00Z");
         AtlasUserRecord user = owner("usr_ret_fr47", now);
@@ -94,6 +116,9 @@ class RetrievalOrchestratorTest {
         assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
                 .isEqualTo("suspended");
         assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed).contains("bnd_ret_sec");
     }
 
     @Test

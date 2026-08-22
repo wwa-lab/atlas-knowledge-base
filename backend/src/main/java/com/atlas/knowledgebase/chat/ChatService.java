@@ -442,6 +442,13 @@ public class ChatService {
                     "Permission or security-boundary failure closed this knowledge base.",
                     "contact_owner");
         }
+        if (turn.block() == RetrievalTurn.Block.NO_EVIDENCE) {
+            throw new ChatRetrievalException(
+                    "NO_GROUNDED_EVIDENCE",
+                    "No selected source returned grounded evidence for this turn.",
+                    "retry_or_change_scope",
+                    Map.of("coverage", turn.coverage()));
+        }
         return turn;
     }
 

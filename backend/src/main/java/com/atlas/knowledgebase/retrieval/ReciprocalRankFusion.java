@@ -26,12 +26,13 @@ public final class ReciprocalRankFusion {
             if (list == null || list.hits() == null) {
                 continue;
             }
-            int rank = 1;
+            int position = 1;
             for (Retriever.Hit hit : list.hits()) {
                 if (hit == null || hit.fingerprint() == null || hit.fingerprint().isBlank()) {
-                    rank++;
+                    position++;
                     continue;
                 }
+                int rank = hit.rank() > 0 ? hit.rank() : position;
                 double add = 1.0d / (K + rank);
                 Acc acc =
                         byFingerprint.computeIfAbsent(
@@ -39,7 +40,7 @@ public final class ReciprocalRankFusion {
                                 ignored -> new Acc(0.0d, new ArrayList<>(), hit));
                 acc.score += add;
                 acc.paths.add(new Provenance(list.logicalKbId(), list.bindingId(), list.provider(), rank));
-                rank++;
+                position++;
             }
         }
         return byFingerprint.values().stream()

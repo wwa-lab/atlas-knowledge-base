@@ -37,4 +37,15 @@ public class ChatExceptionHandler {
         return ApiErrorResponses.entity(
                 HttpStatus.CONFLICT, "conflict", ex.code(), ex.getMessage(), "reload_thread");
     }
+
+    @ExceptionHandler(ChatRetrievalException.class)
+    public ResponseEntity<Map<String, Object>> retrieval(ChatRetrievalException ex) {
+        return ApiErrorResponses.entity(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "retrieval",
+                ex.code(),
+                ex.getMessage(),
+                ex.nextStep(),
+                ex.details());
+    }
 }

@@ -297,6 +297,50 @@ class ChatApiTest {
     }
 
     @Test
+    void allTimeoutsReturnRetrievalErrorWithoutGeneratingAnAnswer() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "All Timeout",
+                        "{\"dataset_id\":\"ds_timeout\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"timeout\"}");
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
+                                .content("{\"question\":\"What is the runbook?\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.category").value("retrieval"))
+                .andExpect(jsonPath("$.error.code").value("NO_GROUNDED_EVIDENCE"))
+                .andExpect(jsonPath("$.error.next_step").value("retry_or_change_scope"))
+                .andExpect(jsonPath("$.error.details.coverage.timed_out[0]").value(bindingId));
+
+        Integer messages =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM chat_message WHERE thread_id = ?", Integer.class, threadId);
+        assertThat(messages).isZero();
+    }
+
+    @Test
     void securityRetrievalSuspendsTheKnowledgeBase() throws Exception {
         LoggedIn owner = loginOwner();
         String kbId =

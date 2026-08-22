@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 public class StubModelChannel implements ModelChannel {
 
     static final String STUB_ANSWER =
-            "Local mock stub: retrieval is not sending real excerpts. Evidence is insufficient for a grounded answer until the retrieval orchestrator and live gateway are in use.";
+            "Local mock stub: retrieval fixtures are active, but no real internal excerpts are sent. Evidence remains insufficient for a grounded answer until the live gateway and approved real-content path are in use.";
 
     @Override
     public void generate(Request request, Listener listener) {

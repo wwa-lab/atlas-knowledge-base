@@ -16,7 +16,8 @@ public record RetrievalTurn(
     public enum Block {
         NONE,
         BINDING_ACCESS,
-        SECURITY
+        SECURITY,
+        NO_EVIDENCE
     }
 
     public boolean blocked() {

@@ -13,6 +13,7 @@ import com.atlas.knowledgebase.session.SessionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -67,8 +68,6 @@ public class RetrievalOrchestrator {
         List<String> failed = new ArrayList<>();
         List<String> timedOut = new ArrayList<>();
         List<ReciprocalRankFusion.RankedList> ranked = new ArrayList<>();
-        Set<String> remainingKbs = new LinkedHashSet<>();
-        Set<String> excludedKbs = new LinkedHashSet<>();
         Set<String> securityKbs = new LinkedHashSet<>();
         String blockKb = null;
         String blockBinding = null;
@@ -77,7 +76,6 @@ public class RetrievalOrchestrator {
         for (String logicalKbId : logicalKbIds) {
             LogicalKnowledgeBaseRecord kb = knowledgeBases.findById(logicalKbId).orElse(null);
             if (kb == null || !access.authorized(user, kb) || !access.chatEligible(user, kb)) {
-                excludedKbs.add(logicalKbId);
                 continue;
             }
             List<BindingRecord> current =
@@ -94,10 +92,8 @@ public class RetrievalOrchestrator {
                 }
             }
             if (missingBinding) {
-                excludedKbs.add(logicalKbId);
                 continue;
             }
-            remainingKbs.add(logicalKbId);
             for (BindingRecord binding : current) {
                 work.add(new BindingWork(kb, binding));
             }
@@ -124,8 +120,8 @@ public class RetrievalOrchestrator {
                 case TIMEOUT -> timedOut.add(bindingId);
                 case FAILED -> failed.add(bindingId);
                 case SECURITY -> {
+                    failed.add(bindingId);
                     securityKbs.add(logicalKbId);
-                    remainingKbs.remove(logicalKbId);
                     knowledgeBases.suspend(logicalKbId);
                     audit(
                             user.userId(),
@@ -167,33 +163,28 @@ public class RetrievalOrchestrator {
         }
 
         List<ReciprocalRankFusion.FusedHit> fused = ReciprocalRankFusion.fuse(ranked);
-        List<Map<String, Object>> citations = new ArrayList<>();
-        int index = 1;
-        for (ReciprocalRankFusion.FusedHit fusedHit : fused) {
-            Map<String, Object> citation = new LinkedHashMap<>();
-            citation.put("citation_id", "cit_" + index++);
-            citation.put("logical_kb_id", fusedHit.logicalKbId());
-            citation.put("binding_id", fusedHit.bindingId());
-            citation.put("provider", fusedHit.provider());
-            citation.put("title", fusedHit.hit().title());
-            citations.add(citation);
-        }
-
         Map<String, Object> coverage = new LinkedHashMap<>();
         coverage.put("successful", List.copyOf(successful));
         coverage.put("failed", List.copyOf(failed));
         coverage.put("timed_out", List.copyOf(timedOut));
 
         RetrievalTurn.Block block = RetrievalTurn.Block.NONE;
-        boolean anySuccess = !successful.isEmpty();
-        if (!anySuccess && !excludedKbs.isEmpty() && securityKbs.isEmpty() && timedOut.isEmpty()) {
-            block = RetrievalTurn.Block.BINDING_ACCESS;
-        } else if (!anySuccess && !securityKbs.isEmpty()) {
+        boolean anyEvidence = !fused.isEmpty();
+        if (!anyEvidence && !securityKbs.isEmpty()) {
             block = RetrievalTurn.Block.SECURITY;
+        } else if (!anyEvidence && blockBinding != null) {
+            block = RetrievalTurn.Block.BINDING_ACCESS;
+        } else if (!anyEvidence) {
+            block = RetrievalTurn.Block.NO_EVIDENCE;
         }
 
         return new RetrievalTurn(
-                coverage, fused, citations, null, block, blockKb, blockBinding);
+                coverage, fused, List.of(), null, block, blockKb, blockBinding);
+    }
+
+    @PreDestroy
+    void closeWorkers() {
+        workers.close();
     }
 
     private BindingOutcome retrieveOne(AtlasUserRecord user, String question, BindingWork item) {

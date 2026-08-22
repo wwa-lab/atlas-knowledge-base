@@ -29,4 +29,22 @@ class ReciprocalRankFusionTest {
         assertThat(fused.stream().map(hit -> hit.hit().fingerprint()).toList())
                 .containsExactly("fp-shared", "fp-dify", "fp-git");
     }
+
+    @Test
+    void usesRetrieverRankInsteadOfListPosition() {
+        Retriever.Hit declaredSecond =
+                new Retriever.Hit("doc-second", "Second", "fixture", "v1", "{}", 2, "fp-second");
+        Retriever.Hit declaredFirst =
+                new Retriever.Hit("doc-first", "First", "fixture", "v1", "{}", 1, "fp-first");
+
+        List<ReciprocalRankFusion.FusedHit> fused =
+                ReciprocalRankFusion.fuse(
+                        List.of(
+                                new ReciprocalRankFusion.RankedList(
+                                        "lkb", "bnd", "dify", List.of(declaredSecond, declaredFirst))));
+
+        assertThat(fused.stream().map(hit -> hit.hit().fingerprint()).toList())
+                .containsExactly("fp-first", "fp-second");
+        assertThat(fused.getFirst().provenance().getFirst().rank()).isEqualTo(1);
+    }
 }
