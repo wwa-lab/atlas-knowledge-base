@@ -4,7 +4,7 @@
 |---|---|
 | Slice | `mvp` |
 | Date | 2026-08-23 |
-| Status | Pending TASK-032 document-quality review; upstream requirements acceptance remains open |
+| Status | Reviewed — Ready with minor fixes; upstream requirements acceptance remains open |
 | Purpose | Map stable `REQ-*` requirements through `US-*` stories, `FR-*` specification behavior, implementation tasks, and review evidence |
 | Source of truth | The linked requirements, stories, specification, architecture, design, ADRs, and task documents; this file does not redefine their scope |
 
