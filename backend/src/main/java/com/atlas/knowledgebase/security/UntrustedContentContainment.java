@@ -34,7 +34,8 @@ public final class UntrustedContentContainment {
                     new Rule(
                             "embedded_instruction",
                             Pattern.compile(
-                                    "(?is)\\b(?:execute|run|invoke|call)\\b.{0,100}"
+                                    "(?is)\\b(?:you|assistant|agent|model|system)\\b.{0,80}"
+                                            + "\\b(?:execute|run|invoke|call)\\b.{0,100}"
                                             + "\\b(?:tool|command|shell|script|function)\\b")),
                     new Rule(
                             "embedded_instruction",

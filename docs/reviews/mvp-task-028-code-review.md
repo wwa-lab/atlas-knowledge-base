@@ -39,3 +39,12 @@ Review comment:
 
 - [P2] Constrain event-handler detection to markup context — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:21-22`
   When a safe hit has a source URL or metadata/excerpt containing an ordinary query parameter or token like `only=true` or `once=...`, the unanchored `on[a-z]+\\s*=` branch classifies it as `active_markup`; because all hit fields are inspected, that drops otherwise valid evidence before fusion. Limit this rule to HTML-like attributes or known handler names so normal source identifiers are not falsely contained.
+
+## Gate A — follow-up after false-positive finding
+
+The containment layer is wired before fusion, but one new rule is broad enough to suppress ordinary operational documentation that Atlas is expected to retrieve. This is a correctness regression for common knowledge-base content.
+
+Review comment:
+
+- [P2] Avoid treating ordinary runbooks as injection — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:35-38`
+  When a valid KB article or runbook says something like “run the shell command ...” or API docs say “call this function”, this new `execute|run|invoke|call` rule marks the hit as `embedded_instruction`, and `RetrievalOrchestrator` drops it before fusion. TASK-028 requires retrieved content not to be executed as instructions, but Atlas still needs to retrieve and cite operational command documentation; this can produce missing evidence or `NO_EVIDENCE` for common runbook content unless the rule is constrained to model-directed/tool-invocation attacks.
