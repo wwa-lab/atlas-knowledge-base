@@ -4,7 +4,7 @@
 |---|---|
 | Slice | `mvp` |
 | Date | 2026-08-23 |
-| Status | Ready with minor fixes; upstream requirements acceptance remains open |
+| Status | Pending TASK-032 document-quality review; upstream requirements acceptance remains open |
 | Purpose | Map stable `REQ-*` requirements through `US-*` stories, `FR-*` specification behavior, implementation tasks, and review evidence |
 | Source of truth | The linked requirements, stories, specification, architecture, design, ADRs, and task documents; this file does not redefine their scope |
 
@@ -34,9 +34,9 @@ Status terms are intentionally narrow:
 | Specification | `docs/03-spec/mvp-spec.md` | Accepted 2026-08-20; FR-01–FR-80 and OQ-01–OQ-16 (`docs/reviews/mvp-spec-review.md`) |
 | Architecture | `docs/04-architecture/mvp-architecture.md`, `mvp-data-flow.md`, `mvp-data-model.md` | Accepted baseline; ADR-0007 amendment is recorded in the architecture (`docs/reviews/mvp-architecture-review.md`) |
 | Detailed design | `docs/05-design/mvp-design.md` and companion contracts | Accepted baseline; API/data-model companions are part of the design set (`docs/reviews/mvp-design-review.md`) |
-| Decisions | `docs/architecture/decisions/ADR-0001`–`ADR-0010` | Accepted in `docs/architecture/decisions/README.md`; OQ-15/OQ-16 remain model-channel spike questions |
+| Decisions | `docs/architecture/decisions/README.md` (ADR-0001–ADR-0010) | Accepted in the ADR index; OQ-15/OQ-16 remain model-channel spike questions |
 | Tasks | `docs/06-tasks/mvp-tasks.md` | TASK-001–TASK-032; reviewed Ready with minor fixes (`docs/reviews/mvp-tasks-review.md`) |
-| Traceability / review | This file and `docs/reviews/` | TASK-032 deliverable; this revision is pending its document-quality review |
+| Traceability / review | This file and `docs/reviews/mvp-task-032-doc-review.md` | TASK-032 deliverable; review evidence is recorded alongside this artifact |
 
 ## Story-to-requirement-to-specification-to-task map
 
@@ -54,6 +54,10 @@ accessibility, or telemetry verification that protects the same boundary.
 | **US-005** Evidence and original navigation | `REQ-SRC-001`–`013`; `REQ-AUTH-005`, `REQ-AUTH-011`; `REQ-GIT-006`; `REQ-CONF-004`–`005`; `REQ-CACHE-001`–`002` | FR-40–FR-45 | TASK-016, TASK-019–021 (real locators spike-gated), TASK-026, TASK-030 |
 | **US-006** Coverage, conflicts, revocation, governance | `REQ-AUTH-006`–`007`, `REQ-AUTH-010`, `REQ-AUTH-012`, `REQ-AUTH-014`–`015`; `REQ-RAG-010`–`012`; `REQ-COV-001`–`002`; `REQ-FRESH-001`–`002`; `REQ-CONFLICT-001`–`002`; `REQ-FAIL-001`–`007`; `REQ-KB-009`, `REQ-KB-012`–`014`; `REQ-BIND-008`–`010`; `REQ-LIFE-001`, `REQ-LIFE-003`–`006`; `REQ-SEC-008`; `REQ-UX-003` | FR-46–FR-57; FR-80 | TASK-015, TASK-017, TASK-023, TASK-028, TASK-030–031 |
 | **US-007** Issue routing | `REQ-ISSUE-001`–`003`; `REQ-LIFE-007`; `REQ-GIT-007`–`008`; `REQ-CONF-006`; `REQ-PROF-003`; `REQ-AUDIT-001`–`002`; `REQ-ANALYTICS-001`–`002`; `REQ-OPS-001`; `REQ-DATA-001`; `REQ-SEC-001`–`003`, `REQ-SEC-007` | FR-58–FR-62; FR-70 | TASK-018, TASK-027–028, TASK-030–031 |
+
+Coverage check: expanding the inclusive ranges in this artifact yields all 200
+`REQ-*` IDs in `mvp-requirements.md`, all 80 `FR-*` IDs in `mvp-spec.md`, and
+all 32 `TASK-*` IDs in `mvp-tasks.md`; no extra stable ID is introduced here.
 
 ## Cross-cutting requirements and release gates
 
@@ -100,7 +104,7 @@ that a future spike or pilot has passed.
 |---|---|---|
 | TASK-001–TASK-005 | Merged (PRs #12–#15) | `./mvnw -q test`; TASK-004 additionally requires the documented Oracle Flyway migrate |
 | TASK-006–TASK-010 | Merged (PRs #16, #19–#22) | `./mvnw -q test`; security/session tasks retain their focused integration coverage |
-| TASK-011–TASK-018 | Merged (PRs #28–#36) | `./mvnw -q test`; Oracle migration where schema changes apply; review reports in `docs/reviews/mvp-task-007-code-review.md` through `mvp-task-018-code-review.md` |
+| TASK-011–TASK-018 | Merged (PRs #28–#36) | `./mvnw -q test`; Oracle migration where schema changes apply; review reports in `docs/reviews/mvp-task-011-code-review.md` through `mvp-task-018-code-review.md` |
 | TASK-019–TASK-023 | Spike-gated; no real-provider/model completion claimed | Connector/model spikes, real-scale evidence, and the FR-71 release gates remain Open / `[UNVERIFIED]`; stub paths may continue in local/non-prod |
 | TASK-024–TASK-029 | Merged (PRs #37–#42) | From `frontend/`: `npm test` and `npm run build`; backend integration checks where API behavior is exercised; review reports in `docs/reviews/mvp-task-024-code-review.md` through `mvp-task-029-code-review.md` |
 | TASK-030 | Merged (PR #43) | Focused API contract tests first, then `./mvnw -q test`; Gate A and Gate B reports in `docs/reviews/mvp-task-030-code-review.md` |
