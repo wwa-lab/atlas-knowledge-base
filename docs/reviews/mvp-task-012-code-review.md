@@ -868,3 +868,15 @@ Keep the `SourceProbe` split. On TASK-017, move Owner-less Suspend into `governa
 ## Merge gate: **Pass**
 
 Critical: none. Major: none. Architecture P0: none. Minor / P1–P2 (Owner-less Admin URL placement, remaining FR-25 stub slots, ungated repository `activate(id, version)`) may be listed without blocking.
+
+## Gate B
+
+Independent review (human / separate Cloud Agent) of `git diff origin/main...HEAD` for TASK-012. Recorded verbatim. Implementer did not edit findings.
+
+```
+Keep the SourceProbe split. On TASK-017, move Owner-less Suspend into governance/ and onto a documented /admin contract so activation evaluation and lifecycle mutation do not keep accumulating in registry. When the first real adapter lands, introduce a per-profile dispatcher and a registry-free probe DTO rather than growing StubSourceProbe's source_identity switch.
+
+Merge gate: Pass
+```
+
+Gate B merge gate: **Pass**. Combined with Gate A round 4 Pass and green required CI, this PR may merge. TASK-013 remains out of this change set. The Gate B recommendation is follow-up for TASK-017 / first real adapter, not a merge blocker.
