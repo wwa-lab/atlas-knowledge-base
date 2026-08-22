@@ -378,3 +378,126 @@ Message-only reports are not limited to completed answers
 ## Gate B Verdict
 - **Pass:** No
 - **Reason:** One Major design-contract gap remains (`note` is accepted then discarded). The branch is close, but not ready for Gate B pass on the accepted TASK-018 contract.
+
+---
+
+# Code vs Design Review Report — TASK-018 (Gate A final)
+
+## Review Scope
+- **Design reviewed:** `docs/architecture/decisions/ADR-0010-issue-report-note-boundary.md`; `docs/01-requirements/mvp-requirements.md`; `docs/02-user-stories/mvp-user-stories.md` (US-007); `docs/04-architecture/mvp-data-model.md`; `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`; `docs/06-tasks/mvp-tasks.md` (TASK-018)
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`
+- **Code / files inspected:** `backend/src/main/java/com/atlas/knowledgebase/issues/*`, `backend/src/main/java/com/atlas/knowledgebase/chat/ChatMessageRepository.java`, `backend/src/main/resources/db/migration/V4__issue_report_note.sql`, `backend/src/test/java/com/atlas/knowledgebase/issues/IssueApiTest.java`
+- **Review objective:** Gate A rerun after Gate B findings; verify the two reported issues are fixed and check for any remaining Critical/Major misalignment in TASK-018 issue routing.
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 96%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** The two Gate B issues are resolved in the implementation. Reporter-authored `note` is now persisted in a dedicated nullable column and kept out of response diagnostics and ordinary audit details, matching ADR-0010 and the data model. Message-only issue reports now resolve only owned, completed assistant answers, closing the earlier status leak. Route mapping, CSRF/session enforcement, and content-free audit boundaries are aligned with TASK-018 and US-007. I did not find any remaining Critical or Major design drift in the reviewed scope.
+
+---
+
+## Areas of Good Alignment
+- `report_note` is stored separately from diagnostics and audit details via `issue_report.report_note`, with additive Flyway migration and API-side length bounding: `IssueService` lines 77-78, 124-134, 252-260; `V4__issue_report_note.sql` line 3.
+- Message lookup for issue creation now requires ownership, non-deleted thread, assistant role, and `completed` status: `ChatMessageRepository.findOwnedAssistantById` lines 85-103.
+- Citation-backed reports inherit the same completed-answer gate because citation-only requests resolve the citation’s message through `findOwnedAssistantById`: `IssueService` lines 100-108.
+- Content-free response/audit boundary is preserved: diagnostics include only allow-listed identifiers/status fields, and audit details include only `issue_id`, `category`, and `route_target`: `IssueService` lines 170-195 and 198-223.
+- Provider/category route mapping matches accepted behavior: git -> `kb_correct_flow`, Confluence -> `confluence_original_flow`, Dify content -> `kb_owner_remediation`, connector -> `connector_owner`, retrieval/model -> `atlas_team`, security -> `security_process`: `IssueService` lines 226-238.
+- Tests cover the fixed Gate B cases plus CSRF and cross-user non-disclosure: `IssueApiTest` lines 53-102, 125-159, 179-190.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+- None identified.
+
+### Major
+- None identified.
+
+### Minor
+- `IssueApiTest.invalidCategoryAndMissingContextFailClosed` asserts `ISSUE_CONTEXT_REQUIRED` before category validation when both are invalid (`IssueApiTest` lines 161-176). This is acceptable fail-closed behavior, but it leaves the category-validation ordering implicit rather than directly documenting contract precedence.
+  - **Design / task expected:** Fail-closed validation for invalid input.
+  - **Code currently does:** Checks context presence before parsing category.
+  - **Why it matters:** Only affects error precedence, not security or core behavior.
+  - **Recommended fix:** Optional only; add a test if the API contract wants to freeze precedence explicitly.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| POST `/api/v1/issues` authenticated + CSRF boundary | Implemented |
+| Allow-listed diagnostics only | Implemented |
+| No automatic prompt/evidence/answer/source-body attachment | Implemented |
+| Separate bounded reporter note storage | Implemented |
+| Message-only reports require completed assistant answers | Implemented |
+| Citation/content category requires citation context | Implemented |
+| Provider/category route mapping | Implemented |
+| Content-free audit write | Implemented |
+| Cross-user non-disclosure | Implemented |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: TASK-018 endpoint, validation, routing, diagnostics, audit, persistence, tests, ADR-backed schema addition.
+- Tasks partially implemented: None in the reviewed diff.
+- Tasks not yet reflected in code: None required by the accepted TASK-018 scope I reviewed.
+- Code changes not clearly mapped to any task: None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+- None identified.
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** None identified beyond expected repository/service/controller wiring.
+- **Hidden shortcuts:** None identified.
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** Aligned. Message-only and citation-derived message resolution both require completed assistant state.
+- **Validation behavior:** Aligned. Identifier format, context requirement, citation requirement for content/citation categories, note length bound, and mismatch checks are implemented.
+- **Retry / skip / resume / failure handling:** Not applicable.
+- **User-visible behavior:** Aligned with accepted contract; 201 response is content-free and routed.
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Aligned for current scope; routing remains internal classification only, without editing external systems.
+- **Secret / credential safety:** Aligned. No secrets introduced; no prompt/source/answer bodies copied into ordinary audit details.
+- **Logging / audit hooks:** Aligned with content-free audit requirement.
+- **Error propagation at integration boundaries:** Aligned for the endpoint scope reviewed.
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge / testing / next implementation step — Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Minor validation-ordering ambiguity only
+- **Required corrections:** None
+
+---
+
+## Recommended Fixes
+1. Optional: add one explicit test if the API contract wants to pin validation precedence for “invalid category + missing context” requests.
+
+## Minimal Fix Path
+- No blocking fix path required. Current implementation is acceptable for Gate A.
+
+---
+
+## Open Risks / Questions
+- The accepted design does not specify error-precedence ordering across multiple simultaneous validation failures; current behavior is safe but implicit.
+- I reviewed `git diff origin/main...HEAD` excluding `docs/reviews/mvp-task-018-code-review.md` as requested and found no remaining Critical/Major issues in scope.
+
+## Verification
+- `./mvnw -q -pl backend -Dtest=IssueApiTest test` — passed
+- `git diff --check origin/main...HEAD -- . ':(exclude)docs/reviews/mvp-task-018-code-review.md'` — passed
+
+## Gate A Verdict
+- **Pass**
