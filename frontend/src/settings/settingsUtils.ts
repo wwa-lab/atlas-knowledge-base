@@ -21,7 +21,7 @@ export function providerDisplayName(provider: string): string {
 }
 
 export function isConnected(provider: ProviderSettings): boolean {
-  return provider.status === 'connected'
+  return provider.status === 'connected' || provider.status === 'expired'
 }
 
 export function providerAction(provider: ProviderSettings): 'connect' | 'reconnect' {

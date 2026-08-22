@@ -102,7 +102,17 @@ async function openOriginal(): Promise<void> {
   }
 }
 
-watch(() => props.citationId, () => { void load() }, { immediate: true })
+function resetOpenState(): void {
+  openRequestId += 1
+  opening.value = false
+  originalUrl.value = ''
+  openStatus.value = ''
+}
+
+watch(() => props.citationId, () => {
+  resetOpenState()
+  void load()
+}, { immediate: true })
 </script>
 
 <template>

@@ -10,6 +10,7 @@ describe('settings utilities', () => {
 
   it('chooses reconnect for live and expired connections', () => {
     expect(isConnected({ provider: 'github', status: 'connected' })).toBe(true)
+    expect(isConnected({ provider: 'github', status: 'expired' })).toBe(true)
     expect(providerAction({ provider: 'github', status: 'connected' })).toBe('reconnect')
     expect(providerAction({ provider: 'github', status: 'expired' })).toBe('reconnect')
     expect(providerAction({ provider: 'github', status: 'revoked' })).toBe('connect')

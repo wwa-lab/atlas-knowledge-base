@@ -86,3 +86,15 @@ Full review comments:
 ## Gate A — fresh review after provider-flow fix (verbatim)
 
 I did not find any discrete introduced correctness, security, or maintainability issues in the diff relative to main. The frontend changes appear consistent with the existing backend contracts and the previously documented review fixes.
+
+## Gate B — fresh review after provider-flow fix (verbatim)
+
+The patch adds the requested UI surfaces, but it introduces user-visible regressions in provider revocation and Evidence Drawer state handling. These issues should be fixed before the changes are considered correct.
+
+Full review comments:
+
+- [P2] Treat expired connections as revocable — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/settings/settingsUtils.ts:23-25
+  When `/settings` projects a provider as `expired`, the underlying row is still `connected` with a stored secret, but this helper returns false and the template hides the normal Revoke button. Users with expired GitHub/Confluence access are left with only reconnect or the much heavier compromise flow, so include `expired` in the revocable/connected state used for that action.
+
+- [P2] Reset stale open-original state on citation changes — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/evidence/EvidenceDrawer.vue:99-101
+  If the user starts `Open verified original` for one citation and then switches the drawer to another citation before the POST completes, this guarded `finally` skips clearing `opening` because `props.citationId` no longer matches. The new citation then stays stuck in the re-authorizing state; invalidate `openRequestId` and reset `opening/originalUrl/openStatus` when `citationId` changes.
