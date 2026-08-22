@@ -49,7 +49,7 @@ still depends on its cited evidence, provenance, and review state.
 | 10 | Tasks | Yes | `docs/06-tasks/{slice}-tasks.md` | `design-to-tasks` |
 | 11 | Traceability and review | Yes | `docs/00-context/{slice}-traceability.md`, `docs/reviews/` | `review-doc-quality` |
 | 12 | Implementation/publication | When the slice changes code or canonical content | Repository source/content tree | `tasks-to-code` or `tasks-to-implementation` for code; accepted tasks for content. After each code task, follow the Implementation Task Loop in `PROJECT_RULES.md` (verify, Gate A, Gate B when elevated, merge when required checks are green, next task). |
-| 13 | Code/architecture review | Required for applicable code changes | Review report in the PR body and `docs/reviews/{slice}-task-{id}-code-review.md` | Gate A: review-only subagent in a fresh context runs `review-code-against-design`; `architecture-review` when applicable. Gate B (second Cloud Agent or human) is required for auth, schema, `/api/v1`, and secrets/access-control PRs. The implementer must not author the merge-gate verdict. Critical/Major findings block merge. |
+| 13 | Code/architecture review | Required for applicable code changes | Review report in the PR body and `docs/reviews/{slice}-task-{id}-code-review.md` | Gate A: review-only subagent in a fresh context runs `review-code-against-design`; `architecture-review` when applicable. Gate B (second fresh-context review-only subagent, separate Cloud Agent, or human) is required for auth, schema, `/api/v1`, and secrets/access-control PRs. The implementer launches Gate B and must not author the merge-gate verdict. After Pass and green checks, merge and continue; Fail stops for a human. Critical/Major findings block merge. |
 
 ## Gates
 
