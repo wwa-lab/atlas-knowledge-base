@@ -209,6 +209,10 @@ public final class EvidenceService {
                                             prepared.operation()));
             requireResultBoundary(prepared.locator(), result);
         } catch (RuntimeException exception) {
+            EvidenceResolver.VerificationMode mode =
+                    prepared.locator().fixtureMarked()
+                            ? EvidenceResolver.VerificationMode.FIXTURE
+                            : EvidenceResolver.VerificationMode.PROVIDER;
             audit.owned(
                     user.userId(),
                     prepared.citation(),
@@ -216,7 +220,7 @@ public final class EvidenceService {
                     "unknown",
                     "unknown",
                     "unknown");
-            throw unknown(EvidenceResolver.VerificationMode.NONE);
+            throw unknown(mode);
         }
         return result;
     }
@@ -375,7 +379,7 @@ public final class EvidenceService {
         throw new UnknownState();
     }
 
-    private static void requireResultBoundary(
+    private void requireResultBoundary(
             EvidenceLocatorValidator.ValidatedLocator locator, EvidenceResolver.Result result) {
         if (result == null) {
             throw new IllegalArgumentException("resolver result is required");
@@ -384,6 +388,10 @@ public final class EvidenceService {
                 result.verificationMode() == EvidenceResolver.VerificationMode.FIXTURE;
         if (locator.fixtureMarked() != fixtureResult) {
             throw new IllegalArgumentException("fixture and provider result boundaries do not match");
+        }
+        if (result.status() == EvidenceResolver.Status.MOVED) {
+            locatorValidator.validateMoveTarget(
+                    locator, result.movedToLocator().orElseThrow());
         }
     }
 

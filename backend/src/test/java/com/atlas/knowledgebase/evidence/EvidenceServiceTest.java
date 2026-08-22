@@ -184,12 +184,73 @@ class EvidenceServiceTest {
         verify(resolver, never()).resolve(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void invalidLiveMoveTargetFailsClosedWithProviderVerificationMode() throws Exception {
+        citation = liveCitation();
+        arrangeOwnedCitation(citation, liveBinding());
+        when(access.authorized(user, kb())).thenReturn(true);
+        when(resolver.authorize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(EvidenceResolver.AuthorizationResult.authorized());
+        when(resolver.resolve(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                        new EvidenceResolver.Result(
+                                EvidenceResolver.Status.MOVED,
+                                EvidenceResolver.VerificationMode.PROVIDER,
+                                true,
+                                null,
+                                null,
+                                Optional.of(
+                                        new ObjectMapper()
+                                                .readTree(
+                                                        """
+                                                        {"repository":"org/repo","commit_sha":"def5678",
+                                                         "path":"b.md","line_range":[1,2],
+                                                         "stable_source_id":"different"}
+                                                        """))));
+
+        assertThatThrownBy(() -> service.openOriginal(user, citation.citationId(), null))
+                .isInstanceOfSatisfying(
+                        EvidenceException.class,
+                        error -> {
+                            assertThat(error.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                            assertThat(error.code()).isEqualTo("EVIDENCE_RESOLUTION_UNKNOWN");
+                            assertThat(error.details())
+                                    .containsEntry("verification_mode", "provider")
+                                    .containsEntry("provider_verified", false)
+                                    .doesNotContainKey("moved_to_locator_id");
+                        });
+    }
+
+    @Test
+    void liveResolverExceptionRemainsAProviderInconclusiveFailure() {
+        citation = liveCitation();
+        arrangeOwnedCitation(citation, liveBinding());
+        when(access.authorized(user, kb())).thenReturn(true);
+        when(resolver.authorize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(EvidenceResolver.AuthorizationResult.authorized());
+        when(resolver.resolve(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        assertThatThrownBy(() -> service.drawer(user, citation.citationId()))
+                .isInstanceOfSatisfying(
+                        EvidenceException.class,
+                        error ->
+                                assertThat(error.details())
+                                        .containsEntry("verification_mode", "provider")
+                                        .containsEntry("provider_verified", false));
+    }
+
     private void arrangeOwnedCitation() {
-        when(citations.findOwnedByCitationId(citation.citationId(), user.userId()))
-                .thenReturn(Optional.of(citation));
-        when(knowledgeBases.findById(citation.logicalKbId())).thenReturn(Optional.of(kb()));
-        when(bindings.findById(citation.bindingId())).thenReturn(Optional.of(binding()));
-        when(messages.findById(citation.messageId())).thenReturn(Optional.of(message()));
+        arrangeOwnedCitation(citation, binding());
+    }
+
+    private void arrangeOwnedCitation(
+            CitationRecord ownedCitation, BindingRecord currentBinding) {
+        when(citations.findOwnedByCitationId(ownedCitation.citationId(), user.userId()))
+                .thenReturn(Optional.of(ownedCitation));
+        when(knowledgeBases.findById(ownedCitation.logicalKbId())).thenReturn(Optional.of(kb()));
+        when(bindings.findById(ownedCitation.bindingId())).thenReturn(Optional.of(currentBinding));
+        when(messages.findById(ownedCitation.messageId())).thenReturn(Optional.of(message()));
     }
 
     private EvidenceService serviceWith(List<EvidenceResolver> availableResolvers) {
@@ -216,6 +277,27 @@ class EvidenceServiceTest {
                 "bnd_1",
                 "git_markdown",
                 LOCATOR,
+                "abc1234",
+                "Short exact excerpt",
+                "Runbook",
+                "Owner",
+                "internal",
+                null,
+                NOW,
+                "ok");
+    }
+
+    private CitationRecord liveCitation() {
+        return new CitationRecord(
+                "cit_1",
+                "msg_1",
+                "lkb_1",
+                "bnd_1",
+                "git_markdown",
+                """
+                {"repository":"org/repo","commit_sha":"abc1234","path":"a.md",
+                 "line_range":[1,2],"stable_source_id":"source_1"}
+                """,
                 "abc1234",
                 "Short exact excerpt",
                 "Runbook",
@@ -254,6 +336,27 @@ class EvidenceServiceTest {
                 "lkb_1",
                 "git_markdown",
                 SOURCE_IDENTITY,
+                "canonical",
+                "app",
+                "healthy",
+                true,
+                false,
+                true,
+                "{}",
+                "{}",
+                "owner",
+                "{}",
+                1,
+                NOW,
+                NOW);
+    }
+
+    private BindingRecord liveBinding() {
+        return new BindingRecord(
+                "bnd_1",
+                "lkb_1",
+                "git_markdown",
+                "{\"repo\":\"org/repo\"}",
                 "canonical",
                 "app",
                 "healthy",

@@ -36,6 +36,13 @@ public final class EvidenceController {
             @PathVariable String citationId,
             @RequestBody(required = false) JsonNode body) {
         AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
-        return evidence.openOriginal(user, citationId, body);
+        try {
+            Map<String, Object> response = evidence.openOriginal(user, citationId, body);
+            EvidenceRequestAuditFilter.markAudited(request);
+            return response;
+        } catch (EvidenceException exception) {
+            EvidenceRequestAuditFilter.markAudited(request);
+            throw exception;
+        }
     }
 }

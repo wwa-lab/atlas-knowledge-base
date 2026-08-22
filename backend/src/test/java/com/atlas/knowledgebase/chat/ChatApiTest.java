@@ -522,6 +522,38 @@ class ChatApiTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("EVIDENCE_OPEN_BODY_INVALID"));
 
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, "invalid-csrf"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("CSRF_MISMATCH"));
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{"))
+                .andExpect(status().isBadRequest());
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open'",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(4);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open' AND error_category = 'authorization' AND evidence_locator_ids IS NULL",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(1);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open' AND error_category = 'validation' AND evidence_locator_ids IS NULL",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(2);
+
         jdbcTemplate.update(
                 "INSERT INTO atlas_user (user_id, sso_subject, display_name, email, roles, model_entitled, created_at, updated_at) VALUES ('usr_other_evidence', 'other-evidence', 'Other', 'other@localhost', '[\"end_user\"]', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         jdbcTemplate.update(

@@ -161,6 +161,78 @@ class EvidenceLocatorValidatorTest {
                 """);
     }
 
+    @Test
+    void validatesAdapterMoveTargetsAgainstFrozenSchemaAndIdentity() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        var source =
+                validator.validate(
+                        "git_markdown",
+                        """
+                        {"repository":"org/repo","commit_sha":"abc1234","path":"a.md",
+                         "line_range":[1,2],"stable_source_id":"source_1"}
+                        """);
+        var accepted =
+                validator.validateMoveTarget(
+                        source,
+                        mapper.readTree(
+                                """
+                                {"repository":"org/repo","commit_sha":"def5678","path":"b.md",
+                                 "line_range":[1,2],"stable_source_id":"source_1"}
+                                """));
+
+        assertThat(accepted.locator().path("path").asText()).isEqualTo("b.md");
+        assertThatThrownBy(
+                        () ->
+                                validator.validateMoveTarget(
+                                        source,
+                                        mapper.readTree(
+                                                """
+                                                {"repository":"org/repo","commit_sha":"def5678","path":"b.md",
+                                                 "line_range":[1,2],"stable_source_id":"other"}
+                                                """)))
+                .isInstanceOf(EvidenceLocatorValidator.InvalidLocatorException.class);
+        assertThatThrownBy(
+                        () ->
+                                validator.validateMoveTarget(
+                                        source,
+                                        mapper.readTree(
+                                                """
+                                                {"repository":"org/repo","commit_sha":"def5678","path":"b.md",
+                                                 "line_range":[1,2],"stable_source_id":"source_1",
+                                                 "atlas_fixture":true}
+                                                """)))
+                .isInstanceOf(EvidenceLocatorValidator.InvalidLocatorException.class);
+        assertThatThrownBy(
+                        () -> validator.validateMoveTarget(source, mapper.readTree("\"not-an-object\"")))
+                .isInstanceOf(EvidenceLocatorValidator.InvalidLocatorException.class);
+    }
+
+    @Test
+    void rejectsNestedAdapterMoveMappings() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        var source =
+                validator.validate(
+                        "git_markdown",
+                        """
+                        {"repository":"org/repo","commit_sha":"abc1234","path":"a.md",
+                         "line_range":[1,2],"stable_source_id":"source_1"}
+                        """);
+
+        assertThatThrownBy(
+                        () ->
+                                validator.validateMoveTarget(
+                                        source,
+                                        mapper.readTree(
+                                                """
+                                                {"repository":"org/repo","commit_sha":"def5678","path":"b.md",
+                                                 "line_range":[1,2],"stable_source_id":"source_1",
+                                                 "move_mapping":{"moved_to_locator":{
+                                                   "repository":"org/repo","commit_sha":"fedcba9","path":"c.md",
+                                                   "line_range":[1,2],"stable_source_id":"source_1"}}}
+                                                """)))
+                .isInstanceOf(EvidenceLocatorValidator.InvalidLocatorException.class);
+    }
+
     private void assertInvalid(String provider, String locator) {
         assertThatThrownBy(() -> validator.validate(provider, locator))
                 .isInstanceOf(EvidenceLocatorValidator.InvalidLocatorException.class);

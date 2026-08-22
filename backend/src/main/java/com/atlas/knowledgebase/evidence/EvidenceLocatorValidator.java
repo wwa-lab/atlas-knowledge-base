@@ -63,6 +63,59 @@ public final class EvidenceLocatorValidator {
         return new ValidatedLocator(providerProfile, locator, fixtureMarked, movedTo);
     }
 
+    /**
+     * Defensively validates a move target returned by an adapter against the frozen source
+     * locator. Adapter assertions are not sufficient to cross the provider-neutral boundary.
+     */
+    public ValidatedLocator validateMoveTarget(ValidatedLocator source, JsonNode target) {
+        if (source == null || target == null || !target.isObject() || target.has("move_mapping")) {
+            throw invalid("move target must be a locator object without a nested move mapping");
+        }
+        final ValidatedLocator validated;
+        try {
+            validated = validate(source.providerProfile(), strictMapper.writeValueAsString(target));
+        } catch (InvalidLocatorException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw invalid("move target cannot be validated", exception);
+        }
+        if (validated.fixtureMarked() != source.fixtureMarked()
+                || validated.movedToLocator().isPresent()
+                || !sameStableIdentity(source, validated)) {
+            throw invalid("move target does not preserve the frozen source identity boundary");
+        }
+        return validated;
+    }
+
+    private static boolean sameStableIdentity(
+            ValidatedLocator source, ValidatedLocator target) {
+        JsonNode left = source.locator();
+        JsonNode right = target.locator();
+        return switch (source.providerProfile()) {
+            case "git_markdown" -> sameRequiredText(left, right, "stable_source_id");
+            case "confluence" ->
+                    sameRequiredText(left, right, "instance")
+                            && sameRequiredText(left, right, "page_id");
+            case "dify" ->
+                    sameRequiredText(
+                            left.path("original_version"),
+                            right.path("original_version"),
+                            "source_id");
+            default -> false;
+        };
+    }
+
+    private static boolean sameRequiredText(JsonNode left, JsonNode right, String field) {
+        JsonNode leftValue = left.get(field);
+        JsonNode rightValue = right.get(field);
+        return leftValue != null
+                && rightValue != null
+                && leftValue.isTextual()
+                && rightValue.isTextual()
+                && !leftValue.textValue().isBlank()
+                && leftValue.textValue().equals(rightValue.textValue());
+    }
+
     private void validateGit(JsonNode locator, boolean allowMoveMapping) {
         Set<String> allowed = new HashSet<>(
                 Set.of("repository", "commit_sha", "path", "line_range", "stable_source_id", "atlas_fixture"));
