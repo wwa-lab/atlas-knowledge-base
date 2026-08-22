@@ -271,8 +271,43 @@ public class ChatService {
         }
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
         String question = latestUserQuestion(threadId, message);
-        RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
-        return startGeneration(user, message, question, turn, true);
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
+        int reserved =
+                messages.markProcessingIfRetryable(
+                        message.messageId(),
+                        writeJson(resolved.retrievalScope().logicalKbIds()),
+                        writeJson(resolved.retrievalScope().bindingIds()),
+                        writeJson(resolved.retrievalScope().configVersions()),
+                        resolved.classification());
+        if (reserved == 0) {
+            throw new ChatConflictException("NOT_RETRYABLE", "This message cannot be retried.");
+        }
+        InFlight existing = inFlight.putIfAbsent(message.messageId(), flight);
+        if (existing != null) {
+            messages.failIfInFlight(message.messageId(), clock.instant());
+            throw new ChatConflictException(
+                    "IN_FLIGHT", "Wait for the in-flight generation or cancel it.");
+        }
+        configureFlight(message.messageId(), flight);
+        try {
+            if (!retryStillReserved(message.messageId(), flight)) {
+                completeQuietly(emitter);
+                return emitter;
+            }
+            RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
+            if (!retryStillReserved(message.messageId(), flight)) {
+                completeQuietly(emitter);
+                return emitter;
+            }
+            launchGeneration(user, message, question, turn, true, flight);
+            return emitter;
+        } catch (RuntimeException failure) {
+            messages.failIfInFlight(message.messageId(), clock.instant());
+            inFlight.remove(message.messageId(), flight);
+            completeQuietly(emitter);
+            throw failure;
+        }
     }
 
     private SseEmitter replayCompleted(ChatMessageRecord message) {
@@ -297,31 +332,52 @@ public class ChatService {
             boolean retry) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
-        inFlight.put(assistant.messageId(), flight);
-        if (retry
-                && messages.markProcessingIfRetryable(
-                                assistant.messageId(),
-                                writeJson(turn.scope().logicalKbIds()),
-                                writeJson(turn.scope().bindingIds()),
-                                writeJson(turn.scope().configVersions()),
-                                highestClassification(turn.scope()))
-                        == 0) {
-            inFlight.remove(assistant.messageId(), flight);
-            throw new ChatConflictException("NOT_RETRYABLE", "This message cannot be retried.");
+        if (inFlight.putIfAbsent(assistant.messageId(), flight) != null) {
+            throw new ChatConflictException(
+                    "IN_FLIGHT", "Wait for the in-flight generation or cancel it.");
         }
-        emitter.onCompletion(() -> inFlight.remove(assistant.messageId(), flight));
-        emitter.onTimeout(
+        configureFlight(assistant.messageId(), flight);
+        launchGeneration(user, assistant, question, turn, retry, flight);
+        return emitter;
+    }
+
+    private void configureFlight(String messageId, InFlight flight) {
+        flight.emitter.onCompletion(() -> inFlight.remove(messageId, flight));
+        flight.emitter.onTimeout(
                 () -> {
                     flight.cancelled.set(true);
-                    inFlight.remove(assistant.messageId(), flight);
+                    inFlight.remove(messageId, flight);
                 });
+    }
+
+    private void launchGeneration(
+            AtlasUserRecord user,
+            ChatMessageRecord assistant,
+            String question,
+            RetrievalTurn turn,
+            boolean retry,
+            InFlight flight) {
         Thread.ofVirtual()
                 .name("chat-gen-" + assistant.messageId())
                 .start(
                         () ->
                                 runGeneration(
                                         user, assistant, question, turn, retry, flight));
-        return emitter;
+    }
+
+    private boolean retryStillReserved(String messageId, InFlight flight) {
+        if (flight.cancelled.get()) {
+            messages.cancelIfInFlight(messageId, clock.instant());
+            inFlight.remove(messageId, flight);
+            return false;
+        }
+        ChatMessageRecord current = messages.findById(messageId).orElse(null);
+        if (current == null || !"processing".equals(current.status())) {
+            flight.cancelled.set(true);
+            inFlight.remove(messageId, flight);
+            return false;
+        }
+        return true;
     }
 
     private void runGeneration(
@@ -547,7 +603,6 @@ public class ChatService {
         }
         List<String> logicalKbIds = List.copyOf(unique);
         List<RetrievalScope.KnowledgeBaseSnapshot> snapshots = new ArrayList<>();
-        String classification = null;
         for (String logicalKbId : logicalKbIds) {
             LogicalKnowledgeBaseRecord kb =
                     knowledgeBases
@@ -569,16 +624,12 @@ public class ChatService {
                         "NOT_CHAT_READY",
                         "Knowledge base is not Chat-ready: " + logicalKbId);
             }
-            if (classification == null
-                    || (kb.classification() != null && kb.classification().compareTo(classification) > 0)) {
-                classification = kb.classification();
-            }
             List<BindingRecord> currentBindings = bindings.findByLogicalKbId(logicalKbId);
             snapshots.add(new RetrievalScope.KnowledgeBaseSnapshot(kb, currentBindings));
         }
         return new ResolvedScope(
                 logicalKbIds,
-                classification == null ? "internal" : classification,
+                ChatClassificationPolicy.resolve(snapshots),
                 new RetrievalScope(snapshots));
     }
 
@@ -656,14 +707,6 @@ public class ChatService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Unable to serialize chat JSON", e);
         }
-    }
-
-    private String highestClassification(RetrievalScope scope) {
-        return scope.knowledgeBases().stream()
-                .map(snapshot -> snapshot.knowledgeBase().classification())
-                .filter(value -> value != null && !value.isBlank())
-                .max(String::compareTo)
-                .orElse("internal");
     }
 
     private void audit(String userId, String logicalKbId, String action, String authorization, String status) {

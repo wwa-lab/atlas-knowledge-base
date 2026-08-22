@@ -190,6 +190,96 @@ class ChatApiTest {
     }
 
     @Test
+    void mixedClassificationsFailClosedUntilAnOrderingPolicyIsApproved() throws Exception {
+        LoggedIn owner = loginOwner();
+        String internalKb = activateDify(owner, "Internal Chat");
+        String restrictedKb = activateDify(owner, "Restricted Chat");
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET classification = 'restricted' WHERE logical_kb_id = ?",
+                restrictedKb);
+
+        mockMvc.perform(
+                        post("/api/v1/chats")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"logical_kb_ids\":[\""
+                                                + internalKb
+                                                + "\",\""
+                                                + restrictedKb
+                                                + "\"]}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_MISMATCH"));
+    }
+
+    @Test
+    void retryFailsClosedWhenTheSelectedClassificationsDriftApart() throws Exception {
+        LoggedIn owner = loginOwner();
+        String firstKb = activateDify(owner, "Retry Classification One");
+        String secondKb = activateDify(owner, "Retry Classification Two");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"logical_kb_ids\":[\""
+                                                                + firstKb
+                                                                + "\",\""
+                                                                + secondKb
+                                                                + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        MvcResult ask =
+                mockMvc.perform(
+                                post("/api/v1/chats/" + threadId + "/messages")
+                                        .cookie(owner.session())
+                                        .header(SessionService.CSRF_HEADER, owner.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .accept(MediaType.TEXT_EVENT_STREAM)
+                                        .content("{\"question\":\"What changed?\"}"))
+                        .andExpect(request().asyncStarted())
+                        .andReturn();
+        String assistantId =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT message_id FROM chat_message
+                        WHERE thread_id = ? AND message_role = 'assistant'
+                        """,
+                        String.class,
+                        threadId);
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/cancel")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk());
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET classification = 'restricted' WHERE logical_kb_id = ?",
+                secondKb);
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_MISMATCH"));
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT status FROM chat_message WHERE message_id = ?",
+                                String.class,
+                                assistantId))
+                .isEqualTo("incomplete_cancelled");
+    }
+
+    @Test
     void restoreLastValidScopeWhenCreateOmitsIds() throws Exception {
         LoggedIn owner = loginOwner();
         String kbId = activateDify(owner, "Restore Chat KB");
