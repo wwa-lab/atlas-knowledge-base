@@ -895,3 +895,9 @@ Review comment:
 
 - [P2] Page through the catalog before deriving chat scope — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/ChatView.vue:279-279
   When a user has more than the catalog endpoint's default page of visible knowledge bases, this single `/api/v1/knowledge-bases` request only loads the first page and ignores `next_cursor`. Since `chooseInitialScope()` and `validScopeIds()` derive selectable and stale scope state only from `knowledgeBases.value`, any Chat-ready KB beyond that first page cannot be selected and an existing thread scoped to it is incorrectly marked stale/unavailable. Follow catalog pagination, or otherwise fetch all relevant Chat-ready entries, before computing Chat scope.
+
+## Gate B — independent security review rerun (verbatim)
+
+No actionable correctness, security, or maintainability regressions were identified in the diff. Backend and frontend tests/build completed successfully during review.
+
+**Gate B verdict: PASS — the pagination finding was fixed and the fresh rerun found no actionable regressions.**
