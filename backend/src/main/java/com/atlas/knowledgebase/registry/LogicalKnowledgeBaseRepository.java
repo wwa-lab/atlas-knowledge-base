@@ -2,6 +2,7 @@ package com.atlas.knowledgebase.registry;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -85,6 +86,17 @@ public class LogicalKnowledgeBaseRepository {
                         logicalKbId)
                 .stream()
                 .findFirst();
+    }
+
+    /** Active and Suspended KBs for catalog/detail. Draft and Retired are omitted. */
+    public List<LogicalKnowledgeBaseRecord> findPublished() {
+        return jdbcTemplate.query(
+                """
+                SELECT * FROM logical_knowledge_base
+                WHERE lifecycle IN ('active', 'suspended')
+                ORDER BY name, logical_kb_id
+                """,
+                ROW_MAPPER);
     }
 
     /**
