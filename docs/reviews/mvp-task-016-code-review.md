@@ -199,6 +199,140 @@ Fix the live move-target boundary before any provider adapter is built, then est
 
 Gate A: Fail
 
+## Gate A — Rerun after authorization-boundary fixes (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** TASK-016, Citation/Evidence contract, MVP requirements/spec/architecture/data-flow/data-model, ADR-0008.
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`, TASK-016.
+- **Code inspected:** Evidence resolver/service/controller/audit/filter, locator validation/navigation, citation assembly/persistence, Chat completion/replay, fixture adapters, tests, and `git diff origin/main...HEAD` at `b6a225b`.
+- **Objective:** Fresh-context Gate A verification of prior audit, move-target, exception-classification, authorization-context, and immutability blockers.
+- **Verification:** `git diff --check origin/main...HEAD` passed. Full Maven was not rerun per instruction; existing context reports the suite passing.
+
+## Overall Assessment
+
+- **Alignment rating:** 95%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** All five prior blockers are fixed. Authenticated POST boundary auditing now wraps session/CSRF/MVC failures; move targets are centrally validated; live resolver exceptions retain `provider/false`; resolver requests carry immutable user-scoped context; and locator/source-identity accessors are defensive. No Critical, Major, or architecture P0 findings remain.
+
+## Areas of Good Alignment
+
+- `EvidenceRequestAuditFilter` covers authenticated POST failures and deduplicates controller/service audit events.
+- `EvidenceLocatorValidator.validateMoveTarget` enforces closed schema, no nested mapping, marker parity, and stable identity before move IDs are derived.
+- `EvidenceService` passes `AuthorizationContext(userId, bindingId, authMethod)` through both authorization and resolution.
+- `ValidatedLocator` and resolver request source-identity accessors return defensive copies.
+- Private lookup, current authorization, continuity checks, safe projections, exact-version outcomes, atomic citation persistence, retry replay, and content-free auditing align with ADR-0008.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+#### Citation excerpt boundary remains unbounded
+
+- **Expected:** Persist only short citation excerpts; avoid full-document persistence.
+- **Current:** `CitationAssembler.java:154-156` validates excerpts with `Integer.MAX_VALUE`.
+- **Impact:** A future faulty adapter could provide an oversized excerpt.
+- **Recommendation:** Define and enforce a UTF-8 byte limit when real adapter metadata contracts are finalized. Non-blocking for TASK-016 because the exact limit is not frozen and current fixtures are synthetic.
+
+#### Source freshness metadata is not yet carried by retrieval hits
+
+- `Retriever.Hit` has no source-updated timestamp, so fixture citations persist `source_updated_at = null`. This is acceptable for TASK-016 fixtures; real adapters must add truthful freshness metadata before production integration.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Private lookup and indistinguishable 404 | Implemented |
+| Current authorization and source continuity | Implemented |
+| Closed locator validation | Implemented |
+| Central move-target validation | Implemented |
+| Fixture isolation / non-prod fail-closed behavior | Implemented |
+| Drawer and original-navigation contracts | Implemented |
+| Citation provenance assembly and filtering | Implemented |
+| Atomic completion and retry replacement | Implemented |
+| Authenticated attempt auditing | Implemented |
+| Resolver verification-mode semantics | Implemented |
+| No cache/full-body persistence | Implemented, subject to excerpt-limit follow-up |
+
+**Task coverage:** All TASK-016 tasks are implemented; no scope creep or unmapped code identified.
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** None blocking; resolver boundary is now suitable for TASK-019–021.
+- **Hidden shortcuts:** None identified.
+
+## Behavior and State Check
+
+- **Workflow/state handling:** Aligned.
+- **Validation behavior:** Aligned, including central live move-target validation.
+- **Failure/retry/cancellation handling:** Aligned.
+- **User-visible behavior:** Aligned; no silent latest substitution or raw move target exposure.
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Correctly deferred to TASK-019–021.
+- **Secret/credential safety:** Aligned; no raw credentials cross the resolver port.
+- **Logging/audit hooks:** Aligned.
+- **Error propagation:** Aligned, including live `provider/false` classification.
+
+## Readiness Verdict
+
+- **Suitable for merge:** Yes.
+- **Blockers:** None.
+- **Acceptable deviations:** Excerpt-size and real-provider freshness metadata remain deferred.
+- **Required corrections before merge:** None.
+
+## Minimal Fix Path
+
+No merge fix required. Track excerpt-size and source-freshness contracts before real provider adapters.
+
+# Architecture Review: TASK-016 Evidence Drawer and Historical Resolve
+
+## Score: 95%
+
+## Violations Found
+
+### P0
+
+None.
+
+### P1
+
+- [ ] Define/enforce a bounded short-excerpt persistence limit when connector metadata contracts are implemented — `CitationAssembler.java:154-156`.
+- [ ] Add truthful `source_updated_at` to the retrieval metadata contract before live adapters land — `Retriever.java:112-121`.
+
+### P2
+
+- [ ] `ChatService.java` remains approximately 810 lines; further responsibility extraction is advisable on a future touch.
+
+## Good Practices Confirmed
+
+- Feature-based Evidence module with separated controller, service, repository, validator, continuity, navigation, audit, and adapter registry.
+- Explicit immutable user-scoped resolver context.
+- Defensive-copy locator and source-identity boundaries.
+- Centralized move validation and fail-closed verification semantics.
+- Transactional completion plus citation replacement.
+- Profile-isolated fixture resolver and no speculative schema/cache changes.
+
+## Recommendation
+
+Merge is safe for TASK-016. Resolve the two P1 contract follow-ups before implementing real Dify/Git/Confluence adapters.
+
+**Gate A: Pass**
+
 ## Gate A — Round 2 (verbatim)
 
 # Code vs Design Review Report
