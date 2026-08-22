@@ -161,6 +161,52 @@ class ChatApiTest {
         assertThat(adapterDeniedAssistant).isNotNull();
         assertThat(adapterDeniedAssistant.path("content_redacted").asBoolean()).isTrue();
         assertThat(adapterDeniedAssistant.path("answer").isNull()).isTrue();
+
+        String credentialOwnerId = "u_chat_credential_owner";
+        jdbcTemplate.update("DELETE FROM provider_connection WHERE user_id IN (?, ?)", owner.userId(), credentialOwnerId);
+        jdbcTemplate.update("DELETE FROM atlas_user WHERE user_id = ?", credentialOwnerId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO atlas_user (
+                  user_id, sso_subject, display_name, email, roles, model_entitled,
+                  created_at, updated_at)
+                VALUES (?, ?, 'Credential Owner', NULL, '[\"end_user\"]', 0,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                credentialOwnerId,
+                "sso-" + credentialOwnerId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO provider_connection (
+                  connection_id, user_id, provider, status, granted_scopes, expires_at,
+                  last_verified_at, secret_ref, updated_at)
+                VALUES (?, ?, 'github', 'connected', '[\"repo:read\"]', NULL,
+                        CURRENT_TIMESTAMP, 'fixture:connected', CURRENT_TIMESTAMP)
+                """,
+                "pc_fixture_credential_owner",
+                credentialOwnerId);
+        jdbcTemplate.update(
+                "UPDATE binding SET provider_profile = 'git_markdown', auth_method = 'delegated_user', credential_owner = ?, source_identity = ? WHERE binding_id = ?",
+                credentialOwnerId,
+                "{\"repo\":\"org/runbooks\"}",
+                bindingId);
+        JsonNode wrongPrincipalHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode wrongPrincipalAssistant = null;
+        for (JsonNode message : wrongPrincipalHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                wrongPrincipalAssistant = message;
+                break;
+            }
+        }
+        assertThat(wrongPrincipalAssistant).isNotNull();
+        assertThat(wrongPrincipalAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(wrongPrincipalAssistant.path("answer").isNull()).isTrue();
         mockMvc.perform(
                         post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
                                 .cookie(owner.session())

@@ -415,6 +415,16 @@ public class ChatService {
                                 completeQuietly(flight.emitter);
                                 inFlight.remove(assistant.messageId(), flight);
                             } catch (RuntimeException failure) {
+                                if (flight.cancellation.isCancelled()) {
+                                    persistCancelled(assistant.messageId(), flight);
+                                    completeQuietly(flight.emitter);
+                                    inFlight.remove(assistant.messageId(), flight);
+                                    return;
+                                }
+                                if (!retrievalStillActive(assistant.messageId(), flight)) {
+                                    completeQuietly(flight.emitter);
+                                    return;
+                                }
                                 messages.failIfInFlight(assistant.messageId(), clock.instant());
                                 sendStreamError(flight, assistant.requestId(), failure);
                                 inFlight.remove(assistant.messageId(), flight);
@@ -470,7 +480,7 @@ public class ChatService {
         try {
             flight.emitter.send(SseEmitter.event().name("error").data(payload));
             flight.emitter.complete();
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) {
             completeQuietly(flight.emitter);
         }
     }

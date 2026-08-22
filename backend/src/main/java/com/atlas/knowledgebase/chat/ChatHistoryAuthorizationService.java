@@ -94,7 +94,7 @@ final class ChatHistoryAuthorizationService {
                             snapshot.knowledgeBase(), binding, retrievalProperties)) {
                         return false;
                     }
-                    if (!providerConnectionUsable(binding)) {
+                    if (!providerConnectionUsable(user, binding)) {
                         return false;
                     }
                     if (!adapterAuthorized(user, snapshot.knowledgeBase(), binding)) {
@@ -153,17 +153,24 @@ final class ChatHistoryAuthorizationService {
         }
     }
 
-    private boolean providerConnectionUsable(BindingRecord binding) {
+    private boolean providerConnectionUsable(AtlasUserRecord user, BindingRecord binding) {
         String provider = providerConnectionName(binding.providerProfile());
         if (provider == null) {
             return true;
         }
-        String owner = binding.credentialOwner();
-        if (owner == null || owner.isBlank()) {
+        if ("sso_group_mapping".equals(binding.authMethod())) {
+            // Group-mapped bindings do not consume an individual provider OAuth connection;
+            // the adapter authorization above is the current user's source-access decision.
+            return true;
+        }
+        if (!"delegated_user".equals(binding.authMethod())
+                || user == null
+                || user.userId() == null
+                || user.userId().isBlank()) {
             return false;
         }
         ProviderConnectionRecord connection =
-                providerConnections.findByUserAndProvider(owner, provider).orElse(null);
+                providerConnections.findByUserAndProvider(user.userId(), provider).orElse(null);
         if (connection == null || !"connected".equals(connection.status())) {
             return false;
         }

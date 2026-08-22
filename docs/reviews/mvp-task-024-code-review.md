@@ -590,3 +590,148 @@ None identified beyond the Major authorization-boundary finding above, which is 
 - Component integration coverage remains light and should be strengthened before the later accessibility/security gates.
 
 **Gate A verdict: FAIL — one Major authorization/redaction gap remains.**
+
+## Gate A — security-principal rerun (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** Accepted MVP specification, architecture/data flow, detailed design, API guide, product baseline, ADR-0002/0003/0004/0006/0007/0008
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-024
+- **Diff reviewed:** `git diff origin/main...HEAD` at `01a8887`
+- **Code inspected:** Changed frontend Chat UI/utilities/styles/tests and backend Chat authorization, projection, persistence, completion, service, and tests
+- **Reviewer posture:** Fresh-context, review-only; no edits, commits, or reverts
+
+## Overall Assessment
+
+- **Alignment rating:** 89%
+- **Verdict:** Partially aligned
+- **Gate A verdict:** **FAIL**
+- **Rationale:** The new shared authorization service is genuinely called by both GET history and completed-answer retry, and most requested fail-closed checks are present. One blocking access-control defect remains: GitHub/Confluence connection state is looked up for the binding’s credential owner, not the current viewing user. The targeted suite also exposes a deterministic post-cancel SSE race, though terminal persistence remains safe.
+
+## Areas of Good Alignment
+
+- `ChatHistoryAuthorizationService.canExpose()` is used by both history reopen and completed retry/replay.
+- KB existence/current Chat eligibility, answer-time binding set, and KB/binding configuration versions are rechecked.
+- `RetrievalEligibility` supplies lifecycle, capability, model eligibility, health, freshness-required, binding enable/kill-switch/feature-flag, provider-profile enablement, and binding-health checks.
+- Missing retriever/provider profiles fail closed.
+- Adapter authorization uses the current `user.userId()` and exposes content only for exact `AUTHORIZED`; denial, quota, timeout, failure, security, unknown, exceptions, and null results deny.
+- Completed replay returns `403 HISTORY_CONTENT_REDACTED` when the shared decision denies.
+- History projection omits answer, citations, coverage, conflict, and classification and returns `content_redacted: true`.
+- Frontend renders a clear redaction explanation without protected metadata.
+- Cancel remains disabled as “Reserving…” until a server message ID replaces the local placeholder.
+- Coverage, conflict, retry, scope repair, CSRF/session, persistence, and secret/token handling remain substantially aligned.
+- No browser storage, credential-bearing URLs, frontend logging, or hardcoded secrets were found.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Current provider connection is checked against the wrong user
+
+- **Design / task expected:** History reopen and completed replay must use current-user authorization and fail closed when that user’s GitHub/Confluence connection is missing, expired, revoked, or reconnect-required.
+- **Code currently does:** [`ChatHistoryAuthorizationService.java:156`](backend/src/main/java/com/atlas/knowledgebase/chat/ChatHistoryAuthorizationService.java:156) derives GitHub/Confluence from the binding, then calls `findByUserAndProvider(binding.credentialOwner(), provider)` at line 166. `credential_owner` is the declared Connector/credential owner, while `provider_connection.user_id` is explicitly per current Atlas user. The method also applies this delegated-connection check without considering `auth_method`.
+- **Why it matters:** A viewer’s revoked or absent provider connection can be ignored when the binding owner remains connected. Conversely, an authorized `sso_group_mapping` viewer can be incorrectly redacted based on another person’s delegated connection. Current-user adapter authorization reduces exposure in a correct live adapter, but it does not satisfy the independent current connection-state gate and the local/non-prod fixture authorizes without consulting provider connections.
+- **Recommended fix:** Pass the current user into the connection check and use `user.userId()` for delegated-user bindings. Define explicit behavior for `sso_group_mapping` instead of requiring the credential owner’s connection. Add GET-history and completed-replay tests where current viewer and credential owner differ, covering connected, expired, revoked, reconnect-required, and missing states.
+
+### Minor
+
+#### Cancellation race emits an uncaught error after successful cancellation
+
+- **Code currently does:** The targeted concurrency test deterministically prints `IllegalStateException: ResponseBodyEmitter has already completed` from [`ChatService.java:471`](backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:471). A retrieval result can be classified after cancellation but before the caller’s second cancellation check; the runtime catch then attempts to send an error on the completed emitter. `sendStreamError()` catches only `IOException`.
+- **Why it matters:** The database remains correctly `incomplete_cancelled` and model generation does not run, but normal cancellation produces an uncaught background exception and may race a late error event against cancellation.
+- **Recommended fix:** Recheck cancellation before classifying/sending retrieval failures and make terminal emitter sends tolerate already-completed state.
+
+#### Safety-critical frontend transitions still lack component-level tests
+
+- Utility tests verify `isServerMessageId()` and pure parsing, but no mounted `ChatView` test exercises the actual reservation-to-cancel state transition or redacted history rendering.
+- This is non-blocking but leaves timing-sensitive UI behavior weakly protected.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Shared history/replay authorization service | Implemented |
+| KB/binding/config drift | Implemented |
+| Retrieval/provider/freshness eligibility | Implemented fail-closed; freshness-required is conservatively always denied |
+| Current provider connection state | **Incorrect principal** |
+| Current-user adapter authorization | Implemented |
+| Adapter denial/timeout/unknown fail-closed | Implemented; focused integration coverage only proves denial |
+| Completed retry/replay authorization | Implemented |
+| `content_redacted` projection/rendering | Implemented |
+| Reservation-before-cancel | Implemented |
+| Terminal persistence/concurrency | Implemented, with late-emitter race |
+| Coverage/conflict/retry/scope | Implemented |
+| CSRF/session/secret safety | Implemented |
+| Component-level state tests | Missing |
+
+**Task coverage:**
+
+- Clearly implemented: Chat shell, selector, streaming states, coverage/conflict, scope repair, CSRF/session behavior, persisted history, redaction UI, cancellation reservation, retry/replay.
+- Partially implemented: current provider connection authorization.
+- Not reflected in tests: viewer-versus-credential-owner connection state; authorization timeout/unknown; mounted redaction/cancel behavior.
+- Unmapped scope creep: None significant.
+
+## Architectural / Design Boundary Check
+
+### Architecture Review Score: 80%
+
+- **P0:** The shared access decision uses the binding credential owner as the provider-connection principal. This must be corrected before merge.
+- **P1:** `ChatView.vue` remains a 773-line component owning API transport, CSRF caching, SSE parsing, state orchestration, and rendering rather than the intended component → store → domain API layering.
+- **P2:** Theme values remain broadly hardcoded rather than centralized as design tokens.
+- **Good practices:** The history decision is centralized and reused; adapters remain behind ports; backend remains domain-local; completion/citation writes remain transactional; no new secret-bearing state was introduced.
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Mostly aligned; provider-connection principal is wrong.
+- **Validation behavior:** KB/config/binding/provider/runtime checks fail closed.
+- **Retry / cancel / failure handling:** Completed replay is now gated; cancellation persistence is safe, but a deterministic late-emitter exception remains.
+- **User-visible behavior:** Redaction explanation, partial coverage, conflicts, and structured failures are aligned.
+- **Persistence behavior:** Answer, coverage, conflict, classification, binding/config snapshots, and citations remain consistently projected and persisted.
+
+## Integration Check
+
+- **Adapter boundaries:** Current-user adapter authorization is correctly reused.
+- **Provider connection boundary:** Misaligned due to `credentialOwner()` lookup.
+- **Secret / credential safety:** Aligned.
+- **Logging / audit:** No protected content found; the cancellation race adds an avoidable stack trace.
+- **Error propagation:** Structured frontend errors align; the already-completed emitter path is not safely absorbed.
+
+## Verification Results
+
+- `cd frontend && npm test && npm run build` — **Passed**
+  - 2 test files, 10 tests
+  - TypeScript/Vite production build passed
+- `./mvnw -q -pl backend -Dtest=ChatApiTest,ChatMessageTerminalUpdateTest,ChatServiceConcurrencyTest test` — **Exit 0**
+  - `ChatApiTest`: 20 passed
+  - `ChatMessageTerminalUpdateTest`: 2 passed
+  - `ChatServiceConcurrencyTest`: 1 passed
+  - 23 total, zero reported failures/errors/skips
+  - However, the suite emitted the uncaught completed-emitter exception described above.
+- Focused `ChatServiceConcurrencyTest` rerun — **Exit 0; same exception reproduced**
+- Exact repository diff check and `origin/main...HEAD` diff check — **Passed**
+- Worktree remained clean.
+- Codex log guard remained intact; WAL stayed at 0 bytes.
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blocker:** Correct current-user provider-connection evaluation and add regression coverage proving it.
+- **Acceptable deviations:** Conservative freshness-required redaction; local page-owned Chat state for TASK-024; deferred full E2E/accessibility pass.
+- **Required correction:** The Major finding above.
+- **Recommended non-blocking correction:** Remove the deterministic post-cancel emitter exception and add mounted component tests.
+
+## Minimal Fix Path
+
+1. Change the provider-connection check to accept `AtlasUserRecord` and query the current user for delegated-user bindings.
+2. Handle `sso_group_mapping` explicitly rather than consulting the credential owner’s connection.
+3. Add GET-history and completed-replay tests with different viewer/credential-owner identities plus revoked/expired/reconnect-required/missing connection states.
+4. Add adapter timeout/unknown regression cases.
+5. Re-run the same frontend, backend, and exact diff checks.
+
+**Gate A verdict: FAIL — one Major authorization-boundary defect remains.**
