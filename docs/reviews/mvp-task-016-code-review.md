@@ -199,6 +199,422 @@ Fix the live move-target boundary before any provider adapter is built, then est
 
 Gate A: Fail
 
+## Gate A — After strict trailing-token fix (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+- **Design reviewed:** TASK-016 SDD chain, Citation/Evidence contract, and ADR-0008.
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`, TASK-016.
+- **Code inspected:** Evidence resolver/service/controller/audit, locator validation, continuity, navigation, citation assembly/persistence, Chat completion, fixtures, and tests across `git diff origin/main...HEAD`.
+- **Review objective:** Fresh-context Gate A review after commit `9e677f5`; existing review evidence was excluded.
+
+## Overall Assessment
+- **Alignment rating:** 88%
+- **Verdict:** Partially aligned
+- **Rationale:** Strict trailing-token rejection is correctly enabled in both JSON boundaries and covered by regression tests. Private lookup, re-authorization, fixture isolation, defensive copies, move-target validation, atomic citation persistence, and audit behavior largely align with ADR-0008. Two Major gaps remain in current implementation behavior.
+
+## Areas of Good Alignment
+- Closed locator schemas, duplicate-key detection, nesting/size limits, and strict trailing-token rejection.
+- Current source-identity continuity and fixture-marker matching.
+- Private citation lookup with indistinguishable missing/cross-user `404`.
+- Defensive locator/source-identity boundaries across the resolver port.
+- Central move-target validation and no silent latest-version substitution.
+- Atomic winning completion plus citation replacement.
+- Content-free evidence auditing and fixture-only navigation.
+
+## Misalignments and Gaps
+
+### Critical
+None identified.
+
+### Major
+
+#### Owner fallback can crash citation assembly
+
+- **Design / task expected:** Owner must use the answer-time display name, or stable `owner_user_id` when the display name is absent.
+- **Code currently does:** [`CitationAssembler.java`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/evidence/CitationAssembler.java:199) calls `name.isBlank()` without checking for `null`.
+- **Why it matters:** `atlas_user.display_name` is nullable. A valid owner with a null display name causes `NullPointerException`, preventing citation filtering/completion instead of falling back to `owner_user_id`.
+- **Recommended fix:** Make the display-name filter null-safe and add a null-display regression test.
+
+#### Resolver authorization exceptions are not mapped fail-closed
+
+- **Design / task expected:** Evidence service owns outcome mapping; inability to prove authorization must return `503 EVIDENCE_RESOLUTION_UNKNOWN` and emit the required audit event.
+- **Code currently does:** [`EvidenceService.java`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/evidence/EvidenceService.java:173) invokes `resolver.authorize()` inside `prepare`, but only selected exceptions are caught. A provider adapter runtime exception can escape as an unclassified `500`; GET also misses the required `evidence_view` audit.
+- **Why it matters:** This is unsafe at the provider integration boundary and will affect TASK-019–021 adapters.
+- **Recommended fix:** Wrap authorization dispatch, map null/exceptional results to provider/false unknown, audit once, and add authorization-failure tests.
+
+### Minor
+
+#### Live unknown mode is not enforced after dispatch
+
+- [`EvidenceService.java`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/evidence/EvidenceService.java:391) rejects only fixture/provider mismatch. A live resolver can return `unknown` with `verification_mode = none`, although `none` is reserved for pre-dispatch failures.
+- Enforce `provider/false` for live resolver results.
+
+#### Short-excerpt persistence boundary remains unspecified
+
+- [`CitationAssembler.java`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/evidence/CitationAssembler.java:155) accepts excerpts up to `Integer.MAX_VALUE` and persists them to a CLOB.
+- The exact short-excerpt byte limit is not frozen; define it before real adapters.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Private lookup and indistinguishable 404 | Implemented |
+| Current authorization and source continuity | Partial |
+| Closed locator validation | Implemented |
+| Strict trailing-token rejection | Implemented |
+| Move-target validation | Implemented |
+| Fixture isolation | Implemented |
+| Drawer/navigation contracts | Implemented |
+| Citation provenance assembly | Implemented |
+| Atomic completion/retry replacement | Implemented |
+| Content-free auditing | Partial |
+| No cache/full-body persistence | Implemented, subject to excerpt limit |
+
+**Task coverage:**
+- Clearly implemented: most TASK-016 behavior and regression coverage.
+- Partially implemented: provider-boundary exception handling and owner fallback.
+- Unmapped code changes: None identified.
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None blocking.
+- **Coupling issues:** Resolver result/error normalization remains incomplete at the adapter boundary.
+- **Hidden shortcuts:** Nullable owner metadata is not safely handled.
+
+## Behavior and State Check
+- **Workflow / state handling:** Mostly aligned.
+- **Validation behavior:** Aligned, including trailing-token rejection.
+- **Retry / skip / resume / failure handling:** Aligned for completion/citation races.
+- **User-visible behavior:** Moved, unavailable, unknown, and exact-version navigation are aligned.
+
+## Integration Check
+- **Adapter boundaries:** Mostly aligned; authorization exception mapping remains incomplete.
+- **External system handling:** Correctly deferred to TASK-019–021.
+- **Secret / credential safety:** Aligned.
+- **Logging / audit hooks:** Partial for GETs when authorization dispatch throws.
+- **Error propagation at integration boundaries:** Major gap described above.
+
+## Readiness Verdict
+- **Suitable for merge:** No.
+- **Blockers before proceeding:** Null owner fallback crash; resolver authorization exception handling.
+- **Acceptable deviations:** Excerpt-size and live freshness metadata remain deferred.
+- **Required corrections:** Fix both Major findings and run a fresh Gate A review.
+
+## Recommended Fixes
+1. Null-safe owner fallback in `CitationAssembler.owner()`.
+2. Fail-closed authorization dispatch handling in `EvidenceService`.
+3. Enforce `provider/false` for live resolver unknown results.
+4. Add regression tests for all three paths.
+
+## Minimal Fix Path
+Implement the two Major fixes, add focused tests, rerun the evidence test set and Gate A review.
+
+## Open Risks / Questions
+- Define the UTF-8 short-excerpt persistence limit before real provider adapters.
+- Add truthful `source_updated_at` to future retrieval metadata.
+
+# Architecture Review: TASK-016 Evidence Drawer and Historical Resolve
+
+## Score: 88%
+
+## Violations Found
+
+### P0 (Must Fix)
+None identified.
+
+### P1 (Fix Next Touch)
+- [ ] Null owner display-name fallback can throw — `CitationAssembler.java:199`.
+- [ ] Resolver authorization exceptions can escape the evidence error boundary — `EvidenceService.java:173`.
+- [ ] Enforce provider verification mode after live resolver dispatch — `EvidenceService.java:391`.
+- [ ] Define a bounded short-excerpt contract before live adapters.
+
+### P2 (Track)
+- [ ] `ChatService.java` remains a large pre-existing orchestration class.
+
+## Good Practices Confirmed
+- Feature-based Evidence module decomposition.
+- Immutable resolver context and defensive-copy boundaries.
+- Centralized locator and move validation.
+- Transactional completion plus citation replacement.
+- Profile-isolated fixture resolver.
+- No speculative schema migration or evidence cache.
+
+## Recommendation
+Resolve the two Major findings before merge; then rerun Gate A.
+
+**Gate A: Fail**
+
+Review-only; no files were edited. Focused TASK-016 tests and `git diff --check origin/main...HEAD` passed.
+
+## Gate B — Before strict trailing-token fix (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- Slice: TASK-016 Citation Projection / Evidence Drawer
+- PR: #34, `origin/main...HEAD`
+- Design sources: accepted TASK-016 SDD artifacts and ADR-0008
+- Review-only; no files changed
+- `docs/reviews/mvp-task-016-code-review.md` was excluded from behavioral evidence
+- Verification:
+  - `git diff --check origin/main...HEAD`: PASS
+  - Focused TASK-016 Maven tests: PASS
+  - Full Maven suite not rerun; CI is running
+
+## Prior Gate A Blockers
+
+All five previously reported blockers are fixed:
+
+| Area | Result |
+|---|---|
+| Authenticated POST boundary audit | PASS; highest-precedence filter audits CSRF/session/controller boundary failures |
+| Central moved-target validation | PASS; target is revalidated for provider schema, fixture marker, and stable identity |
+| Live exception classification | PASS; unmarked/live failures classify as `PROVIDER`, fixture failures as `FIXTURE` |
+| Explicit immutable `AuthorizationContext` | PASS; user, binding, and auth method are passed explicitly through authorize/resolve |
+| Defensive-copy locator/source identity | PASS; exposed JSON nodes are copied and covered by tests |
+
+## Overall Assessment
+
+The implementation is substantially aligned with the accepted design, but one remaining validation defect is merge-blocking.
+
+## Misalignments / Blockers
+
+### Major / P0 — Strict JSON parsing accepts trailing tokens
+
+`EvidenceLocatorValidator` and `EvidenceSourceContinuity` use `ObjectMapper.readTree(...)` without enabling `FAIL_ON_TRAILING_TOKENS`.
+
+Jackson accepts inputs such as:
+
+```text
+{"valid":true} trailing
+{}{}
+```
+
+and parses only the first JSON value. This violates ADR-0008’s closed-locator requirement that the serialized locator be exactly one valid object and allows malformed locator/source-identity data to cross the validation boundary and reach resolver logic.
+
+Affected areas:
+
+- `backend/.../EvidenceLocatorValidator.java`
+- `backend/.../EvidenceSourceContinuity.java`
+
+Required correction:
+
+- Enable `DeserializationFeature.FAIL_ON_TRAILING_TOKENS` on the strict mappers.
+- Add regression tests for trailing text and multiple JSON values.
+- Rerun Gate B after the correction.
+
+## Non-blocking Follow-ups
+
+- `openOriginal` validates a non-empty request body before private citation lookup; valid `{}`/absent body follows the intended path, but lookup-first ordering should be aligned explicitly in a later refinement.
+- Persisted citation excerpts currently use an effectively unbounded length; define/enforce the accepted “short excerpt” limit.
+- Fixture citation `source_updated_at` remains nullable until live provider metadata is available.
+- `ChatService` remains large and should be decomposed when next touched.
+
+## Coverage Check
+
+| Design area | Status |
+|---|---|
+| Current-user/thread citation ownership | PASS |
+| Reauthentication and source continuity | PASS |
+| Closed locator validation | **FAIL: trailing-token defect** |
+| Moved/unavailable/unknown outcomes | PASS |
+| Fixture isolation | PASS |
+| Safe original navigation | PASS |
+| Atomic citation completion/replacement | PASS |
+| Audit coverage, including boundary failures | PASS |
+| Resolver context and defensive copies | PASS |
+| No evidence cache/full-body exposure | PASS |
+
+## Architectural Review
+
+### Score: 86%
+
+### Violations
+
+- **P0:** Strict serialized locator/source-identity boundary is not fail-closed because trailing tokens are accepted.
+- **P1:** Request-body validation ordering and excerpt-size contract need follow-up.
+- **P2:** `ChatService` remains oversized for the project’s file-organization guidance.
+
+### Good Practices
+
+- Explicit user-scoped authorization context.
+- Centralized validation and moved-target identity checks.
+- Provider-neutral resolver boundary.
+- Defensive-copy immutable value objects.
+- Atomic completion/citation persistence.
+- Content-free audit records and safe navigation restrictions.
+
+## Readiness Verdict
+
+The code is testable and the prior Gate A blockers are resolved, but the strict parser defect is a Major correctness/security-boundary issue and a P0 architectural violation. It must be corrected before merge.
+
+# Gate B: Fail
+
+No Critical blocker was found. Merge is blocked by the Major/P0 trailing-token validation defect above.
+
+## Gate A — After authorization-hardening fixes (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Commit:** `a37115660c30a35eeebc1ed9aadfbee7a6fd13`
+- **Design reviewed:** TASK-016 SDD chain, Citation And Evidence Contract, Flow 5, data model, traceability, and ADR-0008.
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`, TASK-016.
+- **Code inspected:** Evidence resolver port/fixture, locator validation, source continuity, EvidenceService/controller/audit filter, citation assembly/persistence, Chat completion integration, and focused tests.
+- **Excluded evidence:** `docs/reviews/mvp-task-016-code-review.md`.
+- **Objective:** Verify implementation fidelity and confirm the requested latest fixes.
+
+## Overall Assessment
+
+- **Alignment rating:** 97%
+- **Verdict:** Aligned with minor deviation
+- **Rationale:** TASK-016 implements the accepted private citation lookup, current authorization, strict locator validation, immutable resolver boundary, fixture/live verification semantics, atomic citation persistence, and content-free audit behavior. The latest fixes correctly handle resolver authorization runtime/null/UNKNOWN outcomes, normalize live failures to `provider`/`false`, and enforce fixture/live result-mode parity. No Critical, Major, P0, or P1 blockers were identified.
+
+## Areas of Good Alignment
+
+- `EvidenceService` performs current KB/binding authorization, source continuity checks, resolver authorization, and exact resolution independently.
+- `EvidenceResolver` carries immutable user/binding/auth-method context without raw credentials.
+- `ValidatedLocator`, source identities, and move targets use defensive copies.
+- `FAIL_ON_TRAILING_TOKENS` and duplicate-key detection are enabled for locator and source-identity parsing.
+- Live outcomes require `PROVIDER` verification; fixture outcomes require `FIXTURE` semantics and the reserved fixture origin.
+- Resolver exceptions, null results, and inconclusive outcomes fail closed and emit one operation audit.
+- Private citation lookup uses current-user-owned, non-deleted, completed assistant messages and indistinguishable 404 behavior.
+- Citation completion and replacement are transactional and tied to the winning assistant completion.
+- HTTP-level POST attempts, including CSRF rejection and malformed JSON, receive content-free `evidence_open` auditing.
+- No latest-version substitution, raw target locator, navigation URL, excerpt body, or source identity is exposed in error details.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+**Unbounded short-excerpt persistence**
+
+- **Design / task expected:** Persist only short citation excerpts; do not create a full-document evidence cache.
+- **Code currently does:** `CitationAssembler.materialize` validates the excerpt with `Integer.MAX_VALUE` and persists it to the existing CLOB column.
+- **Why it matters:** A future adapter could accidentally pass an overly large excerpt.
+- **Recommended fix:** Freeze an explicit byte/code-point limit in the provider metadata contract and reject/omit over-limit excerpts before model dispatch. This is non-blocking because the exact limit remains unspecified in the accepted design and current fixtures are synthetic.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Citation projection | Implemented |
+| Private current-user lookup | Implemented |
+| Current authorization and source continuity | Implemented |
+| Closed provider locator schemas | Implemented |
+| Strict trailing-token and duplicate-key rejection | Implemented |
+| Fixture/live resolver separation | Implemented |
+| Moved/Unavailable/Unknown semantics | Implemented |
+| No silent latest substitution | Implemented |
+| Atomic citation persistence | Implemented |
+| Retry and losing-completion handling | Implemented |
+| Content-free evidence auditing | Implemented |
+| Evidence cache prohibition | Implemented |
+| Real Dify/Git/Confluence adapters | Intentionally deferred to TASK-019–021 |
+
+**Task coverage:**
+
+- Tasks clearly implemented: All TASK-016 scope.
+- Tasks partially implemented: None within TASK-016.
+- Tasks not reflected in code: None within TASK-016.
+- Code outside task scope: None material identified.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- None. Exact excerpt-size enforcement remains an open contract detail.
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** None blocking. Provider-specific resolution remains behind `EvidenceResolver`.
+- **Hidden shortcuts:** None identified.
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned.
+- **Validation behavior:** Aligned; strict locator/source parsing and move-target validation fail closed.
+- **Retry / skip / resume / failure handling:** Aligned; completion and citation writes are atomic.
+- **User-visible behavior:** Aligned; safe projections and actionable typed errors are returned.
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Real adapters correctly remain deferred; no provider calls are introduced.
+- **Secret / credential safety:** Aligned; only non-secret authorization context crosses the port.
+- **Logging / audit hooks:** Aligned for TASK-016 content-free events.
+- **Error propagation at integration boundaries:** Aligned; resolver failures become safe unknown outcomes with correct verification mode.
+
+## Architecture Review
+
+**Score: 95%**
+
+### P0 — Must Fix
+
+None identified.
+
+### P1 — Fix Next Touch
+
+None identified.
+
+### P2 — Track
+
+- Define and enforce the short-excerpt persistence boundary before real provider adapters are introduced.
+
+### Good Practices Confirmed
+
+- Feature-based backend packaging.
+- Provider-neutral resolver registry.
+- Defensive immutable boundary objects.
+- Centralized navigation safety policy.
+- Transactional completion/citation persistence.
+- Boundary audit filter for pre-controller POST failures.
+
+## Readiness Verdict
+
+- **Suitable for merge / next implementation step:** Yes.
+- **Blockers before proceeding:** None.
+- **Acceptable deviations:** Real provider adapters remain deferred; synthetic fixture freshness may be null; no TASK-016 migration is required.
+- **Required corrections:** None before merge; track the excerpt-size contract follow-up.
+
+## Recommended Fixes
+
+1. Define the maximum persisted excerpt size before TASK-019–021 adapter implementation.
+2. Require each live adapter to preserve `PROVIDER`/`true` semantics and same-identity move validation.
+
+## Minimal Fix Path
+
+No code changes are required for Gate A. Merge may proceed after the applicable elevated Gate B review.
+
+## Verification
+
+Passed:
+
+- `./mvnw -q -pl backend -Dtest=EvidenceServiceTest,EvidenceLocatorValidatorTest,EvidenceNavigationPolicyTest,EvidenceResolverRegistryTest,EvidenceSourceContinuityTest,StubEvidenceResolverTest,CitationCompletionServiceTest test`
+- `./mvnw -q -pl backend -Dtest=ChatApiTest test`
+- `git diff --check -- . ':(exclude)docs/reviews/mvp-task-016-code-review.md'`
+
+The review was read-only; no files were edited.
+
+## Open Risks / Questions
+
+- Exact short-excerpt persistence limit is not yet frozen.
+- Real provider historical retention, delegated authorization, and source-version mapping remain TASK-019–021 spike gates.
+
+# Gate A: Pass
+
 ## Gate A — Rerun after authorization-boundary fixes (verbatim)
 
 # Code vs Design Review Report
