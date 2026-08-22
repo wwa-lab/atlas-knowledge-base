@@ -93,18 +93,60 @@ public class ChatMessageRepository {
         return count == null ? 0 : count;
     }
 
+    /** @return rows updated; 0 means a terminal write already won. */
     @Transactional
-    public void updateStatus(
+    public int completeIfInFlight(
+            String messageId, String answerText, String coverageJson, Instant completedAt) {
+        return updateAnswerIfInFlight(messageId, "completed", answerText, coverageJson, completedAt);
+    }
+
+    /** @return rows updated; 0 means completed/failed already won. */
+    @Transactional
+    public int cancelIfInFlight(String messageId, Instant completedAt) {
+        return updateAnswerIfInFlight(messageId, "incomplete_cancelled", null, null, completedAt);
+    }
+
+    @Transactional
+    public int failIfInFlight(String messageId, Instant completedAt) {
+        return updateAnswerIfInFlight(messageId, "failed", null, null, completedAt);
+    }
+
+    @Transactional
+    public int markStreamingIfProcessing(String messageId) {
+        return jdbcTemplate.update(
+                """
+                UPDATE chat_message
+                SET status = ?
+                WHERE message_id = ? AND status = ?
+                """,
+                "streaming",
+                messageId,
+                "processing");
+    }
+
+    @Transactional
+    public int markProcessingIfRetryable(String messageId) {
+        return jdbcTemplate.update(
+                """
+                UPDATE chat_message
+                SET status = ?, answer_text = NULL, coverage = NULL, completed_at = NULL
+                WHERE message_id = ? AND status IN ('incomplete_cancelled', 'failed')
+                """,
+                "processing",
+                messageId);
+    }
+
+    private int updateAnswerIfInFlight(
             String messageId,
             String status,
             String answerText,
             String coverageJson,
             Instant completedAt) {
-        jdbcTemplate.update(
+        return jdbcTemplate.update(
                 """
                 UPDATE chat_message
                 SET status = ?, answer_text = ?, coverage = ?, completed_at = ?
-                WHERE message_id = ?
+                WHERE message_id = ? AND status IN ('processing', 'streaming')
                 """,
                 status,
                 answerText,

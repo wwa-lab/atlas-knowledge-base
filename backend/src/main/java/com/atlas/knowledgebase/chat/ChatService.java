@@ -224,7 +224,18 @@ public class ChatService {
         if (flight != null) {
             flight.cancelled.set(true);
         }
-        messages.updateStatus(messageId, "incomplete_cancelled", null, null, clock.instant());
+        int cancelled = messages.cancelIfInFlight(messageId, clock.instant());
+        if (cancelled == 0) {
+            ChatMessageRecord current =
+                    messages.findById(messageId).orElseThrow(() -> new ChatNotFoundException(threadId));
+            if ("completed".equals(current.status())) {
+                throw new ChatConflictException("ALREADY_COMPLETED", "Completed answers cannot be cancelled.");
+            }
+            if ("incomplete_cancelled".equals(current.status())) {
+                return Map.of("message_id", messageId, "status", "incomplete_cancelled");
+            }
+            throw new ChatConflictException("NOT_CANCELLABLE", "This message is not in-flight.");
+        }
         if (flight != null) {
             completeQuietly(flight.emitter);
         }
@@ -252,9 +263,7 @@ public class ChatService {
         }
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
         String question = latestUserQuestion(threadId, message);
-        messages.updateStatus(messageId, "processing", null, null, null);
-        ChatMessageRecord refreshed = messages.findById(messageId).orElseThrow();
-        return startGeneration(user, refreshed, question, resolved, true);
+        return startGeneration(user, message, question, resolved, true);
     }
 
     private SseEmitter replayCompleted(ChatMessageRecord message) {
@@ -278,11 +287,15 @@ public class ChatService {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
         inFlight.put(assistant.messageId(), flight);
-        emitter.onCompletion(() -> inFlight.remove(assistant.messageId()));
+        if (retry && messages.markProcessingIfRetryable(assistant.messageId()) == 0) {
+            inFlight.remove(assistant.messageId(), flight);
+            throw new ChatConflictException("NOT_RETRYABLE", "This message cannot be retried.");
+        }
+        emitter.onCompletion(() -> inFlight.remove(assistant.messageId(), flight));
         emitter.onTimeout(
                 () -> {
                     flight.cancelled.set(true);
-                    inFlight.remove(assistant.messageId());
+                    inFlight.remove(assistant.messageId(), flight);
                 });
         Thread.ofVirtual()
                 .name("chat-gen-" + assistant.messageId())
@@ -301,14 +314,22 @@ public class ChatService {
             boolean retry,
             InFlight flight) {
         try {
-            messages.updateStatus(assistant.messageId(), "streaming", null, null, null);
+            if (superseded(assistant.messageId(), flight)) {
+                return;
+            }
+            messages.markStreamingIfProcessing(assistant.messageId());
+            if (flight.cancelled.get()) {
+                persistCancelled(assistant.messageId(), flight);
+                completeQuietly(flight.emitter);
+                return;
+            }
             StringBuilder answer = new StringBuilder();
             modelChannel.generate(
                     new ModelChannel.Request(assistant.requestId(), question, user.userId()),
                     new ModelChannel.Listener() {
                         @Override
                         public void onToken(String delta) {
-                            if (flight.cancelled.get()) {
+                            if (flight.cancelled.get() || superseded(assistant.messageId(), flight)) {
                                 return;
                             }
                             answer.append(delta);
@@ -321,15 +342,24 @@ public class ChatService {
 
                         @Override
                         public void onComplete(String completeAnswer) {
+                            if (superseded(assistant.messageId(), flight)) {
+                                completeQuietly(flight.emitter);
+                                return;
+                            }
                             if (flight.cancelled.get()) {
-                                persistCancelled(assistant.messageId());
+                                persistCancelled(assistant.messageId(), flight);
                                 completeQuietly(flight.emitter);
                                 return;
                             }
                             Instant done = clock.instant();
                             String coverage = writeJson(coverage(resolved.bindingIds()));
-                            messages.updateStatus(
-                                    assistant.messageId(), "completed", completeAnswer, coverage, done);
+                            int completed =
+                                    messages.completeIfInFlight(
+                                            assistant.messageId(), completeAnswer, coverage, done);
+                            if (completed == 0) {
+                                completeQuietly(flight.emitter);
+                                return;
+                            }
                             ChatMessageRecord stored =
                                     messages.findById(assistant.messageId()).orElseThrow();
                             try {
@@ -349,31 +379,35 @@ public class ChatService {
 
                         @Override
                         public void onCancelled() {
-                            persistCancelled(assistant.messageId());
+                            persistCancelled(assistant.messageId(), flight);
                             completeQuietly(flight.emitter);
                         }
 
                         @Override
                         public boolean isCancelled() {
-                            return flight.cancelled.get();
+                            return flight.cancelled.get() || superseded(assistant.messageId(), flight);
                         }
                     });
         } catch (RuntimeException e) {
-            if (!flight.cancelled.get()) {
-                messages.updateStatus(assistant.messageId(), "failed", null, null, clock.instant());
+            if (!flight.cancelled.get() && !superseded(assistant.messageId(), flight)) {
+                messages.failIfInFlight(assistant.messageId(), clock.instant());
                 completeQuietly(flight.emitter);
             }
         } finally {
-            inFlight.remove(assistant.messageId());
+            inFlight.remove(assistant.messageId(), flight);
         }
     }
 
-    private void persistCancelled(String messageId) {
-        ChatMessageRecord current = messages.findById(messageId).orElse(null);
-        if (current == null || "completed".equals(current.status())) {
+    private boolean superseded(String messageId, InFlight flight) {
+        InFlight current = inFlight.get(messageId);
+        return current != null && current != flight;
+    }
+
+    private void persistCancelled(String messageId, InFlight flight) {
+        if (superseded(messageId, flight)) {
             return;
         }
-        messages.updateStatus(messageId, "incomplete_cancelled", null, null, clock.instant());
+        messages.cancelIfInFlight(messageId, clock.instant());
     }
 
     private String latestUserQuestion(String threadId, ChatMessageRecord assistant) {
