@@ -65,3 +65,9 @@ Review comment:
 
 - [P2] Hide Start Chat for non-selectable KBs — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:385-385
   For owner/admin users who can view suspended KBs, or for chat-ready KBs whose health is unavailable, this condition still renders Start Chat because `chat_start_allowed` only reflects capability/model eligibility. The Chat view then applies the stricter `isChatSelectable` lifecycle/health checks and lands the user on an error state instead of presenting the disabled reason in detail, so the detail affordance is misleading for those catalog entries.
+
+## Gate A — final fresh rerun after Start Chat guard (verbatim)
+
+No discrete correctness issues were identified in the diff. The backend cursor change is covered by a targeted test, and the new frontend catalog/browse flow aligns with the implemented API contracts.
+
+Gate A verdict: PASS.
