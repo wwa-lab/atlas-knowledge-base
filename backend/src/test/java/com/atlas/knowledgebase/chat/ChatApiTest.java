@@ -362,6 +362,32 @@ class ChatApiTest {
     }
 
     @Test
+    void chatScopeContractAcceptsOneKnowledgeBaseAndRestoresLastValidScopeWhenOmitted() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Contract Scope");
+
+        mockMvc.perform(
+                        post("/api/v1/chats")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.thread_id").isString())
+                .andExpect(jsonPath("$.logical_kb_ids").isArray())
+                .andExpect(jsonPath("$.logical_kb_ids").value(org.hamcrest.Matchers.contains(kbId)));
+
+        mockMvc.perform(
+                        post("/api/v1/chats")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"logical_kb_ids\":[]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.logical_kb_ids[0]").value(kbId));
+    }
+
+    @Test
     void mixedClassificationsFailClosedUntilAnOrderingPolicyIsApproved() throws Exception {
         LoggedIn owner = loginOwner();
         String internalKb = activateDify(owner, "Internal Chat");
@@ -747,9 +773,40 @@ class ChatApiTest {
                 .andExpect(jsonPath("$.error.details.verification_mode").value("fixture"));
 
         jdbcTemplate.update(
+                "UPDATE binding SET provider_profile = 'git_markdown', source_identity = ? WHERE binding_id = ?",
+                """
+                {"repo":"org/repo","atlas_fixture":true,
+                 "evidence_authorization_fixture":"authorized",
+                 "evidence_resolution_fixture":"moved"}
+                """,
+                bindingId);
+        jdbcTemplate.update(
+                "UPDATE citation SET provider = 'git_markdown', locator = ?, version_label = 'abc1234' WHERE citation_id = ?",
+                """
+                {"repository":"org/repo","commit_sha":"abc1234","path":"docs/cert.md",
+                 "line_range":[10,40],"stable_source_id":"source_123","atlas_fixture":true,
+                 "move_mapping":{"moved_to_locator":{"repository":"org/repo","commit_sha":"def5678",
+                   "path":"docs/security/cert.md","line_range":[12,42],"stable_source_id":"source_123",
+                   "atlas_fixture":true}}}
+                """,
+                citationId);
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.category").value("moved"))
+                .andExpect(jsonPath("$.error.code").value("EVIDENCE_MOVED"))
+                .andExpect(jsonPath("$.error.details.verification_mode").value("fixture"))
+                .andExpect(jsonPath("$.error.details.provider_verified").value(false))
+                .andExpect(jsonPath("$.error.details.moved_to_locator_id").doesNotExist())
+                .andExpect(jsonPath("$.error.details.target_url").doesNotExist())
+                .andExpect(jsonPath("$.navigation_url").doesNotExist());
+
+        jdbcTemplate.update(
                 "UPDATE binding SET source_identity = ? WHERE binding_id = ?",
                 """
-                {"dataset_id":"ds_1","atlas_fixture":true,
+                {"repo":"org/repo","atlas_fixture":true,
                  "evidence_authorization_fixture":"denied",
                  "evidence_resolution_fixture":"ok"}
                 """,
