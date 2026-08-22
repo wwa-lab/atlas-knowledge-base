@@ -223,3 +223,216 @@ Fix the provenance and adapter-resolution P0 issues before TASK-016 or any real 
 - Worktree remained clean; no repository changes were made.
 
 # Merge Gate: Fail
+
+## Gate A round 2
+
+Gate A merge gate: **Pass**. No Critical or Major findings remain. Architecture P0: none. The full independent re-review report is recorded verbatim below.
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** `docs/03-spec/mvp-spec.md`; MVP architecture, data-flow, and data-model; `docs/05-design/mvp-design.md`; API implementation guide; ADR-0002, ADR-0004, ADR-0006, and ADR-0007
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-015
+- **Code / files inspected:** All 22 files in `git diff origin/main...HEAD` at `4bbc2f1f24b7b1bfdf7f66e28a932b773cb18acf`, including the retrieval/adapters/chat implementation, tests, and review record
+- **Review objective:** Independently determine whether PR #33 implements TASK-015 faithfully and is safe to merge without claiming later citation, real-adapter, gateway, or UI scope
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 92%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** TASK-015’s core behavior is implemented: per-turn retrieval on ask and retry, parallel fixture fan-out, binding-level coverage, fail-closed security and unknown-error handling, ordinary partial coverage, item omission, no-evidence refusal, provenance-preserving RRF, and safe adapter registration. The prior structural gaps are corrected. Remaining deviations concern configuration and runtime-control completeness that should be addressed before enabling real adapters, but they do not invalidate the stub-first TASK-015 slice.
+
+---
+
+## Areas of Good Alignment
+
+- Retrieval runs for every ask and retry before any model invocation.
+- Selected logical KBs and bindings are re-read and authorization is rechecked for each turn.
+- Missing complete-binding access prevents that KB’s retrieval rather than silently using its remaining bindings.
+- Stub retrievers run concurrently on virtual threads.
+- Binding outcomes are classified as successful, failed, timed out, security, or unknown.
+- Security outcomes fail closed, suspend the affected logical KB, discard its evidence, and emit content-free audit data.
+- Unknown adapter exceptions fail closed instead of entering the ordinary partial path.
+- Ordinary failures and timeouts allow generation only when other fused evidence exists.
+- All-failure and empty-evidence cases stop before chat-message persistence and model generation.
+- Item-level restrictions omit the restricted hit while retaining the KB in scope.
+- RRF uses declared retriever rank, preserves every original hit and locator/version provenance path during deduplication, and does not expose raw scores.
+- The retriever registry deterministically maps providers and rejects duplicate active handlers.
+- The fixture retriever is limited to `local`/`non-prod` and can be disabled explicitly.
+- The model stub receives evidence identifiers, not retrieved excerpts or credentials, preserving ADR-0007’s stub boundary.
+- TASK-016 citations/Evidence Drawer and TASK-019–022 real integrations are not falsely claimed as complete.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+#### 1. Connector timeout remains a shared hardcoded placeholder
+
+- **Design / task expected:** Connector timeout budgets are independent, environment-configured, and empirically frozen; the accepted design explicitly avoids inventing production connector thresholds.
+- **Code currently does:** `RetrievalOrchestrator.BINDING_TIMEOUT` fixes every provider to two seconds.
+- **Why it matters:** This is sufficient for current fixture orchestration but cannot serve Dify, Git, and Confluence independently once TASK-019–021 enable real calls.
+- **Recommended fix:** Before any real adapter is enabled, inject provider/profile-specific timeout configuration and use it for both the request contract and orchestration timeout.
+
+#### 2. Binding feature flag and health are not yet part of dispatch eligibility
+
+- **Design / task expected:** Source profiles and bindings have independent feature flags, health, disable, and kill-switch controls.
+- **Code currently does:** Dispatch filters `enabled` and `kill_switch`, but does not consult `featureFlag()` or binding health. `ChatService` builds its binding snapshot using the same narrower predicate.
+- **Why it matters:** Current registry-created fixture bindings are healthy and feature-enabled, so TASK-015’s normal path is unaffected. Before real adapters or runtime feature-flag operations are introduced, an off/unavailable binding must not be dispatched or silently omitted from coverage.
+- **Recommended fix:** Centralize binding runtime eligibility and map off/unavailable bindings to the accepted fail-closed or disclosed-coverage behavior when TASK-017 or the first real adapter lands.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB/binding authorization recheck | Implemented for stub scope |
+| Parallel stub retrieval | Implemented |
+| Binding-level success/fail/timeout coverage | Implemented |
+| Missing complete-binding fail-closed path | Implemented |
+| Security failure and KB suspension | Implemented |
+| Unknown exception safe failure | Implemented |
+| Ordinary partial coverage | Implemented |
+| All-failure/no-evidence refusal | Implemented |
+| Item-level omission | Implemented |
+| In-process RRF | Implemented |
+| Provenance-preserving deduplication | Implemented |
+| Browse-only/model-ineligible exclusion | Implemented |
+| Deterministic replaceable adapter registry | Implemented |
+| Per-provider runtime budgets | Partial; fixture placeholder |
+| Feature-flag/health dispatch controls | Partial; later runtime-control integration |
+| Citations and historical evidence resolution | Intentionally deferred to TASK-016 |
+| Real provider/model integrations | Intentionally deferred to TASK-019–022 |
+
+**Task coverage:**
+
+- **Tasks clearly implemented:** TASK-015’s stub retrieval, coverage, fail-closed/partial/item-omit behavior, per-turn invocation, and simple in-process RRF.
+- **Tasks partially implemented:** Production-grade independent connector budgets and the full runtime-control predicate.
+- **Tasks not yet reflected in code:** None required for the stub-first TASK-015 acceptance boundary.
+- **Code changes not clearly mapped to any task:** None material; the review document maps to the required implementation workflow.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- The universal two-second timeout is a fixture implementation placeholder, not an accepted production budget.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified; provider protocol concerns remain behind the `Retriever` port.
+- **Coupling issues:** The shared timeout couples all future adapters to one budget until externalized.
+- **Hidden shortcuts:** Binding feature flag and health are not yet included in the dispatch predicate.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned for TASK-015; security failures suspend the logical KB and no-evidence turns do not generate.
+- **Validation behavior:** Aligned for scope, Chat eligibility, model eligibility, and fixture binding authorization; runtime feature/health controls remain partial.
+- **Retry / skip / resume / failure handling:** Retry retrieves again; item omission, partial coverage, security failure, timeout, known failure, and unknown failure are distinguished safely.
+- **User-visible behavior:** Partial coverage reaches the final SSE event; no-evidence returns an actionable structured retrieval error.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned; deterministic registry and explicit stub profile/configuration avoid bean-order ambiguity.
+- **External system handling:** Correctly deferred to TASK-019–022.
+- **Secret / credential safety:** Aligned; no Copilot/provider credentials or real internal excerpts were introduced into model requests, responses, or audit details.
+- **Logging / audit hooks:** Content-free retrieval audit exists for success, security, and unknown outcomes; broader telemetry remains TASK-027.
+- **Error propagation at integration boundaries:** Aligned; typed security and connector failures, actual timeouts, and unknown exceptions retain distinct safe semantics.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for:** Merge — **Yes**
+- **Blockers before proceeding:** None for TASK-015
+- **Acceptable deviations:**
+  - Shared fixture timeout pending real-adapter configuration
+  - Empty citation/conflict projection pending later scoped work
+  - Full binding feature/health runtime integration pending TASK-017/real adapters
+- **Required corrections:** None before merging TASK-015
+
+---
+
+## Recommended Fixes
+
+1. Externalize provider-specific connector budgets before enabling TASK-019–021 adapters.
+2. Centralize binding dispatch eligibility across `ChatService` and `RetrievalOrchestrator`, including feature flag and health.
+3. Add a focused runtime-control test covering a feature-disabled or unavailable binding before TASK-017 is accepted.
+4. Consider guarding RRF against duplicate fingerprints within one retriever list so one adapter cannot double-weight a document accidentally.
+
+## Minimal Fix Path
+
+- No code change is required for the TASK-015 merge.
+- Before the first real adapter, introduce provider-specific retrieval properties and one shared binding-eligibility policy used for scope snapshots and dispatch.
+
+---
+
+## Open Risks / Questions
+
+- The accepted documents do not fully define how a feature-disabled or unhealthy binding appears in coverage versus fail-closed results; TASK-017 should resolve this without silently omitting selected scope.
+- A single `StubRetriever` covers all fixture providers. Real-adapter test contexts must disable it explicitly; provider-specific fixture toggles may improve incremental adapter rollout.
+- RRF currently assumes one occurrence of a fingerprint per retriever list. The design does not specify duplicate-within-list behavior.
+- Real connector cancellation, concurrency, quota, backoff, and circuit breakers remain intentionally outside TASK-015.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 91%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+None identified.
+
+### P1 (Fix Next Touch)
+
+- [ ] Externalize provider-specific timeout budgets before real adapters are activated — `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:41` — configuration externalization and connector isolation.
+- [ ] Include binding feature flag and health in a centralized runtime-eligibility policy before TASK-017/real adapters — `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:85`, `backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:560` — feature-flagged adapter plane and decoupled governance controls.
+
+### P2 (Track)
+
+- [ ] Define or defensively handle duplicate fingerprints within a single retriever list to avoid accidental double-weighting — `backend/src/main/java/com/atlas/knowledgebase/retrieval/ReciprocalRankFusion.java:29` — robust adapter boundary.
+
+## Good Practices Confirmed
+
+- Feature-oriented retrieval package with a provider-neutral adapter port.
+- Immutable request/result/fusion records and defensive collection copies.
+- Deterministic provider registry that rejects ambiguous handlers.
+- Explicit local/non-production stub boundary.
+- Parallel virtual-thread fan-out with component lifecycle cleanup.
+- Complete per-path locator/version provenance retained after fusion.
+- Typed failure taxonomy preserves security versus ordinary connector semantics.
+- Unknown failures default to safe refusal.
+- Chat does not contain provider protocol logic.
+- No schema, JPA auto-DDL, secret, or `/api/v1` contract changes.
+
+## Recommendation
+
+TASK-015 is architecturally suitable to merge. Externalize connector budgets and complete binding runtime-eligibility enforcement before enabling real provider adapters or accepting TASK-017.
+
+## Verification Evidence
+
+- `git fetch origin` completed before review.
+- Reviewed `origin/main...HEAD` at `4bbc2f1f24b7b1bfdf7f66e28a932b773cb18acf`.
+- `git diff --check origin/main...HEAD` passed.
+- `./mvnw -q test` passed: **105 tests, 0 failures, 0 errors, 0 skipped**.
+- Worktree remained clean; no files were edited.
+
+# Merge Gate: Pass
