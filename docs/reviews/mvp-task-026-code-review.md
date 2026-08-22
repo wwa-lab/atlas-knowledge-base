@@ -70,3 +70,15 @@ Review comment:
 
 - [P2] Do not re-enable chat eligibility after audited source locks — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:223-224
   When a draft has any source with `model_eligible: false`, the backend downgrades the KB to browse-only only while `bindings` are included in the PATCH. After Content Audit, this branch intentionally omits unchanged bindings, but the request still sends the draft-level `model_eligible` from the UI; if the owner edits metadata after audit, that PATCH can promote the draft back to `chat_ready` even though the locked binding set is not model-eligible. Preserve the backend-derived eligibility or recompute it from the locked bindings when saving metadata without bindings.
+
+## Gate A — fresh review after capability-state fix (verbatim)
+
+The Settings flow has user-visible/provider-security regressions around expired reconnects and cleartext external authorization redirects. These should be corrected before considering the patch fully safe.
+
+Full review comments:
+
+- [P2] Use reconnect for expired provider connections — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/settings/settingsUtils.ts:27-28
+  When Settings projects a stored connected provider as `expired`, this returns `connect`, so the button posts to `/providers/{provider}/connect`. The backend `startConnect` still sees the underlying row as `connected` with a real secret and rejects it as already connected, leaving users unable to refresh expired GitHub/Confluence access; route `expired` through `reconnect` instead.
+
+- [P2] Reject cleartext external authorization URLs — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/SettingsView.vue:25-27
+  If a real provider authorization response is misconfigured to return an `http://` URL, this accepts it via `safeExternalUrl(value)` and redirects the browser into a cleartext OAuth flow. Same-origin local callbacks are already handled by `sameOriginProviderPath`; non-same-origin provider authorization should be limited to HTTPS to avoid leaking the OAuth state/login flow over plaintext.

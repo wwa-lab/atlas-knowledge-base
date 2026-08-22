@@ -24,7 +24,8 @@ function safeAuthorizationUrl(value: string | undefined): string | undefined {
   try {
     const parsed = new URL(value, window.location.origin)
     const sameOriginProviderPath = parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/v1/providers/')
-    return sameOriginProviderPath || safeExternalUrl(value) ? parsed.toString() : undefined
+    const safeExternalAuthorization = parsed.protocol === 'https:' && safeExternalUrl(value)
+    return sameOriginProviderPath || safeExternalAuthorization ? parsed.toString() : undefined
   } catch {
     return undefined
   }
@@ -150,7 +151,7 @@ onMounted(load)
             </div>
             <div class="provider-actions">
               <button class="button button-primary" type="button" :disabled="busyProvider !== ''" @click="startProviderAction(provider)">
-                {{ isConnected(provider) ? 'Reconnect' : 'Connect' }}
+                {{ providerAction(provider) === 'reconnect' ? 'Reconnect' : 'Connect' }}
               </button>
               <button v-if="isConnected(provider)" class="button button-secondary" type="button" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'revoke')">Revoke</button>
               <button class="button button-danger" type="button" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'compromise')">Report compromise</button>

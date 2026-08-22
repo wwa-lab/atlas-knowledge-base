@@ -25,5 +25,5 @@ export function isConnected(provider: ProviderSettings): boolean {
 }
 
 export function providerAction(provider: ProviderSettings): 'connect' | 'reconnect' {
-  return isConnected(provider) ? 'reconnect' : 'connect'
+  return provider.status === 'connected' || provider.status === 'expired' ? 'reconnect' : 'connect'
 }

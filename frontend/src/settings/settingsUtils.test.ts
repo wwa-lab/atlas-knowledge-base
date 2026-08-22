@@ -8,9 +8,10 @@ describe('settings utilities', () => {
     expect(providerDisplayName('github')).toBe('GitHub Enterprise')
   })
 
-  it('chooses reconnect only for a live connection', () => {
+  it('chooses reconnect for live and expired connections', () => {
     expect(isConnected({ provider: 'github', status: 'connected' })).toBe(true)
     expect(providerAction({ provider: 'github', status: 'connected' })).toBe('reconnect')
-    expect(providerAction({ provider: 'github', status: 'expired' })).toBe('connect')
+    expect(providerAction({ provider: 'github', status: 'expired' })).toBe('reconnect')
+    expect(providerAction({ provider: 'github', status: 'revoked' })).toBe('connect')
   })
 })
