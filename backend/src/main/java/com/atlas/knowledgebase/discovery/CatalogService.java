@@ -66,7 +66,9 @@ public class CatalogService {
                 continue;
             }
             if (items.size() >= limit) {
-                next = kb.logicalKbId();
+                // The cursor is the last item included in this page. The next request resumes
+                // after that id, so the first item that did not fit is not skipped.
+                next = (String) items.get(items.size() - 1).get("logical_kb_id");
                 break;
             }
             items.add(listProjection(user, kb));

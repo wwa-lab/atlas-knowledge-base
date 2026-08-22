@@ -2,6 +2,7 @@ package com.atlas.knowledgebase.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -317,6 +318,32 @@ class CatalogApiTest {
                                 .param("freshness", "stale"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[?(@.logical_kb_id=='" + logicalKbId + "')]").isEmpty());
+    }
+
+    @Test
+    void catalogCursorResumesAfterLastIncludedItem() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String firstId = activateGit(owner, "CursorBoundaryA", "private");
+        String secondId = activateGit(owner, "CursorBoundaryB", "private");
+
+        mockMvc.perform(
+                        get("/api/v1/knowledge-bases")
+                                .cookie(owner.session())
+                                .param("q", "CursorBoundary")
+                                .param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].logical_kb_id").value(firstId))
+                .andExpect(jsonPath("$.next_cursor").value(firstId));
+
+        mockMvc.perform(
+                        get("/api/v1/knowledge-bases")
+                                .cookie(owner.session())
+                                .param("q", "CursorBoundary")
+                                .param("limit", "1")
+                                .param("cursor", firstId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].logical_kb_id").value(secondId))
+                .andExpect(jsonPath("$.next_cursor").value(nullValue()));
     }
 
     private String activateGit(LoggedIn owner, String name, String discoverability) throws Exception {

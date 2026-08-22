@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import {
   chatDisabledReason,
@@ -154,6 +155,7 @@ async function streamRequest(
 }
 
 const knowledgeBases = ref<KnowledgeBaseSummary[]>([])
+const route = useRoute()
 const selectedIds = ref<string[]>([])
 const thread = ref<ChatThread | null>(null)
 const messages = ref<ChatMessage[]>([])
@@ -302,12 +304,23 @@ async function load(): Promise<void> {
       request<ChatList>('/api/v1/chats'),
     ])
     knowledgeBases.value = catalog
-    const existing = chatList.items?.[0]
+    const requestedId = typeof route.query.logical_kb_id === 'string' ? route.query.logical_kb_id : undefined
+    const existing = requestedId ? undefined : chatList.items?.[0]
     if (existing) {
       await loadThread(existing.thread_id)
     } else {
       staleScopeIds.value = []
-      selectedIds.value = chooseInitialScope(chatList.last_valid_logical_kb_ids)
+      if (requestedId) {
+        const requested = knowledgeBases.value.find((kb) => kb.logical_kb_id === requestedId)
+        selectedIds.value = requested && isChatSelectable(requested) ? [requestedId] : []
+        if (selectedIds.value.length === 0) {
+          error.value = requested
+            ? `${requested.name} is not currently available for Chat.`
+            : `Knowledge base ${requestedId} was not found or is not currently available for Chat.`
+        }
+      } else {
+        selectedIds.value = chooseInitialScope(chatList.last_valid_logical_kb_ids)
+      }
     }
   } catch (cause) {
     authRequired.value = cause instanceof ChatApiError && cause.status === 401
