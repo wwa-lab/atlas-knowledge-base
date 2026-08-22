@@ -53,6 +53,8 @@ class ChatServiceConcurrencyTest {
         CitationAssembler citationAssembler = mock(CitationAssembler.class);
         AssistantCompletionService completions = mock(AssistantCompletionService.class);
         ChatPayloadProjector projections = mock(ChatPayloadProjector.class);
+        ChatHistoryAuthorizationService historyAuthorization =
+                mock(ChatHistoryAuthorizationService.class);
         AuditEventRepository auditEvents = mock(AuditEventRepository.class);
         ChatClassificationProperties classificationProperties = new ChatClassificationProperties();
         classificationProperties.setApprovedValues(java.util.Set.of("internal", "restricted"));
@@ -69,6 +71,7 @@ class ChatServiceConcurrencyTest {
                         citationAssembler,
                         completions,
                         projections,
+                        historyAuthorization,
                         auditEvents,
                         new ObjectMapper(),
                         Clock.fixed(NOW, ZoneOffset.UTC));

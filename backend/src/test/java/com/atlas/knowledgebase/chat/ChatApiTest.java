@@ -131,6 +131,43 @@ class ChatApiTest {
         assertThat(redactedAssistant.has("citations")).isFalse();
         assertThat(redactedAssistant.has("coverage")).isFalse();
         assertThat(redactedAssistant.has("conflict")).isFalse();
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("HISTORY_CONTENT_REDACTED"));
+
+        jdbcTemplate.update(
+                "UPDATE binding SET enabled = 1, source_identity = ? WHERE binding_id = ?",
+                "{\"dataset_id\":\"ds_1\",\"retrieval_fixture\":\"binding_denied\"}",
+                bindingId);
+        JsonNode adapterDeniedHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode adapterDeniedAssistant = null;
+        for (JsonNode message : adapterDeniedHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                adapterDeniedAssistant = message;
+                break;
+            }
+        }
+        assertThat(adapterDeniedAssistant).isNotNull();
+        assertThat(adapterDeniedAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(adapterDeniedAssistant.path("answer").isNull()).isTrue();
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("HISTORY_CONTENT_REDACTED"));
     }
 
     @Test

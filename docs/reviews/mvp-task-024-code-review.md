@@ -366,3 +366,227 @@ There are utility tests and backend API coverage, but no `ChatView` tests for:
 - History redaction behavior must be coordinated with the existing Evidence current-authorization boundary and later TASK-031 security tests.
 
 **Gate A verdict: FAIL — the implementation is improved and largely aligned, but the two Major findings require correction before merge.**
+
+## Gate A — final fresh-context rerun (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** `docs/03-spec/mvp-spec.md`, `docs/04-architecture/mvp-architecture.md`, `docs/04-architecture/mvp-data-flow.md`, `docs/05-design/mvp-design.md`, relevant ADRs
+- **Contract reviewed:** `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-024
+- **Diff reviewed:** `git diff origin/main...HEAD` on `codex/task-024-chat-ui`
+- **Code inspected:** Chat frontend view/utilities/styles/tests and changed backend Chat service, repository, projection, completion, and API tests
+- **Review objective:** Fresh-context Gate A review of TASK-024, emphasizing cancellation safety, history revocation, streaming state, coverage/conflict/errors, scope recovery, CSRF/session handling, accessibility, persistence, and secret safety
+- **Reviewer posture:** Review-only; no files edited, committed, or reverted
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 88%
+- **Verdict:** Partially aligned
+- **Gate A verdict:** **Fail**
+- **Rationale:** The branch fixes the previously identified local-only cancellation race and adds fail-closed history projection for KB/config/binding-registry drift. Streaming, coverage, conflict, retry, scope recovery, CSRF, persistence, and secret handling are otherwise substantially aligned. One blocking authorization gap remains: reopening history does not perform current-user source/binding authorization and implements only a subset of the authoritative runtime eligibility checks; completed-answer replay also bypasses even the new history gate.
+
+---
+
+## Areas of Good Alignment
+
+- Cancel remains disabled as “Reserving…” until the server supplies an actual message ID. A local-only assistant message is never marked cancelled.
+- Backend cancellation uses a shared cancellation source and conditional terminal writes, preventing cancellation from overwriting a completed answer.
+- A cancellation `409` causes frontend reconciliation from server state.
+- Clean SSE termination without `final` or `error` becomes a failed, retryable UI state.
+- Processing, token, final, and error events map to explicit UI states.
+- Partial coverage appears before the answer and includes failed, timed-out, quota-limited, omitted, and retry-after details.
+- Completed partial answers retain coverage during safe replay.
+- Canonical disagreement and mirror-sync paths are rendered separately when identified.
+- Invalid restored scope is disclosed and repairable.
+- CSRF is sent on mutations and cached tokens are cleared on both `401` and `403`.
+- Requests use the opaque cookie session through `credentials: 'include'`.
+- No provider/model tokens, secrets, browser storage, browser logging, or credential-bearing URLs were found.
+- Completed answer, coverage, conflict, and citations are persisted/projected; completion and citation replacement remain transactional.
+- GET history correctly redacts completed assistant fields after tested binding disablement and after scope/config drift.
+- Semantic headings, fieldsets, labels, `aria-describedby`, live regions, keyboard focus treatment, and responsive layouts provide a sound accessibility baseline.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. History authorization remains registry-only and completed replay bypasses redaction
+
+- **Design / task expected:** REQ-AUTH-006, REQ-AUTH-007, REQ-AUTH-010, REQ-LIFE-004, US-006 AC5, FR-50, and the API guide require current authorization when history is reopened. Missing or indeterminate authorization must fail closed. The accepted runtime boundary includes current-user binding/provider authorization, provider/profile flags, freshness, and source-access revocation.
+- **Code currently does:** `ChatService.historyContentAuthorized()` at `backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:143` calls `resolveScope()`, compares stored binding IDs/roles and config versions, then checks only binding `enabled`, kill switch, binding feature flag, and health. It does not:
+  - invoke the binding adapter’s current-user `authorize()` operation;
+  - inspect user-specific `provider_connection` state such as `revoked`, `expired`, or `reconnect_required`;
+  - reuse `RetrievalEligibility`, so provider-profile enablement and freshness-required runtime gates are omitted;
+  - prove current page/file access for source-derived answer content.
+
+  Separately, `retry()` returns `replayCompleted()` at `ChatService.java:350`, and `replayCompleted()` at `ChatService.java:382` emits the stored answer, citations, coverage, conflict, and classification without calling `historyContentAuthorized()` at all.
+- **Why it matters:** A revoked GitHub/Confluence connection, an adapter-denied current-user binding, a disabled provider profile, or another authorization state not represented by the shared binding row can still expose the persisted answer and citation summaries. Even when GET history is redacted by the new registry check, a direct completed-retry request can replay the protected content. This violates the zero-leakage history-revocation boundary.
+- **Recommended fix:** Introduce one fail-closed current-content authorization service used by both GET history projection and completed replay. It should batch current authorization by unique KB/binding scope, reuse the authoritative runtime eligibility predicate, consult the applicable current-user provider/binding authorization adapter, and treat denial, timeout, unknown, expiry, or revoked connection state as redacted. Add regression tests for provider/current-user revocation and direct completed replay, not only `binding.enabled = 0`.
+
+### Minor
+
+#### 1. Redacted history is rendered as an unexplained blank completed answer
+
+- **Design / task expected:** Redaction must retain permitted state while presenting truthful user-visible behavior.
+- **Code currently does:** The API returns `content_redacted: true`, but `ChatMessage` does not declare that field and `ChatView.vue` does not render a redaction explanation. The UI shows “Complete” with no answer.
+- **Why it matters:** Security is preserved where the backend gate fires, but users cannot distinguish access-driven redaction from corrupted or missing content.
+- **Recommended fix:** Type and render `content_redacted` with a concise access-change/reconnect message and no protected metadata.
+
+#### 2. Critical Chat transitions lack component-level verification
+
+- **Code currently does:** Frontend tests cover router behavior and pure utility functions. There are no mounted component/integration tests for reservation-before-cancel, cancellation reconciliation, early EOF, stale-scope recovery, history redaction, coverage ordering, CSRF reset, or structured conflict/error rendering.
+- **Why it matters:** These behaviors depend on coordination among mutable component state, fetch timing, streamed events, and rendering; utility tests do not exercise that integration.
+- **Recommended fix:** Add focused `ChatView` tests with mocked fetch/stream responses for the safety-critical transitions. Full E2E remains appropriately deferred to its later task.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Default authenticated Chat landing | Implemented |
+| Authorized Chat-ready 1–5 KB selector | Implemented |
+| Disabled Browse-only/model-ineligible reasons | Implemented |
+| Restored scope validation and recovery | Implemented |
+| Processing/token/final/error streaming | Implemented |
+| Early stream termination | Implemented |
+| Cancellation after server reservation | Implemented |
+| Cancellation before first processing event | Safely handled by disabling Cancel until reservation |
+| Conditional backend terminal writes | Implemented |
+| Partial coverage disclosure | Implemented |
+| Completed-partial safe replay | Implemented functionally; authorization boundary missing |
+| Canonical conflict presentation | Implemented for supported payloads |
+| Mirror-sync presentation | Implemented for identified mirror payloads |
+| Structured errors and next steps | Implemented |
+| CSRF/session cookie handling | Implemented |
+| History projection persistence | Implemented |
+| Registry/config/runtime-drift redaction | Partial |
+| Current-user binding/provider reauthorization | Missing |
+| Redaction-safe completed replay | Missing |
+| Accessible structure and responsive surface | Mostly implemented |
+| Secret/token safety | Implemented |
+| Component-level state-transition tests | Missing |
+
+**Task coverage:**
+
+- **Clearly implemented:** Chat shell, selector, streaming UI, coverage/conflict/errors, scope repair, cancel/retry controls, cookie/CSRF handling, persisted history projection, and baseline accessibility.
+- **Partially implemented:** History redaction, completed replay authorization, and user-visible redaction behavior.
+- **Not reflected in code:** Current-user binding/provider authorization during history reopen.
+- **Code changes not clearly mapped to a task:** None significant.
+
+**Behaviors implemented but not clearly supported by design:** None identified. The API guide additions for persisted history projection and completed-partial replay are consistent with the accepted flow.
+
+---
+
+## Architectural / Design Boundary Check
+
+### Architecture Review Score: 78%
+
+#### P0 — Must Fix
+
+None identified beyond the Major authorization-boundary finding above, which is a behavioral/security blocker rather than general structural debt.
+
+#### P1 — Fix on next touch
+
+- `frontend/src/views/ChatView.vue` is a 769-line component owning the API client, CSRF cache, SSE transport, domain state, orchestration, and rendering. This conflicts with the architecture-review convention of component → store → domain API → shared client and makes future Chat changes harder to isolate.
+- The new history access decision partially duplicates retrieval runtime rules instead of sharing the authoritative eligibility/authorization boundary, which caused the blocking omission above.
+
+#### P2 — Track
+
+- Theme colors are broadly hardcoded in `frontend/src/style.css` rather than centralized as design tokens/CSS variables.
+
+#### Good Practices Confirmed
+
+- Backend responsibilities remain inside the Chat domain.
+- DTO-like projections do not expose entities directly.
+- Terminal updates are immutable conditional transitions.
+- Citation persistence remains inside a transaction.
+- No new runtime service or provider coupling was introduced in the frontend.
+- No secret-bearing state was added.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned except for authorization-safe history/replay.
+- **Validation behavior:** Aligned for selected and restored scopes.
+- **Retry / cancel / failure handling:** Cancellation and terminal-state behavior are aligned; completed replay lacks current authorization.
+- **User-visible behavior:** Mostly aligned; redacted completed messages need an explicit explanation.
+- **Persistence behavior:** Answer, coverage, conflict, classification, binding/config snapshots, and citations are persisted consistently.
+- **Conflict/error semantics:** Aligned for the current contract shapes; malformed/unknown conflict data remains safely non-executable.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Retrieval uses adapters, but history authorization does not reuse them.
+- **External system handling:** Cookie/CSRF handling is aligned.
+- **Secret / credential safety:** Aligned; no secrets or browser token persistence identified.
+- **Logging / audit hooks:** No sensitive frontend logging found; backend audit additions remain content-free.
+- **Error propagation:** Structured frontend failures are aligned. Backend model-generation exceptions can still end as generic early-stream failure rather than a typed model error; this is a non-blocking downstream risk.
+- **Authorization propagation:** Incomplete for history and completed replay, as described in the Major finding.
+
+---
+
+## Verification Results
+
+- `cd frontend && npm test && npm run build` — **Passed**
+  - Vitest: 2 files, 10 tests passed
+  - Vue TypeScript/Vite production build passed
+- `./mvnw -q -pl backend -Dtest=ChatApiTest,ChatMessageTerminalUpdateTest test` — **Passed**
+  - `ChatApiTest`: 20 passed
+  - `ChatMessageTerminalUpdateTest`: 2 passed
+  - Total: 22 passed, 0 failures/errors/skips
+- Exact `git diff --check origin/main...HEAD` with repository exclusions — **Passed**
+- Non-failing warnings observed:
+  - Flyway reports H2 2.3 as newer than its tested support range.
+  - Mockito reports future JDK dynamic-agent compatibility guidance.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Suitable for further correction and focused retest:** Yes
+- **Blockers before proceeding:**
+  1. Complete current-user source/binding authorization for history projection.
+  2. Apply the same redaction gate to completed-answer replay.
+  3. Add regression coverage for user/provider revocation and replay bypass.
+- **Acceptable deviations:** Disabled Cancel during server reservation, local page-owned Chat state for this task, deferred full accessibility/E2E pass.
+- **Required corrections:** The Major authorization/redaction finding above.
+
+---
+
+## Recommended Fixes
+
+1. Create a shared current-content authorization decision used by GET history and completed retry/replay.
+2. Reuse `RetrievalEligibility` and adapter current-user authorization rather than maintaining a partial local predicate.
+3. Fail closed on revoked/expired/reconnect-required provider state and unknown/timeout authorization outcomes.
+4. Add backend tests for provider/current-user revocation, provider-profile disable/freshness failure, and direct completed replay.
+5. Render `content_redacted` explicitly and add focused component state tests.
+
+## Minimal Fix Path
+
+- Replace `historyBindingUsable()` with a shared, authoritative history-access gate that evaluates current KB/config/binding/runtime state and current-user adapter authorization.
+- Call that gate before `replayCompleted()`.
+- Preserve the current redacted projection on any non-authorized or indeterminate result.
+- Add one GET-history revocation test and one completed-replay revocation test using a current-user/provider denial rather than only a shared binding disable.
+- Re-run the same three verification commands.
+
+## Open Risks / Questions
+
+- TASK-019–TASK-021 will replace stub adapters with live connectors, but the history boundary must already be expressed through a replaceable authorization abstraction; otherwise the current registry-only shortcut will persist into live integration.
+- Exact page/file-level history reauthorization may require batching citation/source identities to avoid excessive provider calls. That performance choice must not weaken fail-closed behavior.
+- Component integration coverage remains light and should be strengthened before the later accessibility/security gates.
+
+**Gate A verdict: FAIL — one Major authorization/redaction gap remains.**

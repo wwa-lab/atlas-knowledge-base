@@ -373,7 +373,7 @@ Non-compliant docs must never receive fabricated/title-only citations.
 states. Completed assistant messages include the persisted `citations`,
 `coverage`, `conflict`, and `classification` projections used by the Chat
 surface when the stored KB/binding scope still passes current authorization and
-runtime checks. If that boundary has drifted or access has been revoked, the
+runtime checks and current-user provider/binding authorization. If that boundary has drifted or access has been revoked, the
 completed assistant state retains only non-sensitive metadata and sets
 `content_redacted: true`; `answer`, `citations`, `coverage`, `conflict`, and
 `classification` are omitted. Incomplete or failed assistant messages do not

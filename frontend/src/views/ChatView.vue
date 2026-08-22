@@ -32,6 +32,7 @@ type ChatMessage = {
   citations?: Citation[]
   coverage?: ChatCoverage
   conflict?: unknown
+  content_redacted?: boolean
   error?: string
   failure?: ChatFailure
 }
@@ -671,7 +672,10 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                   </ul>
                 </div>
 
-                <p v-if="message.answer" class="message-text answer-text">{{ message.answer }}</p>
+                <p v-if="message.content_redacted" class="message-redacted" role="status">
+                  Answer content is hidden because current source access changed. Reconnect or request access to view it again.
+                </p>
+                <p v-else-if="message.answer" class="message-text answer-text">{{ message.answer }}</p>
                 <p v-else-if="message.status === 'processing' || message.status === 'streaming'" class="message-placeholder" role="status">
                   Gathering authorized evidence…
                 </p>
