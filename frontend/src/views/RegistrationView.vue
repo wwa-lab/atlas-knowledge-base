@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import { AtlasApiError, request } from '../api/atlasApi'
@@ -169,6 +169,8 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
         ...(includeBindings ? { bindings: parsed } : {}),
       }),
     })
+    connection.value = null
+    audit.value = null
     notice.value = 'Draft saved. Changes are versioned and ready for the next gate.'
     return true
   } catch (cause) {
@@ -211,7 +213,7 @@ async function next(): Promise<void> {
   error.value = ''
   notice.value = ''
   if (step.value === 0) {
-    if (!(await ensureDraft())) return
+    if (draft.value ? !(await saveDraft(false)) : !(await ensureDraft())) return
   } else if (step.value === 1 || step.value === 2 || step.value === 5) {
     if (!(await saveDraft(true))) return
   } else if (step.value === 3 && !connection.value?.passed) {
@@ -240,6 +242,11 @@ function removeBinding(index: number): void {
   if (bindings.value.length <= 1) return
   bindings.value = bindings.value.filter((_, candidate) => candidate !== index)
 }
+
+watch([name, description, discoverability, purpose, classification, modelEligible, bindings], () => {
+  connection.value = null
+  audit.value = null
+}, { deep: true })
 
 onMounted(loadRole)
 </script>
@@ -311,7 +318,7 @@ onMounted(loadRole)
       <fieldset v-else-if="step === 3" class="wizard-fieldset">
         <legend>Connection Test</legend>
         <p class="panel-help">The test is a source-level hard gate. Failed sources remain Draft and cannot be overridden by an Admin.</p>
-        <button class="button button-primary" type="button" :disabled="loading" @click="runConnectionTest">{{ loading ? 'Testing…' : 'Run Connection Test' }}</button>
+        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="runConnectionTest">{{ loading ? 'Testing…' : 'Run Connection Test' }}</button>
         <div v-if="connection" class="gate-result" :class="connection.passed ? 'gate-pass' : 'gate-fail'" role="status">
           <strong>{{ connection.passed ? 'Passed' : 'Needs attention' }}</strong>
           <ul><li v-for="result in connection.bindings || []" :key="result.binding_id"><strong>{{ result.provider_profile || result.binding_id }}</strong>: {{ result.passed ? 'passed' : 'failed' }}<span v-if="result.checks"> · {{ Object.entries(result.checks).map(([key, value]) => `${key}: ${value}`).join(', ') }}</span></li></ul>
@@ -321,7 +328,7 @@ onMounted(loadRole)
       <fieldset v-else-if="step === 4" class="wizard-fieldset">
         <legend>Content Audit</legend>
         <p class="panel-help">Audit counts are source-provided. Excluded items need remediation before Chat activation.</p>
-        <button class="button button-primary" type="button" :disabled="loading" @click="runContentAudit">{{ loading ? 'Auditing…' : 'Run Content Audit' }}</button>
+        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="runContentAudit">{{ loading ? 'Auditing…' : 'Run Content Audit' }}</button>
         <div v-if="audit" class="audit-summary" role="status">
           <dl class="catalog-facts"><div><dt>Total</dt><dd>{{ formatCount(audit.total) }}</dd></div><div><dt>Chat eligible</dt><dd>{{ formatCount(audit.chat_eligible) }}</dd></div><div><dt>Excluded</dt><dd>{{ formatCount(audit.excluded) }}</dd></div><div><dt>Last audited</dt><dd>{{ audit.last_audited_at || 'Not reported' }}</dd></div></dl>
           <p v-if="audit.exclusion_reasons && Object.keys(audit.exclusion_reasons).length">Reasons: {{ Object.entries(audit.exclusion_reasons).map(([reason, count]) => `${reason}: ${formatCount(count)}`).join(', ') }}</p>
@@ -336,7 +343,7 @@ onMounted(loadRole)
           <dl class="catalog-facts"><div><dt>Purpose</dt><dd>{{ purpose || 'Not reported' }}</dd></div><div><dt>Classification</dt><dd>{{ classification || 'Not reported' }}</dd></div><div><dt>Discoverability</dt><dd>{{ discoverability }}</dd></div><div><dt>Sources</dt><dd>{{ bindings.length }}</dd></div><div><dt>Requested capability</dt><dd>{{ modelEligible ? 'Chat-ready after gates' : 'Browse-only' }}</dd></div></dl>
           <p class="panel-help">Save the Draft to hand it to an Atlas Admin for activation. Activation is a separate hard-gated Admin action; this wizard never overrides security or evidence checks.</p>
         </div>
-        <button class="button button-primary" type="button" :disabled="loading" @click="saveDraft(true)">{{ loading ? 'Saving…' : 'Save Draft for Admin review' }}</button>
+        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="saveDraft(true)">{{ loading ? 'Saving…' : 'Save Draft for Admin review' }}</button>
       </fieldset>
 
       <footer class="wizard-actions">
