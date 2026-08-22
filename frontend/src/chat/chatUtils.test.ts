@@ -132,6 +132,7 @@ describe('chat utilities', () => {
 
   it('recognizes ordinary partial coverage markers', () => {
     expect(isPartialCoverage({ successful: ['bnd_1'], timed_out: ['bnd_2'] })).toBe(true)
+    expect(isPartialCoverage({ successful: ['bnd_1'], prompt_injection_contained: ['bnd_2'] })).toBe(true)
     expect(isPartialCoverage({ successful: ['bnd_1'] })).toBe(false)
   })
 

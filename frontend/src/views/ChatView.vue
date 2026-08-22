@@ -720,6 +720,7 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                     <li v-for="source in coverageItems(message.coverage, 'failed')" :key="`failed-${source}`">Failed: {{ source }}</li>
                     <li v-for="source in coverageItems(message.coverage, 'timed_out')" :key="`timeout-${source}`">Timed out: {{ source }}</li>
                     <li v-for="source in coverageItems(message.coverage, 'quota_limited')" :key="`quota-${source}`">Quota limited: {{ source }}</li>
+                    <li v-for="source in coverageItems(message.coverage, 'prompt_injection_contained')" :key="`contained-${source}`">Security content contained: {{ source }}</li>
                     <li v-for="source in omittedCoverage(message.coverage)" :key="`omitted-${source}`">Item omitted: {{ source }}</li>
                   </ul>
                 </div>
@@ -767,6 +768,7 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                     <div><dt>Failed</dt><dd>{{ coverageItems(message.coverage, 'failed').join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Timed out</dt><dd>{{ coverageItems(message.coverage, 'timed_out').join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Quota limited</dt><dd>{{ coverageItems(message.coverage, 'quota_limited').join(', ') || 'None reported' }}</dd></div>
+                    <div><dt>Security content contained</dt><dd>{{ coverageItems(message.coverage, 'prompt_injection_contained').join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Items omitted</dt><dd>{{ omittedCoverage(message.coverage).join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Retry after</dt><dd>{{ retryAfterText(message.coverage) }}</dd></div>
                   </dl>

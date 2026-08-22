@@ -87,3 +87,12 @@ Review comment:
 
 - [P2] Avoid dropping template syntax as active markup — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:25-25`
   When a valid KB article contains ordinary template examples such as Vue/Mustache `{{ name }}` snippets, this rule classifies the hit as `active_markup`; because the orchestrator now drops contained hits before fusion, common frontend or API documentation can disappear or produce `NO_EVIDENCE`. Treat template delimiters as data unless they are in a rendered/active context, or rely on output sanitization rather than filtering all such evidence.
+
+## Gate A — follow-up after template heuristic fix
+
+The containment decision is recorded in backend coverage, but the existing coverage consumer does not render the new field. This leaves users without an actionable explanation for a partial answer caused by contained evidence.
+
+Review comment:
+
+- [P2] Surface containment in user-visible coverage — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-614`
+  When a retriever returns both safe hits and contained hits, this adds a new `prompt_injection_contained` coverage key and sets `partial_coverage`, but the existing Chat coverage contract/UI only renders `successful`, `failed`, `timed_out`, `quota_limited`, and `item_omitted`. The user will see a partial-coverage banner with the binding still listed as successful and no contained/omitted reason, so the prompt-injection containment is not actually reported in the visible coverage details. Add this to an existing displayed omission path or update the client/API contract to render the new field.

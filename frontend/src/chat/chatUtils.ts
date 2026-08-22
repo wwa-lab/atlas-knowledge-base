@@ -50,6 +50,7 @@ export type ChatCoverage = {
   quota_limited?: string[]
   retry_after?: Record<string, string>
   item_omitted?: unknown[]
+  prompt_injection_contained?: string[]
   partial_coverage?: boolean
 }
 
@@ -156,6 +157,7 @@ export function isPartialCoverage(coverage: ChatCoverage | undefined): boolean {
       (coverage.failed?.length ?? 0) > 0 ||
       (coverage.timed_out?.length ?? 0) > 0 ||
       (coverage.quota_limited?.length ?? 0) > 0 ||
+      (coverage.prompt_injection_contained?.length ?? 0) > 0 ||
       (coverage.item_omitted?.length ?? 0) > 0,
   )
 }
