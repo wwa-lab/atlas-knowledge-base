@@ -199,6 +199,7 @@ final class ChatHistoryAuthorizationService {
             ProviderExecution.TimedCall<Retriever.AuthorizationResult> call =
                     providerExecution.submit(
                             binding.providerProfile(),
+                            "authorize",
                             cancellation,
                             timeout ->
                                     retriever.authorize(

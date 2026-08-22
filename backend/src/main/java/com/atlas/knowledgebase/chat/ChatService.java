@@ -5,6 +5,7 @@ import com.atlas.knowledgebase.adapters.CancellationSource;
 import com.atlas.knowledgebase.adapters.ModelChannel;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import com.atlas.knowledgebase.evidence.CitationAssembler;
 import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -54,6 +57,7 @@ public class ChatService {
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ConnectorTelemetry telemetry;
     private final ConcurrentHashMap<String, InFlight> inFlight = new ConcurrentHashMap<>();
 
     public ChatService(
@@ -72,6 +76,43 @@ public class ChatService {
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(
+                threads,
+                messages,
+                knowledgeBases,
+                bindings,
+                access,
+                classificationPolicy,
+                retrieval,
+                modelChannel,
+                citationAssembler,
+                completions,
+                projections,
+                historyAuthorization,
+                auditEvents,
+                objectMapper,
+                clock,
+                new ConnectorTelemetry());
+    }
+
+    @Autowired
+    public ChatService(
+            ChatThreadRepository threads,
+            ChatMessageRepository messages,
+            LogicalKnowledgeBaseRepository knowledgeBases,
+            BindingRepository bindings,
+            KbAccessService access,
+            ChatClassificationPolicy classificationPolicy,
+            RetrievalOrchestrator retrieval,
+            ModelChannel modelChannel,
+            CitationAssembler citationAssembler,
+            AssistantCompletionService completions,
+            ChatPayloadProjector projections,
+            ChatHistoryAuthorizationService historyAuthorization,
+            AuditEventRepository auditEvents,
+            ObjectMapper objectMapper,
+            Clock clock,
+            ConnectorTelemetry telemetry) {
         this.threads = threads;
         this.messages = messages;
         this.knowledgeBases = knowledgeBases;
@@ -87,6 +128,7 @@ public class ChatService {
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.telemetry = telemetry;
     }
 
     public Map<String, Object> list(AtlasUserRecord user) {
@@ -613,10 +655,13 @@ public class ChatService {
             String question,
             ResolvedScope resolved,
             CancellationSource cancellation) {
-        RetrievalTurn turn =
-                citationAssembler.filterValidCandidates(
-                        retrieval.retrieve(
-                                user, question, resolved.retrievalScope(), cancellation));
+        long startedAtNanos = System.nanoTime();
+        int knowledgeBaseCount = resolved.retrievalScope().logicalKbIds().size();
+        try {
+            RetrievalTurn turn =
+                    citationAssembler.filterValidCandidates(
+                            retrieval.retrieve(
+                                    user, question, resolved.retrievalScope(), cancellation));
         if (turn.block() == RetrievalTurn.Block.BINDING_ACCESS) {
             throw new ChatForbiddenException(
                     "KB_BINDING_ACCESS_MISSING",
@@ -672,7 +717,35 @@ public class ChatService {
                     "retry_or_change_scope",
                     Map.of("coverage", turn.coverage()));
         }
-        return turn;
+            telemetry.recordFeatureUse(
+                    "chat",
+                    analyticsOutcome(turn),
+                    knowledgeBaseCount,
+                    Duration.ofNanos(Math.max(0, System.nanoTime() - startedAtNanos)));
+            return turn;
+        } catch (RuntimeException failure) {
+            telemetry.recordFeatureUse(
+                    "chat",
+                    failure instanceof CancellationException ? "cancelled" : "failure",
+                    knowledgeBaseCount,
+                    Duration.ofNanos(Math.max(0, System.nanoTime() - startedAtNanos)));
+            throw failure;
+        }
+    }
+
+    private String analyticsOutcome(RetrievalTurn turn) {
+        if (turn.block() != RetrievalTurn.Block.NONE) {
+            return "failure";
+        }
+        return hasItems(turn.coverage().get("failed"))
+                        || hasItems(turn.coverage().get("timed_out"))
+                        || hasItems(turn.coverage().get("quota_limited"))
+                ? "partial"
+                : "success";
+    }
+
+    private boolean hasItems(Object value) {
+        return value instanceof List<?> list && !list.isEmpty();
     }
 
     private String latestUserQuestion(String threadId, ChatMessageRecord assistant) {

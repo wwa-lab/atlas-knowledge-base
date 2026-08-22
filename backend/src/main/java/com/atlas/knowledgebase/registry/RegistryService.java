@@ -94,6 +94,13 @@ public class RegistryService {
                         .findById(command.logicalKbId())
                         .orElseThrow(() -> new DraftNotFoundException(command.logicalKbId()));
         if (!user.userId().equals(current.ownerUserId())) {
+            auditDenied(
+                    user.userId(),
+                    current.logicalKbId(),
+                    null,
+                    "authorization_denied",
+                    "denied",
+                    "forbidden");
             throw new RegistryForbiddenException(
                     "NOT_DRAFT_OWNER",
                     "Only the knowledge-base Owner can update this draft.",
@@ -159,6 +166,7 @@ public class RegistryService {
 
     private void requireKbOwner(AtlasUserRecord user) {
         if (!AtlasRoles.has(user, AtlasRoles.KB_OWNER)) {
+            auditDenied(user.userId(), null, null, "authorization_denied", "denied", "forbidden");
             throw new RegistryForbiddenException(
                     "KB_OWNER_REQUIRED",
                     "Only a verified knowledge-base Owner can register Drafts.",
@@ -367,7 +375,35 @@ public class RegistryService {
                         contentFreeDetails(logicalKbId)));
     }
 
+    private void auditDenied(
+            String userId,
+            String logicalKbId,
+            String bindingId,
+            String action,
+            String authorization,
+            String status) {
+        auditEvents.insertIndependent(
+                new AuditEventRecord(
+                        "aud_" + SessionService.randomToken().substring(0, 16),
+                        clock.instant(),
+                        userId,
+                        logicalKbId,
+                        bindingId,
+                        null,
+                        action,
+                        authorization,
+                        null,
+                        null,
+                        null,
+                        status,
+                        "authorization",
+                        contentFreeDetails(logicalKbId)));
+    }
+
     private String contentFreeDetails(String logicalKbId) {
+        if (logicalKbId == null) {
+            return "{}";
+        }
         try {
             return objectMapper.writeValueAsString(Map.of("logical_kb_id", logicalKbId));
         } catch (JsonProcessingException e) {

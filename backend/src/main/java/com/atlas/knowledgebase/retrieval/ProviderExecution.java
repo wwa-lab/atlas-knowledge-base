@@ -2,6 +2,7 @@ package com.atlas.knowledgebase.retrieval;
 
 import com.atlas.knowledgebase.adapters.CancellationSource;
 import com.atlas.knowledgebase.adapters.CancellationToken;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /** Executes adapter work under independent provider deadlines and resilience budgets. */
@@ -31,6 +33,7 @@ public final class ProviderExecution implements AutoCloseable {
     private final Map<String, Semaphore> providerLimits;
     private final Map<String, AtomicReference<QuotaWindow>> providerQuotas;
     private final Map<String, AtomicReference<ProviderState>> providerStates;
+    private final ConnectorTelemetry telemetry;
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService deadlines =
             Executors.newSingleThreadScheduledExecutor(
@@ -41,7 +44,16 @@ public final class ProviderExecution implements AutoCloseable {
                                     .unstarted(runnable));
 
     public ProviderExecution(RetrievalProperties properties, RetrieverRegistry retrievers) {
+        this(properties, retrievers, new ConnectorTelemetry());
+    }
+
+    @Autowired
+    public ProviderExecution(
+            RetrievalProperties properties,
+            RetrieverRegistry retrievers,
+            ConnectorTelemetry telemetry) {
         this.properties = properties;
+        this.telemetry = telemetry;
         properties.validateProfiles(retrievers.providers());
         Map<String, Semaphore> limits = new LinkedHashMap<>();
         Map<String, AtomicReference<QuotaWindow>> quotas = new LinkedHashMap<>();
@@ -63,13 +75,26 @@ public final class ProviderExecution implements AutoCloseable {
     }
 
     public <T> TimedCall<T> submit(String providerProfile, Function<Duration, T> operation) {
-        return submit(providerProfile, new CancellationSource(), operation);
+        return submit(providerProfile, "retrieve", new CancellationSource(), operation);
     }
 
     public <T> TimedCall<T> submit(
             String providerProfile,
             CancellationToken cancellation,
             Function<Duration, T> operation) {
+        return submit(providerProfile, "retrieve", cancellation, operation);
+    }
+
+    public <T> TimedCall<T> submit(
+            String providerProfile, String operation, Function<Duration, T> work) {
+        return submit(providerProfile, operation, new CancellationSource(), work);
+    }
+
+    public <T> TimedCall<T> submit(
+            String providerProfile,
+            String operation,
+            CancellationToken cancellation,
+            Function<Duration, T> work) {
         Duration timeout = properties.timeoutFor(providerProfile);
         Semaphore limit = providerLimits.get(providerProfile);
         if (limit == null) {
@@ -77,7 +102,8 @@ public final class ProviderExecution implements AutoCloseable {
                     "No retrieval concurrency limit configured for provider " + providerProfile);
         }
         long deadlineNanos = saturatedAdd(System.nanoTime(), timeout.toNanos());
-        CallState<T> state = new CallState<>(deadlineNanos);
+        ConnectorTelemetry.Operation telemetryOperation = telemetry.start(providerProfile, operation);
+        CallState<T> state = new CallState<>(deadlineNanos, telemetryOperation);
         FutureTask<Void> worker =
                 new FutureTask<>(
                         () -> {
@@ -97,7 +123,7 @@ public final class ProviderExecution implements AutoCloseable {
                                     cancellation.throwIfCancelled();
                                     requireAvailable(providerProfile);
                                     acquireQuota(providerProfile);
-                                    state.complete(operation.apply(timeout));
+                                    state.complete(work.apply(timeout));
                                 } finally {
                                     if (acquired) {
                                         limit.release();
@@ -131,7 +157,8 @@ public final class ProviderExecution implements AutoCloseable {
         long configuredBackoff = properties.backoffFor(providerProfile).toNanos();
         int threshold = properties.circuitFailureThresholdFor(providerProfile);
         long circuitOpen = properties.circuitOpenDurationFor(providerProfile).toNanos();
-        reference.updateAndGet(
+        ProviderState updated =
+                reference.updateAndGet(
                 current -> {
                     int failures = Math.min(threshold, current.consecutiveFailures() + 1);
                     long delay = Math.max(configuredBackoff, providerBackoff);
@@ -145,6 +172,20 @@ public final class ProviderExecution implements AutoCloseable {
                     return new ProviderState(
                             failures, current.unavailableUntilNanos(), current.cause());
                 });
+        telemetry.recordResilience(
+                providerProfile,
+                switch (cause) {
+                    case QUOTA -> ConnectorTelemetry.ProviderResilienceCause.QUOTA;
+                    case TIMEOUT -> ConnectorTelemetry.ProviderResilienceCause.TIMEOUT;
+                    case RETRIEVAL -> ConnectorTelemetry.ProviderResilienceCause.RETRIEVAL;
+                    case UNKNOWN -> ConnectorTelemetry.ProviderResilienceCause.UNKNOWN;
+                },
+                retryAfter,
+                Duration.ofNanos(
+                        Math.max(0, updated.unavailableUntilNanos() - System.nanoTime())),
+                updated.consecutiveFailures(),
+                updated.unavailableUntilNanos() > System.nanoTime()
+                        && updated.consecutiveFailures() >= threshold);
     }
 
     /** A successful provider result closes the failure counter after any active window expires. */
@@ -156,6 +197,11 @@ public final class ProviderExecution implements AutoCloseable {
                         current.unavailableUntilNanos() > now
                                 ? current
                                 : ProviderState.available());
+        telemetry.recordResilienceClosed(providerProfile);
+    }
+
+    public ConnectorTelemetry telemetry() {
+        return telemetry;
     }
 
     public <T> T await(TimedCall<T> call)
@@ -188,6 +234,10 @@ public final class ProviderExecution implements AutoCloseable {
 
         private TimedCall(CallState<T> state) {
             this.state = state;
+        }
+
+        public long latencyMs() {
+            return state.latencyMs();
         }
     }
 
@@ -299,6 +349,7 @@ public final class ProviderExecution implements AutoCloseable {
 
     static final class CallState<T> {
         private final long deadlineNanos;
+        private final ConnectorTelemetry.Operation telemetryOperation;
         private final CompletableFuture<T> completion = new CompletableFuture<>();
         private final AtomicReference<TerminalState> terminal =
                 new AtomicReference<>(TerminalState.PENDING);
@@ -308,8 +359,9 @@ public final class ProviderExecution implements AutoCloseable {
                 new AtomicReference<>();
         private final AtomicBoolean cleaned = new AtomicBoolean(false);
 
-        private CallState(long deadlineNanos) {
+        private CallState(long deadlineNanos, ConnectorTelemetry.Operation telemetryOperation) {
             this.deadlineNanos = deadlineNanos;
+            this.telemetryOperation = telemetryOperation;
         }
 
         private CompletableFuture<T> completion() {
@@ -343,6 +395,7 @@ public final class ProviderExecution implements AutoCloseable {
                 return;
             }
             if (terminal.compareAndSet(TerminalState.PENDING, TerminalState.COMPLETED)) {
+                telemetryOperation.success();
                 completion.complete(value);
                 cleanup();
             }
@@ -354,6 +407,7 @@ public final class ProviderExecution implements AutoCloseable {
                 return;
             }
             if (terminal.compareAndSet(TerminalState.PENDING, TerminalState.FAILED)) {
+                recordFailure(error);
                 completion.completeExceptionally(error);
                 cleanup();
             }
@@ -379,12 +433,42 @@ public final class ProviderExecution implements AutoCloseable {
             if (!terminal.compareAndSet(TerminalState.PENDING, terminalState)) {
                 return;
             }
+            if (terminalState == TerminalState.DEADLINE) {
+                telemetryOperation.timeout();
+            } else if (terminalState == TerminalState.USER_CANCELLED
+                    || terminalState == TerminalState.INTERRUPTED) {
+                telemetryOperation.cancelled();
+            } else {
+                recordFailure(failure);
+            }
             completion.completeExceptionally(failure);
             Future<?> runningWorker = worker.get();
             if (runningWorker != null) {
                 runningWorker.cancel(true);
             }
             cleanup();
+        }
+
+        private long latencyMs() {
+            return telemetryOperation.elapsedMillis();
+        }
+
+        private void recordFailure(Throwable error) {
+            if (error instanceof ProviderUnavailableException unavailable) {
+                if (unavailable.cause() == UnavailabilityCause.QUOTA) {
+                    telemetryOperation.quota(unavailable.retryAfter());
+                } else if (unavailable.cause() == UnavailabilityCause.TIMEOUT) {
+                    telemetryOperation.timeout();
+                } else {
+                    telemetryOperation.failure();
+                }
+            } else if (error instanceof TimeoutException) {
+                telemetryOperation.timeout();
+            } else if (error instanceof CancellationException) {
+                telemetryOperation.cancelled();
+            } else {
+                telemetryOperation.failure();
+            }
         }
 
         private void cleanup() {

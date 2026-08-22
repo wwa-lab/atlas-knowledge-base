@@ -1,9 +1,12 @@
 package com.atlas.knowledgebase.session;
 
+import com.atlas.knowledgebase.audit.AuditEventRecord;
+import com.atlas.knowledgebase.audit.AuditEventRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,22 +28,29 @@ public class AuthController {
     private final SessionService sessionService;
     private final SessionProperties properties;
     private final ObjectMapper objectMapper;
+    private final AuditEventRepository auditEvents;
+    private final Clock clock;
 
     public AuthController(
             SsoAdapter ssoAdapter,
             SessionService sessionService,
             SessionProperties properties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditEventRepository auditEvents,
+            Clock clock) {
         this.ssoAdapter = ssoAdapter;
         this.sessionService = sessionService;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.auditEvents = auditEvents;
+        this.clock = clock;
     }
 
     @GetMapping("/sso/start")
     public ResponseEntity<Void> startSso() {
         String state = SessionService.randomToken();
         ResponseCookie stateCookie = sessionService.ssoStateCookie(state);
+        audit(null, null, "sso_start", "unknown", "redirected", "authentication");
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, ssoAdapter.authorizationUrl(state))
                 .header(HttpHeaders.SET_COOKIE, stateCookie.toString())
@@ -55,10 +65,12 @@ public class AuthController {
         String expectedState =
                 SessionAuthFilter.cookieValue(request, properties.ssoStateCookieName());
         if (!SessionService.constantTimeEquals(expectedState, state)) {
+            audit(null, null, "sso_callback", "deny", "state_mismatch", "authentication");
             throw new UnauthenticatedException("SSO state mismatch.");
         }
         SsoIdentity identity = ssoAdapter.redeem(code);
         SessionService.IssuedSession issued = sessionService.establish(identity);
+        audit(issued.user().userId(), null, "sign_in", "allow", "success", null);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, "/")
                 .header(HttpHeaders.SET_COOKIE, issued.cookie().toString())
@@ -94,7 +106,33 @@ public class AuthController {
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         ResolvedAuth auth = requireAuth(request);
         ResponseCookie cleared = sessionService.logout(auth.session().sessionId());
+        audit(auth.user().userId(), null, "sign_out", "allow", "success", null);
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cleared.toString()).build();
+    }
+
+    private void audit(
+            String userId,
+            String connector,
+            String action,
+            String authorization,
+            String status,
+            String errorCategory) {
+        auditEvents.insert(
+                new AuditEventRecord(
+                        "aud_" + SessionService.randomToken().substring(0, 16),
+                        clock.instant(),
+                        userId,
+                        null,
+                        null,
+                        connector,
+                        action,
+                        authorization,
+                        null,
+                        null,
+                        null,
+                        status,
+                        errorCategory,
+                        null));
     }
 
     private ResolvedAuth requireAuth(HttpServletRequest request) {
