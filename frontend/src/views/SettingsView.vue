@@ -31,6 +31,10 @@ function safeAuthorizationUrl(value: string | undefined): string | undefined {
   }
 }
 
+function domId(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '-')
+}
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
@@ -110,6 +114,9 @@ onMounted(load)
     <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice notice-success" role="status">{{ notice }}</p>
     <div v-if="loading" class="loading-state" role="status" aria-live="polite">Loading settings…</div>
+    <p v-if="busyProvider" class="sr-only" role="status" aria-live="polite">
+      Working on {{ providerDisplayName(busyProvider) }} connection…
+    </p>
 
     <template v-else-if="settings">
       <div class="settings-grid">
@@ -139,10 +146,10 @@ onMounted(load)
           <span class="count-badge">{{ settings.providers?.length || 0 }}</span>
         </div>
         <ul class="provider-settings-list">
-          <li v-for="provider in settings.providers || []" :key="provider.provider" class="provider-settings-card">
+          <li v-for="provider in settings.providers || []" :key="provider.provider" class="provider-settings-card" :aria-labelledby="domId(`provider-title-${provider.provider}`)">
             <div>
-              <h3>{{ providerDisplayName(provider.provider) }}</h3>
-              <p class="status-line"><span class="status-pill">{{ statusLabel(provider.status) }}</span></p>
+              <h3 :id="domId(`provider-title-${provider.provider}`)">{{ providerDisplayName(provider.provider) }}</h3>
+              <p class="status-line"><span class="status-pill" :aria-label="`Connection status: ${statusLabel(provider.status)}`">{{ statusLabel(provider.status) }}</span></p>
               <dl class="catalog-facts">
                 <div><dt>Granted scopes</dt><dd>{{ provider.granted_scopes?.join(', ') || 'None reported' }}</dd></div>
                 <div><dt>Expires</dt><dd>{{ provider.expires_at || 'Not reported' }}</dd></div>
@@ -150,11 +157,11 @@ onMounted(load)
               </dl>
             </div>
             <div class="provider-actions">
-              <button class="button button-primary" type="button" :disabled="busyProvider !== ''" @click="startProviderAction(provider)">
+              <button class="button button-primary" type="button" :aria-label="`${providerAction(provider) === 'reconnect' ? 'Reconnect' : 'Connect'} ${providerDisplayName(provider.provider)}`" :aria-busy="busyProvider === provider.provider" :disabled="busyProvider !== ''" @click="startProviderAction(provider)">
                 {{ providerAction(provider) === 'reconnect' ? 'Reconnect' : 'Connect' }}
               </button>
-              <button v-if="isConnected(provider)" class="button button-secondary" type="button" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'revoke')">Revoke</button>
-              <button class="button button-danger" type="button" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'compromise')">Report compromise</button>
+              <button v-if="isConnected(provider)" class="button button-secondary" type="button" :aria-label="`Revoke ${providerDisplayName(provider.provider)} connection`" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'revoke')">Revoke</button>
+              <button class="button button-danger" type="button" :aria-label="`Report compromise for ${providerDisplayName(provider.provider)}`" :disabled="busyProvider !== ''" @click="mutateProvider(provider, 'compromise')">Report compromise</button>
             </div>
           </li>
         </ul>

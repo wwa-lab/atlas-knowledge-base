@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import { AtlasApiError, request } from '../api/atlasApi'
@@ -54,6 +54,7 @@ const roleAllowed = ref<boolean | null>(null)
 const lastSavedFingerprint = ref<string | null>(null)
 const lastSavedBindingFingerprint = ref<string | null>(null)
 const auditCompleted = ref(false)
+const activeStepPanel = ref<HTMLElement | null>(null)
 
 const stepLabel = computed(() => WIZARD_STEPS[step.value])
 const canGoBack = computed(() => step.value > 0 && !loading.value)
@@ -302,6 +303,10 @@ function goToStep(index: number): void {
   if (!loading.value && index <= step.value) step.value = index as WizardStep
 }
 
+function focusActiveStep(): void {
+  void nextTick(() => activeStepPanel.value?.focus())
+}
+
 function addBinding(): void {
   bindings.value = [...bindings.value, bindingForm()]
 }
@@ -315,6 +320,14 @@ watch([name, description, discoverability, purpose, classification, modelEligibl
   connection.value = null
   audit.value = null
 }, { deep: true })
+
+watch(step, (current, previous) => {
+  if (current !== previous) focusActiveStep()
+})
+
+watch(roleAllowed, (allowed) => {
+  if (allowed === true) focusActiveStep()
+})
 
 onMounted(loadRole)
 </script>
@@ -332,7 +345,14 @@ onMounted(loadRole)
 
     <ol class="wizard-steps" aria-label="Registration steps">
       <li v-for="(label, index) in WIZARD_STEPS" :key="label" :class="{ 'wizard-step-current': step === index, 'wizard-step-complete': step > index }">
-        <button type="button" :disabled="loading || index > step" @click="goToStep(index)">{{ index + 1 }}. {{ label }}</button>
+        <button
+          type="button"
+          :disabled="loading || index > step"
+          :aria-current="step === index ? 'step' : undefined"
+          :aria-controls="step === index ? 'wizard-step-panel' : undefined"
+          :aria-label="`Step ${index + 1}: ${label}${step === index ? ', current step' : ''}`"
+          @click="goToStep(index)"
+        >{{ index + 1 }}. {{ label }}</button>
       </li>
     </ol>
 
@@ -344,7 +364,7 @@ onMounted(loadRole)
     <p v-if="draft" class="draft-status" aria-live="polite">Draft {{ draft.logical_kb_id }} · config version {{ draft.config_version }} · {{ draft.lifecycle || 'draft' }}</p>
 
     <form class="wizard-card" @submit.prevent="next">
-      <fieldset v-if="step === 0" class="wizard-fieldset">
+      <fieldset v-if="step === 0" id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Basics</legend>
         <p class="panel-help">Use logical metadata only. Content remains authoritative in the configured source system.</p>
         <label><span>Name</span><input v-model="name" required autocomplete="off" /></label>
@@ -355,12 +375,12 @@ onMounted(loadRole)
         <label class="checkbox-row"><input v-model="modelEligible" type="checkbox" :disabled="auditCompleted || loading" /> <span>Request Chat eligibility (all sources must pass the later gates)</span></label>
       </fieldset>
 
-      <fieldset v-else-if="step === 1" class="wizard-fieldset">
+      <fieldset v-else-if="step === 1" id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Sources</legend>
         <p class="panel-help">Each source declares its own identity and role. Exactly one source must be canonical.</p>
         <p v-if="auditCompleted" class="panel-help">Sources are locked after Content Audit because audit rows reference stable binding IDs. Start a new Draft to change the source set.</p>
         <article v-for="(binding, index) in bindings" :key="binding.binding_id || index" class="binding-editor">
-          <div class="panel-heading"><h2>Source {{ index + 1 }}</h2><button v-if="bindings.length > 1" class="button button-danger" type="button" :disabled="auditCompleted || loading" @click="removeBinding(index)">Remove</button></div>
+          <div class="panel-heading"><h2>Source {{ index + 1 }}</h2><button v-if="bindings.length > 1" class="button button-danger" type="button" :aria-label="`Remove source ${index + 1}`" :disabled="auditCompleted || loading" @click="removeBinding(index)">Remove</button></div>
           <div class="form-grid-two">
             <label><span>Provider profile</span><select v-model="binding.provider_profile" :disabled="auditCompleted || loading"><option value="git_markdown">Git Markdown</option><option value="dify">Dify</option><option value="confluence">Confluence</option></select></label>
             <label><span>Binding role</span><select v-model="binding.role" :disabled="auditCompleted || loading"><option value="canonical">Canonical</option><option value="mirror">Mirror</option><option value="supplemental">Supplemental</option></select></label>
@@ -373,7 +393,7 @@ onMounted(loadRole)
         <button class="button button-secondary" type="button" :disabled="auditCompleted || loading" @click="addBinding">Add source</button>
       </fieldset>
 
-      <fieldset v-else-if="step === 2" class="wizard-fieldset">
+      <fieldset v-else-if="step === 2" id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Access &amp; Classification</legend>
         <p class="panel-help">These JSON objects are policy boundaries, not provider tokens. Keep region, retention, and egress constraints aligned across sources.</p>
         <p v-if="auditCompleted" class="panel-help">Source policy fields are locked after Content Audit because audit rows reference the audited binding configuration. Start a new Draft to change them.</p>
@@ -385,28 +405,28 @@ onMounted(loadRole)
         </article>
       </fieldset>
 
-      <fieldset v-else-if="step === 3" class="wizard-fieldset">
+      <fieldset v-else-if="step === 3" id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Connection Test</legend>
         <p class="panel-help">The test is a source-level hard gate. Failed sources remain Draft and cannot be overridden by an Admin.</p>
-        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="runConnectionTest">{{ loading ? 'Testing…' : 'Run Connection Test' }}</button>
-        <div v-if="connection" class="gate-result" :class="connection.passed ? 'gate-pass' : 'gate-fail'" role="status">
+        <button class="button button-primary" type="button" aria-controls="connection-test-result" :aria-busy="loading" :disabled="loading" @click.prevent="runConnectionTest">{{ loading ? 'Testing…' : 'Run Connection Test' }}</button>
+        <div v-if="connection" id="connection-test-result" class="gate-result" :class="connection.passed ? 'gate-pass' : 'gate-fail'" role="status" aria-live="polite">
           <strong>{{ connection.passed ? 'Passed' : 'Needs attention' }}</strong>
           <ul><li v-for="result in connection.bindings || []" :key="result.binding_id"><strong>{{ result.provider_profile || result.binding_id }}</strong>: {{ result.passed ? 'passed' : 'failed' }}<span v-if="result.checks"> · {{ Object.entries(result.checks).map(([key, value]) => `${key}: ${value}`).join(', ') }}</span></li></ul>
         </div>
       </fieldset>
 
-      <fieldset v-else-if="step === 4" class="wizard-fieldset">
+      <fieldset v-else-if="step === 4" id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Content Audit</legend>
         <p class="panel-help">Audit counts are source-provided. Excluded items need remediation before Chat activation.</p>
-        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="runContentAudit">{{ loading ? 'Auditing…' : 'Run Content Audit' }}</button>
-        <div v-if="audit" class="audit-summary" role="status">
+        <button class="button button-primary" type="button" aria-controls="content-audit-result" :aria-busy="loading" :disabled="loading" @click.prevent="runContentAudit">{{ loading ? 'Auditing…' : 'Run Content Audit' }}</button>
+        <div v-if="audit" id="content-audit-result" class="audit-summary" role="status" aria-live="polite">
           <dl class="catalog-facts"><div><dt>Total</dt><dd>{{ formatCount(audit.total) }}</dd></div><div><dt>Chat eligible</dt><dd>{{ formatCount(audit.chat_eligible) }}</dd></div><div><dt>Excluded</dt><dd>{{ formatCount(audit.excluded) }}</dd></div><div><dt>Last audited</dt><dd>{{ audit.last_audited_at || 'Not reported' }}</dd></div></dl>
           <p v-if="audit.exclusion_reasons && Object.keys(audit.exclusion_reasons).length">Reasons: {{ Object.entries(audit.exclusion_reasons).map(([reason, count]) => `${reason}: ${formatCount(count)}`).join(', ') }}</p>
           <a v-if="safeApiPath(audit.remediation_download_path)" class="button button-secondary" :href="safeApiPath(audit.remediation_download_path)">Download remediation CSV</a>
         </div>
       </fieldset>
 
-      <fieldset v-else class="wizard-fieldset">
+      <fieldset v-else id="wizard-step-panel" ref="activeStepPanel" class="wizard-fieldset" tabindex="-1" aria-describedby="wizard-step-status">
         <legend>Review &amp; Submit</legend>
         <div class="review-summary">
           <h2>{{ name || 'Unnamed Draft' }}</h2>
@@ -418,7 +438,7 @@ onMounted(loadRole)
 
       <footer class="wizard-actions">
         <button class="button button-secondary" type="button" :disabled="!canGoBack" @click="previous">Back</button>
-        <span aria-live="polite">Step {{ step + 1 }} of {{ WIZARD_STEPS.length }} · {{ stepLabel }}</span>
+        <span id="wizard-step-status" role="status" aria-live="polite">Step {{ step + 1 }} of {{ WIZARD_STEPS.length }} · {{ stepLabel }}</span>
         <button v-if="canGoNext" class="button button-primary" type="submit" :disabled="!canGoNext">Next</button>
         <RouterLink v-else class="button button-secondary" to="/admin">Open Admin activation</RouterLink>
       </footer>

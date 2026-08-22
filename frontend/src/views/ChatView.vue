@@ -645,16 +645,16 @@ onBeforeUnmount(() => streamAbort.value?.abort())
             <p class="eyebrow">Scope</p>
             <h2 id="scope-title">Knowledge bases</h2>
           </div>
-          <span class="count-badge">{{ selectedIds.length }}/5</span>
+          <span class="count-badge" :aria-label="`${selectedIds.length} of 5 knowledge bases selected`">{{ selectedIds.length }}/5</span>
         </div>
-        <p class="panel-help">Select one to five Chat-ready sources. Browse-only sources remain visible but disabled.</p>
+        <p id="scope-help" class="panel-help">Select one to five Chat-ready sources. Browse-only sources remain visible but disabled.</p>
         <p v-if="staleScopeIds.length" class="notice notice-warning scope-repair" role="alert">
           Saved scope contains unavailable knowledge bases: {{ staleScopeIds.join(', ') }}.
           <button type="button" class="button button-secondary" :disabled="scopeSaving || busy" @click="repairScope">
             Repair scope
           </button>
         </p>
-        <fieldset class="scope-list" :disabled="busy || scopeSaving">
+        <fieldset class="scope-list" aria-describedby="scope-help" :disabled="busy || scopeSaving">
           <legend class="sr-only">Chat knowledge-base scope</legend>
           <label
             v-for="kb in knowledgeBases"
@@ -680,7 +680,7 @@ onBeforeUnmount(() => streamAbort.value?.abort())
         <p v-if="!hasSelectableKnowledgeBase && !authRequired" class="notice notice-muted" role="status">
           No authorized Chat-ready knowledge base is available yet.
         </p>
-        <p class="scope-selection" aria-live="polite">
+        <p class="scope-selection" role="status" aria-live="polite">
           {{ selectedKnowledgeBases.length }} selected
           <span v-if="scopeSaving"> · saving scope…</span>
         </p>
@@ -701,12 +701,12 @@ onBeforeUnmount(() => streamAbort.value?.abort())
           <p>Your answer will show source coverage, disagreements, and a safe retry path when needed.</p>
         </div>
 
-        <ol v-else class="message-list" aria-live="polite">
+        <ol v-else class="message-list" role="log" aria-label="Chat messages" aria-live="polite" aria-relevant="additions text" :aria-busy="busy">
           <li v-for="message in messages" :key="message.message_id" class="message-row" :class="`message-row-${message.role}`">
             <article class="message-card" :aria-label="message.role === 'user' ? 'Your question' : 'Atlas answer'">
               <header class="message-meta">
                 <strong>{{ message.role === 'user' ? 'You' : 'Atlas' }}</strong>
-                <span v-if="message.role === 'assistant'" class="status-pill" :class="`status-${message.status}`">
+                <span v-if="message.role === 'assistant'" class="status-pill" :class="`status-${message.status}`" :aria-label="`Answer status: ${statusLabel(message.status)}`">
                   {{ statusLabel(message.status) }}
                 </span>
               </header>
@@ -810,12 +810,13 @@ onBeforeUnmount(() => streamAbort.value?.abort())
             v-model="draft"
             rows="3"
             placeholder="Ask about an authorized knowledge base…"
+            aria-describedby="composer-hint"
             :disabled="busy || selectedIds.length === 0 || staleScopeIds.length > 0"
             @keydown.meta.enter.prevent="send"
             @keydown.ctrl.enter.prevent="send"
           />
           <div class="composer-footer">
-            <span class="composer-hint">Enter a question · ⌘/Ctrl + Enter to send</span>
+            <span id="composer-hint" class="composer-hint">Enter a question · ⌘/Ctrl + Enter to send</span>
             <div class="composer-actions">
               <button v-if="busy" type="button" class="button button-secondary" :disabled="!canCancel" @click="cancel">
                 {{ canCancel ? 'Cancel' : 'Reserving…' }}
