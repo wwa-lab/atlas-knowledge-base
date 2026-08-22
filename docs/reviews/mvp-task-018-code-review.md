@@ -122,9 +122,9 @@ Arbitrary `note` is stored and returned as part of `diagnostics`
 - Audit writes do not populate `evidence_locator_ids`; if downstream audit requirements become stricter for issue reports, that may need follow-up in a later task.
 
 ## Verification
-- `./mvnw -q -pl backend -Dtest=IssueApiTest test`  
+- `./mvnw -q -pl backend -Dtest=IssueApiTest test`
   Result: passed (`Tests run: 4, Failures: 0, Errors: 0, Skipped: 0`)
-- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'`  
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'`
   Result: passed
 
 ## Gate A Verdict
