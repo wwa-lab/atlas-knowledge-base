@@ -192,6 +192,14 @@ on this row.
 - **FK:** `logical_kb_id → logical_knowledge_base.logical_kb_id`
 - **Indexes:** (`logical_kb_id`), (`provider_profile`, `enabled`)
 
+### binding_config_history
+
+An append-only snapshot of the complete binding configuration captured before a runtime
+governance/configuration update. It is the rollback source of truth; restoring a snapshot always
+creates a new monotonic live `config_version` rather than rewriting history. The table contains the
+binding identity, source locator rules, authorization/runtime flags, health, ownership, region
+constraints, the prior `config_version`, and `captured_at`. It stores no source content or tokens.
+
 ### content_audit_result
 
 | Column | Type | Nullable | Description |
@@ -341,7 +349,8 @@ enabled=true ──Admin disable/kill switch──▶ enabled=false / kill_switc
 disabled ──restore+revalidation──▶ enabled=true
 ```
 
-Disable is not a fifth KB lifecycle state.
+Disable is not a fifth KB lifecycle state. Governance impact previews are persisted as content-free
+`audit_event` rows and bind confirmation to the live binding id, runtime flags, and config version.
 
 ### chat_message.status
 

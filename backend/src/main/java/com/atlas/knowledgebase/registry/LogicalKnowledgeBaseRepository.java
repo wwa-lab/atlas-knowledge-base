@@ -224,6 +224,36 @@ public class LogicalKnowledgeBaseRepository {
                 "logical knowledge base " + logicalKbId + " is " + current.lifecycle());
     }
 
+    /** Moves an active or suspended knowledge base to the terminal Retired lifecycle. */
+    @Transactional
+    public LogicalKnowledgeBaseRecord retire(String logicalKbId) {
+        Instant now = Instant.now();
+        int updated =
+                jdbcTemplate.update(
+                        """
+                        UPDATE logical_knowledge_base
+                        SET lifecycle = 'retired', config_version = config_version + 1,
+                            updated_at = ?
+                        WHERE logical_kb_id = ? AND lifecycle IN ('active', 'suspended')
+                        """,
+                        Timestamp.from(now),
+                        logicalKbId);
+        if (updated == 1) {
+            return findById(logicalKbId).orElseThrow();
+        }
+        LogicalKnowledgeBaseRecord current =
+                findById(logicalKbId)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalArgumentException(
+                                                "logical knowledge base not found: " + logicalKbId));
+        if ("retired".equals(current.lifecycle())) {
+            return current;
+        }
+        throw new IllegalStateException(
+                "logical knowledge base " + logicalKbId + " is " + current.lifecycle());
+    }
+
     private RuntimeException conflictOrState(
             String logicalKbId, int expectedVersion, String requiredLifecycle) {
         LogicalKnowledgeBaseRecord current =

@@ -131,6 +131,8 @@ framework and persistence products are out of scope for this guide.
 | Disable binding | POST | `/admin/bindings/{binding_id}/disable` | Atlas Admin |
 | Kill switch | POST | `/admin/bindings/{binding_id}/kill-switch` | Atlas Admin |
 | Rollback binding | POST | `/admin/bindings/{binding_id}/rollback` | Atlas Admin |
+| Retire binding / terminal KB path | POST | `/admin/bindings/{binding_id}/retire` | Atlas Admin |
+| Suspend owner-less KB | POST | `/admin/knowledge-bases/{logical_kb_id}/suspend-ownerless` | Atlas Admin |
 | Provider webhook | POST | `/webhooks/{provider}` | Provider signature |
 
 ---
@@ -889,6 +891,58 @@ Must not automatically attach full prompt/evidence/answer body.
 ```
 
 **Side effects:** Stops new retrieval immediately; unrelated KBs remain available; content-free governance audit.
+
+### POST `/admin/bindings/{binding_id}/impact-preview`
+
+**Purpose:** Produce a content-free, configuration-version-bound preview before a governance
+mutation. The optional `operation` is `disable` (default), `kill_switch`, `rollback`, or `retire`.
+
+**Response 200**
+```json
+{
+  "impact_preview_id": "imp_1",
+  "operation": "disable",
+  "binding_id": "bnd_1",
+  "logical_kb_id": "lkb_1",
+  "config_version": 3,
+  "enabled": true,
+  "kill_switch": false,
+  "affected_binding_count": 1,
+  "unrelated_knowledge_bases_remain": true,
+  "new_retrieval_stopped": false
+}
+```
+
+The confirmation request for disable, kill switch, rollback, and retire is the same
+`{ "confirm": true, "impact_preview_id": "imp_1" }`. A missing, mismatched, stale, or replayed
+preview is rejected with `409`; confirmation never trusts client-supplied binding state.
+
+### POST `/admin/bindings/{binding_id}/kill-switch`
+
+Sets the binding `kill_switch` independently of `enabled`; both controls are authoritative at the
+retrieval dispatch boundary. The response includes `kill_switch`, `enabled`, `config_version`, and
+`new_retrieval_stopped`.
+
+### POST `/admin/bindings/{binding_id}/rollback`
+
+Restores the latest immutable binding configuration captured before a governance/configuration
+update. The target must pass the applicable current source validation before the restore is applied;
+the live `config_version` remains monotonic and audit history is append-only.
+
+### POST `/admin/bindings/{binding_id}/retire`
+
+Disables and kill-switches the binding. If it is the last retrieval-enabled binding of its logical
+knowledge base, the KB follows `active|suspended -> retired`; otherwise the logical KB remains
+available through its other safe bindings. Retired KBs are excluded from catalog selection and
+retrieval by the existing lifecycle gate.
+
+### POST `/admin/knowledge-bases/{logical_kb_id}/suspend-ownerless`
+
+**Request:** `{ "confirm": true }`.
+
+Only an active KB without an accountable active `kb_owner` is transitioned to `suspended`; a
+Draft remains Draft and an already-suspended KB is idempotent. The operation writes a content-free
+`suspend_ownerless` audit event.
 
 ### POST `/webhooks/{provider}`
 

@@ -1,12 +1,33 @@
 package com.atlas.knowledgebase.audit;
 
 import java.sql.Timestamp;
+import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class AuditEventRepository {
+
+    private static final org.springframework.jdbc.core.RowMapper<AuditEventRecord> ROW_MAPPER =
+            (rs, rowNum) ->
+                    new AuditEventRecord(
+                            rs.getString("event_id"),
+                            rs.getTimestamp("occurred_at").toInstant(),
+                            rs.getString("user_id"),
+                            rs.getString("logical_kb_id"),
+                            rs.getString("binding_id"),
+                            rs.getString("connector"),
+                            rs.getString("action"),
+                            rs.getString("authorization_result"),
+                            rs.getString("evidence_locator_ids"),
+                            rs.getString("model_id"),
+                            rs.getObject("latency_ms") == null
+                                    ? null
+                                    : ((Number) rs.getObject("latency_ms")).intValue(),
+                            rs.getString("status"),
+                            rs.getString("error_category"),
+                            rs.getString("details"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -63,5 +84,22 @@ public class AuditEventRepository {
                 rs -> rs.next() ? rs.getString("details") : null,
                 userId,
                 action);
+    }
+
+    public Optional<AuditEventRecord> findById(String eventId) {
+        return jdbcTemplate
+                .query("SELECT * FROM audit_event WHERE event_id = ?", ROW_MAPPER, eventId)
+                .stream()
+                .findFirst();
+    }
+
+    public boolean existsByActionAndPreview(String action, String previewId) {
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM audit_event WHERE action = ? AND INSTR(details, ?) > 0",
+                        Integer.class,
+                        action,
+                        "\"impact_preview_id\":\"" + previewId + "\"");
+        return count != null && count > 0;
     }
 }
