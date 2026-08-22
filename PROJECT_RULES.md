@@ -81,8 +81,8 @@ For each PR:
    started checks are failing.
 9. **Continue** to the next unblocked Must task after a merge, or stop this
    run if context is too degraded. State which task landed and which is next.
-   Do not wait for "continue" unless the user named a stop, or an elevated
-   review is still outstanding.
+   Do not wait for "continue" unless the user named a stop, or Gate B
+   **Fail**ed (or could not be started).
 
 ### Independent review
 
@@ -109,20 +109,26 @@ If the user named a review model, pass that model to the subagent. Otherwise
 inheriting the implementer's model is acceptable; isolation is the fresh
 context, not a different vendor.
 
-**Gate B — elevated, blocking.** A separate Cloud Agent or human GitHub review
-on the same PR, with the same review-only prompt as Gate A, is **required**
-when the PR changes any of:
+**Gate B — elevated, blocking.** Required when the PR changes any of:
 
 - authentication, session, CSRF, or cookies;
 - Flyway schema or the accepted data model;
 - `/api/v1` contracts;
 - secrets, `secret_ref`, or access control.
 
-The implementing agent cannot spawn a second Cloud Agent. After Gate A is
-recorded, it MUST stop, name the PR, and ask the user or dispatcher to start
-that run (or to review on GitHub). Do not merge and do not start the next
-Must task until Gate B Passes. UI shells, tests, stubs, copy, and other
-non-elevated work stay on Gate A plus required CI.
+After Gate A is recorded, the implementer MUST launch a *second* review-only
+subagent in a **new** context (Cursor `Task`, `generalPurpose`, unless a
+dedicated review subagent type exists), using the same review-only prompt
+rules as Gate A. Do not reuse the Gate A agent. Do not pass implementer
+rationale, discarded options, or a request to confirm a Pass. A separate
+Cloud Agent or a human GitHub review of the same diff also satisfies Gate B;
+do **not** stop the loop to ask the user to open one.
+
+After Gate B **Pass** and green required checks, merge through the pull
+request and continue the next Must task. If Gate B **Fail**s (Critical or
+Major findings, or architecture P0), stop for human intervention. UI shells,
+tests, stubs, copy, and other non-elevated work stay on Gate A plus required
+CI.
 
 If Gate A cannot be started, stop and say so. Do not treat an implementer
 self-check as Pass. The implementer may apply fixes from a report; they may
@@ -132,7 +138,7 @@ not rewrite the verdict.
 
 - the user asked to stop, or named an exclusive task range that is finished;
 - this run's context is too degraded to continue faithfully;
-- a Gate B review is outstanding;
+- Gate B **Fail**ed, or Gate B could not be started;
 - the task is spike-gated for **real** connector/model content and the spike
   report is missing (stub paths may still proceed);
 - an open Security/DBA question blocks **this** task, not only later production

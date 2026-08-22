@@ -57,9 +57,10 @@ During Grill Mode:
   profile.
 - After the slice is accepted for implementation, follow the Implementation
   Task Loop in `PROJECT_RULES.md`: implement, verify, Gate A review-only
-  subagent, Gate B (second Cloud Agent or human) when the PR is elevated,
-  merge when required checks are green, then the next unblocked Must task
-  without waiting to be told to continue.
+  subagent, Gate B (second fresh-context review-only subagent, or human)
+  when the PR is elevated, merge when required checks are green, then the
+  next unblocked Must task without waiting to be told to continue. Stop for
+  a human only if Gate B Fails or cannot be started.
 
 ## SDD Workflow Gate
 
@@ -191,15 +192,17 @@ Implementation of accepted tasks follows the Implementation Task Loop in
 `PROJECT_RULES.md`: one task per PR from `main` (with the documented parallel
 exception), verify, Gate A review-only subagent, merge via pull request when
 required checks are green, then the next unblocked Must task. Do not stop after
-a successful merge to wait for "continue" unless the user named a stop or a
-Gate B review is outstanding.
+a successful merge to wait for "continue" unless the user named a stop or Gate B
+Failed.
 
-Gate B is required (loop stops) when the PR changes authentication/session/
-CSRF/cookies, Flyway/data model, `/api/v1` contracts, or secrets/access
-control. Start a new Cloud Agent on that PR with a review-only prompt: follow
-`review-code-against-design`, do not implement or merge, review
-`git diff origin/main...HEAD`. A human GitHub review of the same diff also
-satisfies Gate B. The implementing agent cannot spawn that Cloud Agent.
+Gate B is required when the PR changes authentication/session/CSRF/cookies,
+Flyway/data model, `/api/v1` contracts, or secrets/access control. The
+implementer launches a second review-only subagent in a fresh context with the
+same prompt as Gate A (do not reuse the Gate A agent; follow
+`review-code-against-design`; review `git diff origin/main...HEAD`; do not
+implement). A human GitHub review of the same diff also satisfies Gate B.
+After Pass and green required checks, merge and continue. Stop for a human
+only if Gate B Fails or cannot be started.
 
 - Lint/verification: `git diff --check` (whitespace/conflict markers),
   `./scripts/verify-sdd-skills.sh` when skills or the lock change,
