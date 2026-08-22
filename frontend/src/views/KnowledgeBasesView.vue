@@ -6,6 +6,7 @@ import {
   catalogQuery,
   displayStatus,
   mergeCatalogPage,
+  safeExternalUrl,
   scaleLines,
   type BrowsePreview,
   type BrowseTree,
@@ -76,7 +77,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const route = useRoute()
 const router = useRouter()
-const filters = reactive<CatalogFilters>({
+const defaultFilters: CatalogFilters = {
   q: '',
   provider: '',
   capability: '',
@@ -84,7 +85,9 @@ const filters = reactive<CatalogFilters>({
   health: '',
   owner: '',
   freshness: '',
-})
+}
+const filters = reactive<CatalogFilters>({ ...defaultFilters })
+const appliedFilters = ref<CatalogFilters>({ ...defaultFilters })
 const items = ref<CatalogItem[]>([])
 const nextCursor = ref<string | null>(null)
 const loading = ref(true)
@@ -103,6 +106,7 @@ const selectedId = computed(() => {
   return typeof value === 'string' && value.trim() ? value : undefined
 })
 const isDetail = computed(() => Boolean(selectedId.value))
+const filtersDirty = computed(() => JSON.stringify(filters) !== JSON.stringify(appliedFilters.value))
 
 function resetBrowse(): void {
   tree.value = null
@@ -111,7 +115,9 @@ function resetBrowse(): void {
 }
 
 async function loadCatalog(reset = true): Promise<void> {
+  if (!reset && filtersDirty.value) return
   if (reset) {
+    appliedFilters.value = { ...filters }
     items.value = []
     nextCursor.value = null
     error.value = ''
@@ -119,7 +125,7 @@ async function loadCatalog(reset = true): Promise<void> {
   if (reset) loading.value = true
   else loadingMore.value = true
   try {
-    const query = catalogQuery(filters, reset ? undefined : nextCursor.value)
+    const query = catalogQuery(appliedFilters.value, reset ? undefined : nextCursor.value)
     const page = await request<CatalogPage>(`/api/v1/knowledge-bases?${query}`)
     items.value = mergeCatalogPage(items.value, page)
     nextCursor.value = typeof page.next_cursor === 'string' && page.next_cursor.trim()
@@ -313,9 +319,9 @@ watch(selectedId, (value) => {
             </ul>
             <div class="catalog-card-actions">
               <a
-                v-if="item.access?.authorized === false && item.access.access_request_url"
+                v-if="item.access?.authorized === false && safeExternalUrl(item.access.access_request_url)"
                 class="button button-secondary"
-                :href="item.access.access_request_url"
+                :href="safeExternalUrl(item.access.access_request_url)"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -333,10 +339,10 @@ watch(selectedId, (value) => {
         v-if="nextCursor"
         class="button button-secondary catalog-more"
         type="button"
-        :disabled="loadingMore"
+        :disabled="loadingMore || filtersDirty"
         @click="loadCatalog(false)"
       >
-        {{ loadingMore ? 'Loading more…' : 'Load more knowledge bases' }}
+        {{ filtersDirty ? 'Apply filters to load more' : loadingMore ? 'Loading more…' : 'Load more knowledge bases' }}
       </button>
     </template>
 
@@ -362,7 +368,7 @@ watch(selectedId, (value) => {
 
         <p v-if="detail.access?.authorized === false" class="notice notice-warning">
           You can discover this Catalog entry, but Atlas has not granted access.
-          <a v-if="detail.access.access_request_url" :href="detail.access.access_request_url" target="_blank" rel="noreferrer">Request access</a>
+          <a v-if="safeExternalUrl(detail.access.access_request_url)" :href="safeExternalUrl(detail.access.access_request_url)" target="_blank" rel="noreferrer">Request access</a>
         </p>
 
         <div class="detail-grid">
@@ -435,8 +441,8 @@ watch(selectedId, (value) => {
               Browse requires authorization; use the request path above.
             </p>
             <template v-if="tree">
-              <p v-if="tree.original_url" class="original-link">
-                <a :href="tree.original_url" target="_blank" rel="noreferrer">Open original source</a>
+              <p v-if="safeExternalUrl(tree.original_url)" class="original-link">
+                <a :href="safeExternalUrl(tree.original_url)" target="_blank" rel="noreferrer">Open original source</a>
               </p>
               <ul class="tree-list" aria-label="Source tree">
                 <li v-for="entry in tree.entries ?? []" :key="entry.path">
@@ -456,7 +462,7 @@ watch(selectedId, (value) => {
               <article v-if="preview" class="preview-panel">
                 <div class="panel-heading">
                   <h3>{{ preview.path }}</h3>
-                  <a v-if="preview.original_url" :href="preview.original_url" target="_blank" rel="noreferrer">Original</a>
+                  <a v-if="safeExternalUrl(preview.original_url)" :href="safeExternalUrl(preview.original_url)" target="_blank" rel="noreferrer">Original</a>
                 </div>
                 <pre>{{ preview.markdown || 'No preview content was returned.' }}</pre>
               </article>

@@ -44,7 +44,7 @@ export type CatalogSource = {
   connection_state?: string
   updated_at?: string | null
   atlas_verified_at?: string | null
-  scale?: Record<string, Record<string, number>>
+  scale?: SourceScale
 }
 
 export type CatalogDetail = CatalogItem & {
@@ -96,6 +96,8 @@ export type BrowsePreview = {
   original_url?: string | null
 }
 
+export type SourceScale = Record<string, number | Record<string, number>>
+
 /** Build the authorization-aware catalog query without adding full-text search parameters. */
 export function catalogQuery(
   filters: CatalogFilters,
@@ -136,9 +138,21 @@ export function displayStatus(value: string | null | undefined): string {
   return value ? value.replaceAll('_', ' ') : 'Not reported'
 }
 
-export function scaleLines(scale: Record<string, Record<string, number>> | undefined): string[] {
+export function scaleLines(scale: SourceScale | undefined): string[] {
   if (!scale) return []
-  return Object.entries(scale).flatMap(([provider, counts]) =>
-    Object.entries(counts).map(([kind, count]) => `${provider}: ${kind} ${count}`),
-  )
+  return Object.entries(scale).flatMap(([provider, counts]) => {
+    if (typeof counts === 'number') return [`${provider}: ${counts}`]
+    return Object.entries(counts).map(([kind, count]) => `${provider}: ${kind} ${count}`)
+  })
+}
+
+/** Only absolute HTTP(S) URLs may become navigable external links. */
+export function safeExternalUrl(value: string | null | undefined): string | undefined {
+  if (!value?.trim()) return undefined
+  try {
+    const parsed = new URL(value.trim())
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : undefined
+  } catch {
+    return undefined
+  }
 }

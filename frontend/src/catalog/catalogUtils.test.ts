@@ -4,6 +4,7 @@ import {
   catalogQuery,
   displayStatus,
   mergeCatalogPage,
+  safeExternalUrl,
   scaleLines,
 } from './catalogUtils'
 
@@ -32,5 +33,8 @@ describe('catalog utilities', () => {
       'git_markdown: paths 12',
       'dify: documents 4',
     ])
+    expect(scaleLines({ paths: 2 })).toEqual(['paths: 2'])
+    expect(safeExternalUrl('https://github.example/org/repo')).toBe('https://github.example/org/repo')
+    expect(safeExternalUrl('javascript:alert(1)')).toBeUndefined()
   })
 })
