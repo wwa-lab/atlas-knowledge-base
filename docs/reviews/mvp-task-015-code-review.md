@@ -876,6 +876,194 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 ---
 
+# Gate B — Final Independent Re-review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Revision reviewed:** `cc6ecd76acfdc57ee30d03b5c71705f6b9c3a4d5`
+- **Branch:** `cursor/task-015-retrieval-orchestrator-e0fd`
+- **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- **Diff:** Complete `git diff origin/main...HEAD`
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, `mvp-spec.md`, architecture/data-flow/data-model, detailed design, API implementation guide, traceability, and ADR-0002/0004/0005/0006/0007
+- **Task reviewed:** TASK-015, with TASK-016/017/019–023/027 boundaries distinguished
+- **Code inspected:** All changed production and test files, plus relevant registry/access/persistence code
+- **Excluded as evidence:** `docs/reviews/mvp-task-015-code-review.md` and PR narrative
+
+## Overall Assessment
+
+- **Alignment rating:** 82%
+- **Verdict:** Partially aligned
+- **Rationale:** The implementation covers the main stub-first retrieval flow well: complete-binding authorization, immutable turn snapshots, binding/profile controls, parallel dispatch, timeout/concurrency limits, RRF deduplication, truthful coverage, fail-closed security behavior, and refusal without evidence. Two Major gaps remain: classification inheritance uses an unsupported lexical ordering, and concurrent retries can duplicate provider operations and lose the cancellable in-flight registration.
+
+## Areas of Good Alignment
+
+- `RetrievalScope` defensively snapshots all configured bindings and persists both KB and binding configuration versions.
+- Retry refreshes the registry snapshot, config versions, binding set, and classification before a successful rerun.
+- Authorization is performed for every configured binding before retrieval; one denied complete binding prevents subset-as-complete generation.
+- Binding enable, kill switch, binding feature flag, provider-profile flag, health, and conservative freshness controls are checked before dispatch.
+- Authorization timeout/failure is not treated as ordinary partial retrieval.
+- Security failures suspend the affected logical KB, discard that KB’s evidence, and fail closed.
+- Ordinary retrieval timeout/failure can produce disclosed partial coverage only when other grounded evidence exists.
+- All-failed or empty-evidence retrieval returns `NO_GROUNDED_EVIDENCE` and creates no completed answer.
+- Provider execution uses provider-specific validated timeout and concurrency configuration. Timeout cancellation interrupts cooperative work while the semaphore remains occupied until the operation exits.
+- RRF uses rank values, deterministic ordering, the required composite dedup identity, and retains all provenance paths.
+- Stub model requests receive evidence identifiers rather than fixture excerpts, respecting ADR-0007’s real-content gate.
+- Error details contain actionable KB/binding or coverage identifiers without source bodies, excerpts, tokens, or raw scores.
+- No fabricated citations are produced; citation projection and historical resolution remain TASK-016 scope.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. Security classification inheritance is based on lexical string order
+
+- **Design / task expected:** REQ-SEC-004 and FR-64 require a derived answer to inherit the highest security classification among contributing sources. Unknown classification semantics must fail closed.
+- **Code currently does:** `resolveScope` and retry’s `highestClassification` choose `max(String::compareTo)` in [ChatService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:572) and [ChatService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:661). Registry validation accepts any nonblank classification string, and no accepted security-dominance ordering exists.
+- **Why it matters:** Lexical order is not a security hierarchy and can under-classify a multi-KB answer. Because the accepted documents do not define classification ordering, this is reduced from Critical to Major, but it remains a security-boundary failure.
+- **Recommended fix:** Introduce an approved classification policy/rank with boundary validation and tests. Until that policy exists, fail closed on mixed classifications rather than guessing an order.
+
+#### 2. Concurrent retries are not idempotent at the provider-operation boundary
+
+- **Design / task expected:** REQ-CHAT-009 and FR-38 require retry to be safe and idempotent without unintended duplicate operations, while cancellation must retain control of in-flight backend work.
+- **Code currently does:** `retry()` performs complete authorization and retrieval at [ChatService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:272) before the database compare-and-set in `markProcessingIfRetryable` at [ChatService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:301). Two concurrent retries can therefore both execute provider work. In addition, `inFlight.put` occurs before the losing CAS, so the losing request can overwrite and then remove the winner’s registration, leaving generation untracked by the cancel endpoint.
+- **Why it matters:** The completed-answer CAS prevents duplicate final rows, but not duplicate provider authorization/retrieval, quota consumption, or audit work. Losing the in-flight registration also weakens cancellation behavior.
+- **Recommended fix:** Atomically reserve the retry before retrieval, use `putIfAbsent` or an equivalent single-flight mechanism, and restore a retryable terminal state if reserved retrieval fails. Add a concurrent-retry test proving one provider execution, one active flight, and effective cancellation.
+
+### Minor
+
+None identified.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB and binding authorization | Implemented |
+| Complete-binding fail-closed behavior | Implemented |
+| Item-level omission | Implemented for fixture results |
+| Immutable scope/config snapshot | Implemented |
+| Retry snapshot refresh | Implemented, but concurrent retry is unsafe |
+| Binding/profile controls | Implemented |
+| Parallel provider dispatch | Implemented |
+| Timeout and concurrency capacity | Implemented for cooperative adapters |
+| Ordinary partial coverage | Implemented |
+| All-failed/no-evidence refusal | Implemented |
+| Composite RRF dedup/provenance | Implemented |
+| Classification inheritance | Partial / unsafe ordering |
+| Actionable non-leaking errors | Implemented |
+| Real provider adapters | Intentionally deferred to TASK-019–021 |
+| Citation projection/historical resolution | Intentionally deferred to TASK-016 |
+| Governance control module | Intentionally deferred to TASK-017 |
+| Real model gateway/content send | Intentionally deferred to TASK-022 |
+| Reconciliation | Intentionally deferred to TASK-023 |
+| Full quota/backoff/circuit-breaker telemetry | Intentionally deferred to TASK-027 |
+
+**Task coverage:**
+
+- Clearly implemented: TASK-015 authorization, stub fan-out, coverage, fail-closed/partial/item-omit branching, and in-process RRF.
+- Partially implemented: idempotent retry integration and security classification inheritance.
+- Not yet reflected by design-approved deferral: real adapters, citation persistence/projection, real model content, reconciliation, and complete telemetry.
+- Unsupported scope creep: None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- Lexical classification dominance is an unsupported assumption, not an acceptable variation.
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** Retrieval orchestration is mostly cohesive and provider protocols remain behind `Retriever`. Direct lifecycle suspension and audit writes from the orchestrator are temporary coupling to responsibilities assigned to TASK-017 and TASK-027.
+- **Misplaced responsibilities:** Classification policy is embedded as string comparison in `ChatService` instead of a governed security policy component.
+- **Coupling issues:** Retry reservation, provider retrieval, persistence transition, and in-memory flight registration do not share a single concurrency boundary.
+- **Hidden shortcuts:** Cooperative thread interruption is adequate for stubs, but real adapters must connect cancellation to the underlying provider request rather than merely accepting a duration.
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned except concurrent retry reservation.
+- **Validation behavior:** Provider budgets and feature flags fail closed; classification dominance is not validated.
+- **Retry / skip / resume / failure handling:** Ordinary and security outcomes align; concurrent retry is not idempotent.
+- **User-visible behavior:** Coverage and refusal details are actionable and content-free.
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned for stub-first scope.
+- **External system handling:** Real provider calls remain correctly spike-gated.
+- **Secret / credential safety:** Aligned; no credentials or excerpts added to errors/logging/model-stub payloads.
+- **Logging / audit hooks:** Content-free hooks exist; complete telemetry remains TASK-027.
+- **Error propagation at integration boundaries:** Typed security/ordinary/unknown adapter failures are separated and fail closed.
+
+## Architecture Review: TASK-015 Retrieval Orchestrator
+
+### Score: 86%
+
+### P0 (Must Fix)
+
+None identified.
+
+### P1 (Fix Before or During Next Touch)
+
+- Replace lexical classification comparison with an approved policy boundary — `ChatService.java:572`, `ChatService.java:661`.
+- Make retry reservation and in-flight registration single-flight before provider dispatch — `ChatService.java:272`, `ChatService.java:300`.
+- Route lifecycle mutation through the Governance Control boundary when TASK-017 lands — `RetrievalOrchestrator.java:151`, `RetrievalOrchestrator.java:198`.
+- Require TASK-019–021 adapters to propagate cancellation to underlying provider calls; interruption-only cancellation is not sufficient evidence for real HTTP clients.
+
+### P2 (Track)
+
+- Extend the adapter outcome contract with calibrated quota/rate-limit/retry-after and circuit-breaker state during TASK-019–021/TASK-027.
+- Replace conservative rejection of every `freshness_required` KB with real timestamp/verification evaluation once adapter freshness data exists.
+
+### Good Practices Confirmed
+
+- Feature-based retrieval package and provider-neutral adapter port.
+- Immutable records and defensive collection copies.
+- Dynamic retriever registry with duplicate-provider startup rejection.
+- Externalized per-provider flags/timeouts/concurrency.
+- Deterministic RRF and provenance preservation.
+- Fail-closed handling of unknown/security outcomes.
+- No cache or real-content path introduced without its ADR/spike gate.
+
+### Recommendation
+
+Fix the classification-policy boundary and reserve retries atomically before retrieval. The remaining real-adapter, governance, citation, model-channel, reconciliation, and telemetry limitations are legitimate later-task boundaries.
+
+## Verification Evidence
+
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — passed with no output.
+- `./mvnw -q test` — passed, exit code 0.
+- Surefire evidence: 117 tests, 0 failures, 0 errors across 21 test suites.
+- Worktree remained unchanged and clean.
+- Skills used: project-local `review-code-against-design` and `architecture-review`.
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blockers:** Approved classification ordering/fail-closed mixed-class behavior; atomic single-flight retry reservation.
+- **Acceptable deviations:** Conservative freshness blocking while current freshness cannot be proven; stub-only evidence IDs; absent real citations/adapters/model content/telemetry within named later tasks.
+- **Required corrections:** Resolve both Major findings and rerun prescribed verification plus fresh Gate A and Gate B reviews.
+
+## Minimal Fix Path
+
+1. Add a governed classification policy or fail closed on mixed classification values; replace both lexical comparisons and add multi-KB/retry coverage.
+2. Acquire a database/in-memory single-flight retry reservation before authorization/retrieval, preserving correct retryable recovery on failure and cancellation tracking.
+3. Add a concurrent retry test proving exactly one provider operation and one cancellable generation flight.
+4. Run `git diff --check` and `./mvnw -q test`, then launch fresh review-only gates.
+
+## Open Risks / Questions
+
+- What accepted classification taxonomy and dominance order governs cross-KB answers?
+- Real adapters must demonstrate actual underlying-request cancellation, not only cooperative thread interruption.
+- Freshness-required KBs remain conservatively unavailable until verifiable freshness timestamps exist.
+- Quota, backoff, circuit-breaker, retry-after, and operational telemetry remain explicitly deferred to real-adapter/TASK-027 work.
+- RRF internals remain ADR-listed, but TASK-015 explicitly authorizes the current documented in-process implementation.
+
+# Gate B Merge Gate: Fail
+
+---
+
 # Gate A — Final Snapshot Re-review
 
 # Code vs Design Review Report
