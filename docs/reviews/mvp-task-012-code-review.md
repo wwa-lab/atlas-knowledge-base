@@ -7,7 +7,7 @@
 - **Reviewer:** review-only subagent (no edits, no commit, no merge)
 - **Implementer merge-gate:** not authored by the implementer
 
-Gate A round 3 merge gate: **Fail**. Two Major findings remain on the current HEAD. Architecture P0: none. The Implementation Task Loop allows at most two fix-and-re-review rounds; those rounds are used. Implementer did not apply a third fix set.
+Gate A round 4 merge gate: **Pass**. No Critical or Major findings remain. Architecture P0: none. Minor / P1–P2 items may be tracked without blocking merge. The user authorized a third fix set after the two-round stop.
 
 ## Gate A round 1
 
@@ -649,3 +649,222 @@ Keep the `SourceProbe` split. Before merge, make Git mapping and Owner-less acti
 ## Merge gate: **Fail**
 
 Critical: none. Major: Git `.kb` stub flags satisfy original-version mapping / Chat-ready; activate does not use `isOwnerless`. Architecture P0: none. P1 items do not independently fail the gate except where they duplicate the Major Git-mapping behavior.
+
+## Gate A round 4
+
+Reviewed `2f0ff77` (`git diff origin/main...HEAD`). Gate A merge gate: **Pass**. Full review-only report from the Gate A subagent follows. Implementer did not edit findings.
+
+---
+
+# Code vs Design Review Report
+
+## Review Scope
+- **Design reviewed:** `docs/05-design/mvp-design.md` (Activation & Validation Module; wizard Connection Test / Content Audit / Review & Submit; validation/hard gates); `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md` (Registration/Activation table; content-audit, activate, remediation; 409 keep-Draft; 403 not Admin); `docs/04-architecture/mvp-data-model.md` (`logical_knowledge_base`, `binding`, `content_audit_result`, lifecycle, Git capability); `docs/04-architecture/mvp-data-flow.md` Flow 2; `docs/03-spec/mvp-spec.md` FR-23, FR-24, FR-25, FR-28; ADRs 0002, 0004, 0006, 0007 (modular monolith, adapter isolation, secret boundary, spike-gated real content)
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-012 only
+- **Code / files inspected:** `git diff origin/main...HEAD` on `cursor/task-012-activation-gates-e0fd`: `ActivationController.java`, `ActivationService.java`, `HardGateException.java`, `ContentAuditResultRecord.java`, `ContentAuditResultRepository.java`, `LogicalKnowledgeBaseRepository.java` (gated `activate` overload + `suspend`), `RegistryExceptionHandler.java`, `SourceProbe.java`, `StubSourceProbe.java`, `ActivationApiTest.java`. Supporting types already on `main` only: `SessionAuthFilter` / CSRF, `CurrentRequestAuth`, `AtlasRoles`, `ApiErrorResponses`, `RegistryService` / `BindingRecord`, V2 `content_audit_result` / lifecycle CHECKs
+- **Review objective:** Judge TASK-012 Connection Test, Content Audit, remediation download, Admin activate hard gates, Git without `.kb` Browse-only, and Owner-less Suspend against the accepted design — not a preferred rewrite
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 90%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** The PR implements the four TASK-012 HTTP operations with the specified roles, session/CSRF, 409-keep-Draft and no Admin override flag. Activate re-probes Connection Test, original-version mapping, Dify Content Audit freshness, and Dify `acl_mixed` on the current binding; Git without a validated `.kb` becomes `browse_only` only after those gates pass; Owner-less Drafts cannot become Active (`isOwnerless`). Remaining gaps are stub completeness (unnamed FR-25 dimensions), an Admin-only Owner-less URL that is not in the API guide, and an ungated repository `activate(id, version)` that the HTTP path does not use.
+
+---
+
+## Areas of Good Alignment
+- **Registration/Activation paths and roles.** `POST /api/v1/knowledge-bases/drafts/{id}/connection-test` and `.../content-audit` require KB Owner of that draft; `GET .../{id}/content-audit/remediation` allows Owner or Atlas Admin; `POST .../{id}/activate` requires Atlas Admin. Matches the API summary table and “403 not Admin.”
+- **No Admin override.** `ConfirmRequest` is only `{ confirm }`. Hard-gate failure throws `HardGateException` before `knowledgeBases.activate(...)`, mapped to HTTP 409; SQL `WHERE lifecycle = 'draft'` keeps Draft. Tests cover missing Dify audit, mixed ACL (including stale identity), failed connection, missing Git mapping, and Owner-less-at-activate.
+- **Content Audit contract.** Response fields `audit_id`, `total`, `chat_eligible`, `excluded`, `exclusion_reasons`, `last_audited_at`, `remediation_download_path` match the example. Rows persist to `content_audit_result` with data-model columns. Remediation CSV uses opaque ids, not titles — aligned with FR-24 for this slice.
+- **Flow 2 Connection Test.** Stub checks are authentication, retrieval, exact fetch, and stable version. Activate re-runs `probe.connectionChecks` live rather than trusting a client or stored pass.
+- **FR-23 Browse-only Git.** Git without `kb_validated` / `kb_contract` activates `browse_only` and clears `model_eligible` when mapping/connection pass. `manifest.json` / `kb_path` does not upgrade capability.
+- **FR-25 / REQ-SRC-004 mapping gate is independent of `.kb`.** `hasOriginalVersionMapping` for Git requires `commit` / `commit_sha` (or an explicit mapping object). `kb_validated` or `kb_path` alone stays Draft (`gitKbPathWithoutCommitStaysDraft`, `gitKbValidatedWithoutCommitStaysDraft`).
+- **FR-24 mixed-ACL.** Dify `acl_mixed` on live `auditCounts` or the stored audit is `HARD_GATE_FAILURE`. Missing or stale Dify audit (`audited_at` before `binding.updated_at`) also fails closed.
+- **FR-28 at first activation.** `activate` calls `isOwnerless` (null/blank owner, missing user, or owner without `kb_owner`) and keeps Draft with `OWNER_REQUIRED`. Owner-less Suspend of Draft is rejected (`NOT_ACTIVE`); `suspend` updates `lifecycle = 'active'` only.
+- **Lifecycle vs health.** Activate bumps `config_version` and sets `activated_at` without collapsing health into lifecycle. Optimistic version is the loaded draft row (contract activate body is only `confirm`; concurrency `[Assumption]`).
+- **Adapter / secret boundary.** `SourceProbe` in `adapters/`; `StubSourceProbe` does not call Dify/Git/Confluence (ADR-0006 / TASK-019–021). No tokens in JSON/CSV. Session + CSRF inherited from `SessionAuthFilter`.
+- **Content-free audit** on connection_test, content_audit, activate, and suspend_ownerless success paths.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+None identified.
+
+### Major
+None identified.
+
+### Minor
+
+**Owner-less Suspend is Admin-invoked only, on an undocumented path**
+- **Design / task expected:** TASK-012 notes include FR-28. Data-model trigger is `active → suspended` on Owner-less **or** Admin. Architecture names Owner-less Suspend on Governance Control Service. The API guide has no suspend-ownerless resource; governance URLs are `/admin/bindings/*` (TASK-017).
+- **Code currently does:** `POST /api/v1/admin/knowledge-bases/{id}/suspend-ownerless` requires Admin + `confirm`. An Active KB whose Owner later loses `kb_owner` stays Active until someone calls this URL. Activate no longer mints that state.
+- **Why it matters:** Design is silent on automatic vs Admin trigger (reconciliation is TASK-023). Severity reduced one level for that silence. Residual window is after first activation, not at the Draft gate.
+- **Recommended fix:** Keep the Admin command for TASK-012; document the path as `[ASSUMPTION]` or fold it into TASK-017 `/admin/*`. Do not invent a worker here.
+
+**FR-25 / REQ-WIZ-004 gates beyond connection, mapping, and Dify ACL are not named on activate**
+- **Design / task expected:** First activation shall pass permission boundary and model eligibility, citation completeness, deletion/move propagation, health/latency/quota/error taxonomy, and region/retention/egress/security. Content Audit shall cover metadata, citation, deletion propagation, coverage, and quality.
+- **Code currently does:** Probe/activate implement the four Flow 2 Connection Test checks, original-version mapping, Dify audit-required/freshness, and Dify `acl_mixed`. Citation, deletion, health/quota taxonomy, and security-approval artifacts have no activate slots. Region/eligibility mismatch remains a TASK-011 PATCH rule. Numeric thresholds are open in the spec (not invented).
+- **Why it matters:** Real adapters are spike-gated (TASK-019–021). Severity reduced one level: stubs are in scope; connection-test response schema is unspecified; inventing fail-closed fixtures for every unmodeled gate would contradict the stub happy path.
+- **Recommended fix:** When adapters land, map each REQ-KB-015 bullet onto `SourceProbe` instead of growing `source_identity` flags.
+
+**Content Audit `audit_id` is the last binding’s row**
+- **Design / task expected:** Contract example returns one `audit_id` with aggregated counters. Data model is per-binding `content_audit_result`.
+- **Code currently does:** Totals are summed; `audit_id` is overwritten per binding. Multi-binding identity of the aggregate is unspecified. Severity reduced (contract vs data model already disagree).
+- **Recommended fix:** Mint a KB-level audit id or return per-binding audits.
+
+**Remediation list is synthesized from reason counters, not `remediation_blob_ref`**
+- **Design / task expected:** `content_audit_result.remediation_blob_ref` is the downloadable list reference.
+- **Code currently does:** Stores `"audit:" + auditId`, then rebuilds CSV as `{bindingId}:{reason}:{i}`. Acceptable for stubs with no real document ids.
+- **Recommended fix:** Fine until real Dify audit (TASK-019); then persist opaque document ids behind the ref.
+
+**Ungated two-argument `LogicalKnowledgeBaseRepository.activate(id, version)` remains**
+- **Design / task expected:** Admin activation writes Active only if every binding passes hard gates.
+- **Code currently does:** HTTP activate uses the four-argument overload after gates. The two-argument method still performs an ungated Draft→Active update (existing repository tests).
+- **Why it matters:** Not an HTTP bypass today; a later caller can skip TASK-012 gates.
+- **Recommended fix:** Delegate the two-argument method through gates, or narrow it to tests.
+
+**`HardGateException` handler duplicates the error envelope**
+- **Design / task expected:** Shared `{ error: { category, code, message, request_id, next_step, details } }` format.
+- **Code currently does:** Custom map with `details`; other registry errors use `ApiErrorResponses` (which cannot attach `details`). Category `conflict` is used for 409 (guide’s typical use of `conflict` is canonical disagreement; the activate contract specifies HTTP 409).
+- **Why it matters:** Does not break 409. Inconsistent helper.
+- **Recommended fix:** Extend `ApiErrorResponses` to accept `details`.
+
+**Submit draft is absent**
+- **Design / task expected:** Wizard includes Review & Submit; API lists POST `.../submit`. TASK-012 scope lists connection-test, content-audit, remediation, activate — not submit. Lifecycle has no `submitted` state.
+- **Code currently does:** Admin may activate a Draft that was never submitted. Treated as intentional TASK-012 omission, not a design violation.
+- **Recommended fix:** None in this PR unless product later requires submit as a hard gate.
+
+---
+
+## Coverage Check
+| Design Area | Status |
+|---|---|
+| Connection Test (auth, retrieval, exact fetch, stable version) | Implemented (stub) |
+| Content Audit payload + persist `content_audit_result` | Implemented |
+| Remediation download (Owner/Admin, no title citations) | Implemented (synthetic CSV) |
+| Admin activate + `confirm` + config_version bump + `activated_at` | Implemented |
+| Hard-gate failure → remain Draft; no Admin override | Implemented |
+| Git without validated `.kb` → Browse-only (FR-23) | Implemented |
+| Binding without original-version mapping fails activate (REQ-SRC-004) | Implemented (mapping independent of `.kb` flags) |
+| Dify mixed ACL split-before-activate (FR-24) | Implemented (live + stored; stale audit fail-closed) |
+| Dify Content Audit required | Implemented |
+| FR-28 Owner-less at activate (keep Draft) | Implemented |
+| FR-28 Owner-less Suspend of Active | Partial (Admin endpoint; not a continuous invariant) |
+| FR-25 remaining gates (citation, deletion, health/quota, region/egress, business/security approval) | Partial / spike-gated |
+| Submit draft / wizard UI / catalog / chat / disable-kill-retire | Missing (out of TASK-012 scope) |
+| Real Dify/Git/Confluence adapters | Missing (spike-gated; stubs in scope) |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: TASK-012 connection-test, content-audit, remediation CSV, Admin activate keep-Draft, Git without `.kb` Browse-only, original-version mapping on every binding, Dify ACL/audit gates, Owner-less activate fail-closed, stub adapter probe
+- Tasks partially implemented: Owner-less Suspend (FR-28) after Active (Admin command only); FR-25 dimensions beyond Flow 2 + mapping + Dify ACL
+- Tasks not yet reflected in code: none of the named TASK-012 operations are omitted; submit is out of listed scope
+- Code changes not clearly mapped to any task: `POST /admin/knowledge-bases/{id}/suspend-ownerless` (FR-28 is in TASK-012 notes; path is not in the API guide)
+
+**Behaviors implemented but not clearly supported by design:**
+- Undocumented `POST /api/v1/admin/knowledge-bases/{logical_kb_id}/suspend-ownerless`
+- Stub identity protocol (`fail_connection_test`, `acl_mixed`, `kb_validated`, `kb_contract`, `audit_total`) as the Connection Test / audit control plane
+- Connection Test success body `{ passed, bindings[].checks }` (endpoint listed; schema unspecified)
+- Remediation `text/csv` Content-Disposition (download required; media type unspecified)
+- Synthetic remediation ids `{bindingId}:{reason}:{n}` (acceptable for stubs)
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** Owner-less Suspend lives in `registry.ActivationService` while architecture assigns it to Governance Control Service (`governance/` remains `package-info` only). Registry vs Activation & Validation as separate architecture services are colocated; `registry/package-info` already states hard gates live here — acceptable modular-monolith variation for TASK-012, not a merge block.
+- **Misplaced responsibilities:** `StubSourceProbe` parses registry `BindingRecord.source_identity` JSON. Probe interface belongs in adapters; a probe DTO would keep TASK-019 replacements isolatable.
+- **Coupling issues:** One `SourceProbe` bean switches on `provider_profile` rather than per-profile adapter modules (acceptable for stubs; needs a dispatcher at TASK-019–021). HTTP handlers return `Map<String, Object>` like TASK-011.
+- **Hidden shortcuts:** Two-argument `LogicalKnowledgeBaseRepository.activate` still performs ungated Draft→Active; HTTP path is gated. Stub `kb_validated` / `kb_contract` presence stands in for a validated `.kb` schema (TASK-020).
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** `draft → active` only after `confirm=true` and an empty failure list; failed gates do not write Active. Git without `.kb` → Active + `browse_only` after mapping/connection pass. Owner-less Draft stays Draft. Active Owner-less requires Admin POST. `suspend` is Active-only (already-`suspended` idempotent).
+- **Validation behavior:** Owner-only wizard probes; Admin-only activate; Owner or Admin remediation. Dify without a current audit cannot activate. Mixed ACL cannot activate. Connection or mapping failure cannot activate. Owner-less activate cannot succeed.
+- **Retry / skip / resume / failure handling:** No Admin override. Activate re-probes live. Stale Dify audit after binding update fails closed. Connection Test `passed: false` is HTTP 200 (probe result), not 409 — contract silent; acceptable. Failed activate is not audited (design silent).
+- **User-visible behavior:** Activate 200 projection matches the example. 409 `conflict` / `HARD_GATE_FAILURE` (or `OWNER_REQUIRED`) with `details`. Remediation `text/csv` attachment.
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned — `SourceProbe` in `com.atlas.knowledgebase.adapters`; registry depends on the interface; stub does not speak provider protocols (ADR-0002 / Connector Adapter Plane).
+- **External system handling:** Stubs only; no Dify/Git/Confluence/model calls. Matches TASK-012 spike gate and ADR-0006 (no real content through unspiked channels).
+- **Secret / credential safety:** Aligned — no `secret_ref` or tokens in new responses; CSRF on POST; session cookie as on `main`.
+- **Logging / audit hooks:** Content-free `audit_event` on the four success actions. Failed activate is not audited (design silent).
+- **Error propagation at integration boundaries:** `HardGateException` → 409 envelope with `details`. `DraftValidationException` → 422. `RegistryForbiddenException` → 403. Probe JSON parse failures become empty identity (fail-closed for mapping). Corrupt stored audit JSON is fail-open on that row but live `auditCounts` still gates Dify ACL.
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge — Yes; testing — Yes; next implementation step (TASK-013 catalog / later adapters) — Yes, with the listed minors tracked
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Stub adapters instead of real connectors; Map-shaped success bodies (TASK-011 precedent); no submit endpoint in this task; Admin-triggered Owner-less URL shape (path unspecified); partial FR-25 stub coverage for spike-gated dimensions; synthetic remediation CSV; Connection Test JSON shape (schema unspecified)
+- **Required corrections:** None for merge. See Minor items for follow-up.
+
+---
+
+## Recommended Fixes
+1. Document `POST /admin/knowledge-bases/{id}/suspend-ownerless` as an `[ASSUMPTION]` or move it under TASK-017 governance routes — `ActivationController.java` suspend-ownerless mapping.
+2. Remove or wrap the ungated two-argument `LogicalKnowledgeBaseRepository.activate(id, version)` so repository writes cannot skip hard gates.
+3. When TASK-019–021 land, extend `SourceProbe` with named FR-25 / REQ-WIZ-004 dimensions (citation, deletion/move, region/security) instead of more identity-JSON flags.
+4. Extend `ApiErrorResponses` to accept `details` and use it from `RegistryExceptionHandler.hardGate`.
+
+## Minimal Fix Path
+- No code change is required for the stated merge step. The previous hard-gate holes (Git mapping OR’d with `.kb` flags; activate Owner check weaker than `isOwnerless`; stale Dify ACL; Draft→Suspended) are closed on this checkout.
+
+---
+
+## Open Risks / Questions
+- Stub identity keys (`kb_validated`, `kb_contract`, `fail_connection_test`, `acl_mixed`) are an unofficial fixture protocol; TASK-020 must not treat client `kb_validated=true` as a real `.kb` schema.
+- Design is silent whether Owner-less Suspend is automatic, Admin-only, or both; TASK-017 also lists it.
+- Design is silent whether submit is a prerequisite to activate (no `submitted` lifecycle).
+- REQ-KB-008 business/security approval workflows have no API; not invented here (`confirm: true` only).
+- `[ASSUMPTION]` optimistic `config_version` on activate is not in the request body; lost updates rely on read-then-update of the current row.
+- Downstream: TASK-013 catalog will trust `lifecycle=active` / `capability` written by this gate — that is now consistent with the evaluated gates, not a stale-audit bypass.
+
+---
+
+# Architecture Review: TASK-012 Activation & Validation
+
+## Score: 88%
+
+## Violations Found
+
+### P0 (Must Fix)
+- [ ] None identified — feature is package-shaped as registry + adapter probe; no new cross-module protocol leak, schema bypass, or secret-boundary break.
+
+### P1 (Fix Next Touch)
+- [ ] Owner-less Suspend is implemented on `ActivationController` / `ActivationService` (`ActivationController.java:67-80`) instead of Governance Control Service (`docs/04-architecture/mvp-architecture.md` Backend Services; empty `com.atlas.knowledgebase.governance`) — Principle 1 (feature-based structure). TASK-012 notes include FR-28, so this is placement debt for TASK-017, not a missing feature.
+- [ ] New `/api/v1/admin/knowledge-bases/{id}/suspend-ownerless` is not in `mvp-API_IMPLEMENTATION_GUIDE.md` while existing admin routes are `/admin/bindings/*` — Principle 4 (layered API / contract boundary).
+- [ ] `SourceProbe` / `StubSourceProbe` take registry `BindingRecord` and read `source_identity` JSON — `SourceProbe.java:12`, `StubSourceProbe.java:29-37` — Principle 1/4 (decoupling): adapter plane should not depend on registry persistence types; a probe DTO keeps TASK-019–021 isolatable.
+- [ ] Single `@Component` stub switches on `provider_profile` instead of per-profile adapter beans + dispatcher — `StubSourceProbe.java:99-104` — Principle 1 (independently flaggable adapters per ADR-0002). Acceptable as the TASK-012 stub; the next adapter task must not keep growing this switch.
+
+### P2 (Track)
+- [ ] Success bodies are mutable `Map<String, Object>` rather than records — `ActivationController.java:30-93` — Principle 6 (immutability). Matches existing `RegistryController`; project contract is unwrapped JSON, not skill-template `ApiResponse<T>`. Project has no `ApiConstants`.
+- [ ] Duplicate ungated `activate(logicalKbId, expectedVersion)` left beside the gated overload — `LogicalKnowledgeBaseRepository.java:134-154` (pre-existing) vs `160-185` (this PR) — Principle 4 (service must remain the only activation path).
+- [ ] Repository `activate` / `suspend` use `Instant.now()` while `ActivationService` injects `Clock` — `LogicalKnowledgeBaseRepository.java:162,189` — Principle 5 (testable time).
+- [ ] `HardGateException` handler rebuilds the error envelope instead of `ApiErrorResponses` — `RegistryExceptionHandler.java:39-49` — Principle 7 (one error helper). Extra `details` is allowed by the contract.
+- [ ] `suspend` of non-active/non-suspended throws raw `IllegalStateException` — `LogicalKnowledgeBaseRepository.java:211-212` — Principle 7 (boundary errors). Service guards Draft first; race to retired is unspecified for this invented endpoint.
+- [ ] No frontend in this PR. Skill frontend checks (Pinia, `mockData.ts`, CSS vars, `ApiConstants`) are N/A.
+- [ ] No `@RestControllerAdvice` for `Exception.class`; per-package handlers are the established pattern. Pre-existing.
+- [ ] Schema: no new Flyway in this diff; uses TASK-006 `content_audit_result`. No `ddl-auto` / `create-drop` introduced.
+
+## Good Practices Confirmed
+- Domain packages follow the Atlas monolith layout (`registry`, `adapters`, `session`, `audit`), not a flat `controllers/` dump. Activation is Controller → Service → JDBC repositories.
+- `SourceProbe` is the adapter seam; `ActivationService` depends on the interface, not `StubSourceProbe`. Stub is documented as spike-gated for TASK-019–021. Registry does not speak provider HTTP.
+- DTOs that exist are records (`ContentAuditResultRecord`, `ConfirmRequest`, `SourceProbe.AuditCounts`); no JPA entities or `@JsonIgnore`. `HardGateException.details` uses `Map.copyOf`.
+- Session/CSRF filter already wraps `/api/v1`; this feature does not add a second auth path or put secrets in responses (ADR-0006).
+- Hard-gate policy for Git mapping vs `.kb` validation is split on the probe (`hasOriginalVersionMapping` vs `gitKbValidated`); activate applies mapping to every binding before the Browse-only capability override.
+- Content-free audit writes; remediation CSV avoids document titles.
+- No new Flyway/DDL; V2 table used as-is.
+
+## Recommendation
+Keep the `SourceProbe` split. On TASK-017, move Owner-less Suspend into `governance/` and onto a documented `/admin` contract so activation evaluation and lifecycle mutation do not keep accumulating in `registry`. When the first real adapter lands, introduce a per-profile dispatcher and a registry-free probe DTO rather than growing `StubSourceProbe`’s `source_identity` switch.
+
+---
+
+## Merge gate: **Pass**
+
+Critical: none. Major: none. Architecture P0: none. Minor / P1–P2 (Owner-less Admin URL placement, remaining FR-25 stub slots, ungated repository `activate(id, version)`) may be listed without blocking.
