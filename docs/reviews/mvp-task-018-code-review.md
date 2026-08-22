@@ -250,6 +250,141 @@ None identified.
 
 ## Gate A Verdict
 - **Pass**
+
+---
+
+# Code vs Design Review Report — TASK-018 (Gate B final)
+
+## Review Scope
+- **Design reviewed:** `docs/03-spec/mvp-spec.md`, `docs/05-design/mvp-design.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`, `docs/04-architecture/mvp-architecture.md`, `docs/04-architecture/mvp-data-model.md`, `docs/architecture/decisions/ADR-0010-issue-report-note-boundary.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` (TASK-018)
+- **Code / files inspected:** `backend/src/main/java/com/atlas/knowledgebase/issues/*`, `backend/src/main/java/com/atlas/knowledgebase/chat/ChatMessageRepository.java`, `backend/src/main/java/com/atlas/knowledgebase/evidence/CitationRepository.java`, `backend/src/main/java/com/atlas/knowledgebase/access/KbAccessService.java`, `backend/src/main/resources/db/migration/V2__core_entities.sql`, `backend/src/main/resources/db/migration/V4__issue_report_note.sql`, `backend/src/test/java/com/atlas/knowledgebase/issues/IssueApiTest.java`
+- **Review objective:** Verify current `HEAD` `efc51d11847bbeac57def553dd82667fbd1a21b7` against accepted TASK-018 behavior and Gate B checks, excluding `docs/reviews/mvp-task-018-code-review.md`.
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 95%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** The implementation now matches the accepted issue-routing design on the core contract: session+CSRF protection, private-thread ownership, completed-answer boundary, content-free diagnostics, separate `report_note` persistence, routing behavior, and audit redaction. The Flyway change is additive and Oracle-compatible in shape. I did not find a blocker that should stop merge or the next implementation step.
+
+---
+
+## Areas of Good Alignment
+- `POST /api/v1/issues` is implemented at the correct boundary with authenticated session use and CSRF enforcement through the existing cookie-auth stack.
+- Ownership checks now resolve both assistant messages and citations only through the current user’s active private thread, matching the accepted private-history boundary.
+- Message-only reports now require a `completed` assistant message; failed/streaming/cancelled placeholders are rejected by lookup, which matches ADR-0010.
+- `report_note` is stored separately in `issue_report.report_note`, bounded in application code to 1000 characters, and omitted from response diagnostics and ordinary audit details.
+- Routing logic matches the accepted provider/category map: Git content/citation to `kb_correct_flow`, Confluence content/citation to `confluence_original_flow`, Dify content/citation to `kb_owner_remediation`, connector issues to `connector_owner`, retrieval/model to `atlas_team`, security to `security_process`.
+- Tests cover cross-user denial, CSRF requirement, note redaction from diagnostics/audit, provider routing, completed-only message ownership, and persistence of the separate note field.
+- The schema change is additive and nullable: `ALTER TABLE issue_report ADD report_note CLOB;` is consistent with the accepted data model and Oracle target.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+None identified.
+
+### Major
+None identified.
+
+### Minor
+Response diagnostics are broader than the minimal example in the API guide.
+- **Design / task expected:** The guide’s `201` example shows `request_id`, `logical_kb_id`, `binding_id`, and `authorization_result`.
+- **Code currently does:** `IssueService.diagnostics()` also returns `message_id`, `citation_id`, `provider`, `status`, and `issue_id` when available.
+- **Why it matters:** This is still within the spec’s “non-sensitive identifiers such as ...” boundary, so it is not a design break, but it means the implementation is shipping a somewhat larger surface than the example response.
+- **Recommended fix:** Optional only if the team wants the runtime response to mirror the example more tightly; otherwise keep as acceptable variation.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Session + CSRF protection for issue creation | Implemented |
+| Current-user private-thread ownership | Implemented |
+| Completed-answer-only message reports | Implemented |
+| Citation-required content/citation categories | Implemented |
+| Content-free diagnostics only | Implemented |
+| No automatic prompt/evidence/answer body attach | Implemented |
+| Provider/category route mapping | Implemented |
+| Separate bounded reporter note field | Implemented |
+| Ordinary audit without sensitive content | Implemented |
+| Additive nullable schema migration | Implemented |
+| Oracle-specific migration execution gate | Partial |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: TASK-018 issue classification/routing endpoint, allow-listed diagnostics boundary, routing targets, no automatic full-body attach, tests/docs, ADR-backed separate note boundary.
+- Tasks partially implemented: Oracle portability is structurally aligned, but this review only verified H2-backed test execution, not a live Oracle migration run.
+- Tasks not yet reflected in code: None identified within TASK-018 scope.
+- Code changes not clearly mapped to any task: None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+- Returning extra non-sensitive identifiers in `diagnostics` beyond the example response.
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** None material; `IssueService` appropriately coordinates repositories/access/audit for this slice.
+- **Hidden shortcuts:** The current authorization check uses existing `KbAccessService` semantics, which are already documented as a temporary MVP assumption elsewhere in the codebase; this task does not weaken that boundary.
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** Aligned.
+- **Validation behavior:** Aligned. Body required, context required, identifier format checked, category parsing enforced, citation required for content/citation categories, note length bounded.
+- **Retry / skip / resume / failure handling:** Not applicable for this endpoint.
+- **User-visible behavior:** Aligned with accepted `201`, `404`, `422`, and CSRF-forbidden flows covered by tests.
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Aligned for current scope; routing is symbolic and does not mutate external systems.
+- **Secret / credential safety:** Aligned; no provider/model credentials are surfaced.
+- **Logging / audit hooks:** Aligned; ordinary audit remains content-free and stores only bounded route/category metadata.
+- **Error propagation at integration boundaries:** Aligned with the shared API error envelope.
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge / next implementation step — Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Broader-but-still-allow-listed response diagnostics payload
+- **Required corrections:** None
+
+---
+
+## Recommended Fixes
+1. Optionally narrow the `diagnostics` response to the exact example fields in the API guide if the team wants stricter contract minimalism.
+2. Keep the existing Oracle migration gate in the main workflow; this review did not execute Oracle itself.
+
+## Minimal Fix Path
+- No code changes are required for merge readiness from this Gate B review.
+
+---
+
+## Open Risks / Questions
+- This review verified Flyway V4 shape and H2 execution, not an Oracle runtime migration on a real Oracle instance.
+- The accepted guide gives an example response rather than an explicit closed schema for `diagnostics`; if the team wants a locked response surface, the contract should say so explicitly.
+- `KbAccessService` still uses the repository’s current MVP authorization assumption model. That is pre-existing and not introduced by this PR, but future delegated ACL work could change how `authorization_result` is derived.
+
+## Command Results
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'`
+  - Passed on current `HEAD` `efc51d11847bbeac57def553dd82667fbd1a21b7`
+- `./mvnw -q -pl backend -Dtest=IssueApiTest test`
+  - Passed
+  - Flyway applied migrations through `v4`, including `V4__issue_report_note.sql`, under the backend test profile
+- Reviewed diff:
+  - `git diff origin/main...HEAD -- . ':(exclude)docs/reviews/mvp-task-018-code-review.md'`
+
+## Final Gate B Verdict
+- **Gate B status:** Pass
+- **Readiness:** Ready to merge from a design-compliance and implementation-boundary perspective
+- **Critical/Major/Minor summary:** 0 Critical, 0 Major, 1 Minor
 - **Critical/Major remaining:** None
 
 ---
