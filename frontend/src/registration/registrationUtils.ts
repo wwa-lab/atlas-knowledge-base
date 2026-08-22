@@ -46,8 +46,18 @@ export type AuditResult = {
   remediation_download_path?: string
 }
 
+let bindingSequence = 0
+
+function generatedBindingId(): string {
+  const random = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID().replaceAll('-', '')
+    : `${Date.now().toString(36)}${(++bindingSequence).toString(36)}`
+  return `bnd_ui_${random}`
+}
+
 export function newBinding(): BindingDraft {
   return {
+    binding_id: generatedBindingId(),
     provider_profile: 'git_markdown',
     source_identity: { repo: '', commit: '' },
     role: 'canonical',

@@ -6,6 +6,7 @@ describe('registration utilities', () => {
   it('keeps the accepted wizard sequence and safe defaults', () => {
     expect(WIZARD_STEPS).toEqual(['Basics', 'Sources', 'Access & Classification', 'Connection Test', 'Content Audit', 'Review & Submit'])
     expect(newBinding()).toMatchObject({ provider_profile: 'git_markdown', role: 'canonical', auth_method: 'delegated_user' })
+    expect(newBinding().binding_id).toMatch(/^bnd_ui_/)
   })
 
   it('validates required basics and JSON object boundaries', () => {

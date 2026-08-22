@@ -49,10 +49,36 @@ const loading = ref(false)
 const error = ref('')
 const notice = ref('')
 const roleAllowed = ref<boolean | null>(null)
+const lastSavedFingerprint = ref<string | null>(null)
 
 const stepLabel = computed(() => WIZARD_STEPS[step.value])
 const canGoBack = computed(() => step.value > 0 && !loading.value)
 const canGoNext = computed(() => !loading.value && step.value < WIZARD_STEPS.length - 1)
+
+function draftFingerprint(): string {
+  return JSON.stringify({
+    name: name.value.trim(),
+    description: description.value.trim(),
+    discoverability: discoverability.value,
+    purpose: purpose.value.trim(),
+    classification: classification.value.trim(),
+    modelEligible: modelEligible.value,
+    bindings: bindings.value.map((binding) => ({
+      binding_id: binding.binding_id || '',
+      provider_profile: binding.provider_profile,
+      sourceIdentityText: binding.sourceIdentityText,
+      role: binding.role,
+      auth_method: binding.auth_method,
+      credential_owner: binding.credential_owner || '',
+      freshnessText: binding.freshnessText,
+      locatorText: binding.locatorText,
+      regionText: binding.regionText,
+      model_eligible: binding.model_eligible,
+    })),
+  })
+}
+
+const isDraftDirty = computed(() => Boolean(draft.value) && (lastSavedFingerprint.value === null || draftFingerprint() !== lastSavedFingerprint.value))
 
 function safeApiPath(value: string | undefined): string | undefined {
   if (!value?.trim()) return undefined
@@ -150,6 +176,10 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
     error.value = basicsError
     return false
   }
+  if (!isDraftDirty.value) {
+    notice.value = 'Draft is already saved; no changes were sent.'
+    return true
+  }
   const parsed = includeBindings ? parsedBindings() : undefined
   if (includeBindings && !parsed) return false
   loading.value = true
@@ -169,6 +199,7 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
         ...(includeBindings ? { bindings: parsed } : {}),
       }),
     })
+    if (includeBindings) lastSavedFingerprint.value = draftFingerprint()
     connection.value = null
     audit.value = null
     notice.value = 'Draft saved. Changes are versioned and ready for the next gate.'
@@ -179,6 +210,14 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
   } finally {
     loading.value = false
   }
+}
+
+async function saveForReview(): Promise<void> {
+  if (audit.value && !isDraftDirty.value) {
+    notice.value = 'Draft is already saved after the latest Content Audit; no binding reset was performed.'
+    return
+  }
+  await saveDraft(true)
 }
 
 async function runConnectionTest(): Promise<void> {
@@ -343,7 +382,7 @@ onMounted(loadRole)
           <dl class="catalog-facts"><div><dt>Purpose</dt><dd>{{ purpose || 'Not reported' }}</dd></div><div><dt>Classification</dt><dd>{{ classification || 'Not reported' }}</dd></div><div><dt>Discoverability</dt><dd>{{ discoverability }}</dd></div><div><dt>Sources</dt><dd>{{ bindings.length }}</dd></div><div><dt>Requested capability</dt><dd>{{ modelEligible ? 'Chat-ready after gates' : 'Browse-only' }}</dd></div></dl>
           <p class="panel-help">Save the Draft to hand it to an Atlas Admin for activation. Activation is a separate hard-gated Admin action; this wizard never overrides security or evidence checks.</p>
         </div>
-        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="saveDraft(true)">{{ loading ? 'Saving…' : 'Save Draft for Admin review' }}</button>
+        <button class="button button-primary" type="button" :disabled="loading" @click.prevent="saveForReview">{{ loading ? 'Saving…' : 'Save Draft for Admin review' }}</button>
       </fieldset>
 
       <footer class="wizard-actions">
