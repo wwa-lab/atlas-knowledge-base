@@ -7,6 +7,7 @@ import com.atlas.knowledgebase.adapters.Retriever;
 import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import com.atlas.knowledgebase.chat.ChatClassificationPolicy;
 import com.atlas.knowledgebase.chat.ChatValidationException;
 import com.atlas.knowledgebase.registry.BindingRecord;
@@ -669,7 +670,12 @@ public class RetrievalOrchestrator {
 
     private BindingAuthorization awaitAuthorization(PendingAuthorization pending) {
         try {
-            return providerExecution.await(pending.call());
+            BindingAuthorization authorization = providerExecution.await(pending.call());
+            pending.call()
+                    .reclassify(
+                            telemetryOutcome(authorization.result().outcome()),
+                            authorization.result().retryAfter());
+            return authorization;
         } catch (TimeoutException e) {
             return new BindingAuthorization(
                     pending.item(), Retriever.AuthorizationResult.timeout(), false);
@@ -689,7 +695,12 @@ public class RetrievalOrchestrator {
 
     private BindingOutcome awaitRetrieval(PendingRetrieval pending) {
         try {
-            return providerExecution.await(pending.call());
+            BindingOutcome outcome = providerExecution.await(pending.call());
+            pending.call()
+                    .reclassify(
+                            telemetryOutcome(outcome.result().outcome()),
+                            outcome.result().retryAfter());
+            return outcome;
         } catch (TimeoutException e) {
             return new BindingOutcome(
                     pending.item().kb().logicalKbId(),
@@ -732,6 +743,24 @@ public class RetrievalOrchestrator {
             };
         }
         return Retriever.AuthorizationResult.unknown();
+    }
+
+    private ConnectorTelemetry.Outcome telemetryOutcome(Retriever.AuthorizationOutcome outcome) {
+        return switch (outcome) {
+            case AUTHORIZED -> ConnectorTelemetry.Outcome.SUCCESS;
+            case QUOTA -> ConnectorTelemetry.Outcome.QUOTA;
+            case TIMEOUT -> ConnectorTelemetry.Outcome.TIMEOUT;
+            case ACCESS_DENIED, FAILED, SECURITY, UNKNOWN -> ConnectorTelemetry.Outcome.FAILURE;
+        };
+    }
+
+    private ConnectorTelemetry.Outcome telemetryOutcome(Retriever.Outcome outcome) {
+        return switch (outcome) {
+            case SUCCESS -> ConnectorTelemetry.Outcome.SUCCESS;
+            case QUOTA -> ConnectorTelemetry.Outcome.QUOTA;
+            case TIMEOUT -> ConnectorTelemetry.Outcome.TIMEOUT;
+            case FAILED, SECURITY, UNKNOWN -> ConnectorTelemetry.Outcome.FAILURE;
+        };
     }
 
     private Retriever.Result classifyFailure(Throwable error) {

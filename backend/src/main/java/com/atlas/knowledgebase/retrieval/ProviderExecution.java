@@ -243,6 +243,11 @@ public final class ProviderExecution implements AutoCloseable {
         public long latencyMs() {
             return state.latencyMs();
         }
+
+        /** Reclassifies a normally returned adapter result after its domain outcome is known. */
+        public void reclassify(ConnectorTelemetry.Outcome outcome, Duration retryAfter) {
+            state.reclassify(outcome, retryAfter);
+        }
     }
 
     public enum UnavailabilityCause {
@@ -455,6 +460,10 @@ public final class ProviderExecution implements AutoCloseable {
 
         private long latencyMs() {
             return telemetryOperation.elapsedMillis();
+        }
+
+        private void reclassify(ConnectorTelemetry.Outcome outcome, Duration retryAfter) {
+            telemetryOperation.reclassify(outcome, retryAfter);
         }
 
         private void recordFailure(Throwable error) {

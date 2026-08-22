@@ -161,7 +161,7 @@ public final class ConnectorTelemetry {
         state.lastOccurredAt.set(Instant.now());
     }
 
-    private void finish(
+    private long finish(
             String connector,
             String operation,
             long startedAtNanos,
@@ -173,22 +173,62 @@ public final class ConnectorTelemetry {
         state.totalLatencyMs.addAndGet(latencyMs);
         state.maxLatencyMs.accumulateAndGet(latencyMs, Math::max);
         state.lastOccurredAt.set(Instant.now());
-        switch (outcome) {
-            case SUCCESS -> state.successes.incrementAndGet();
-            case FAILURE -> state.failures.incrementAndGet();
-            case TIMEOUT -> state.timeouts.incrementAndGet();
-            case QUOTA -> {
-                state.quotaLimited.incrementAndGet();
-                updateRetryAfter(state, retryAfter);
-            }
-            case CANCELLED -> state.cancelled.incrementAndGet();
-        }
+        updateOutcome(state, outcome, 1, retryAfter);
         AnalyticsState analyticsState =
                 analytics.computeIfAbsent(
-                        "connector." + operation + ":" + outcome.name().toLowerCase(),
+                        analyticsKey(operation, outcome),
                         ignored -> new AnalyticsState());
         analyticsState.count.incrementAndGet();
         analyticsState.latencyMsTotal.addAndGet(latencyMs);
+        return latencyMs;
+    }
+
+    private void reclassify(
+            String connector,
+            String operation,
+            Outcome previous,
+            Outcome replacement,
+            Duration retryAfter,
+            long latencyMs) {
+        ConnectorState state = connectors.computeIfAbsent(connector, ignored -> new ConnectorState());
+        updateOutcome(state, previous, -1, null);
+        updateOutcome(state, replacement, 1, retryAfter);
+        AnalyticsState previousAnalytics = analytics.get(analyticsKey(operation, previous));
+        if (previousAnalytics != null) {
+            previousAnalytics.count.updateAndGet(value -> Math.max(0, value - 1));
+            previousAnalytics.latencyMsTotal.updateAndGet(
+                    value -> Math.max(0, value - latencyMs));
+        }
+        AnalyticsState replacementAnalytics =
+                analytics.computeIfAbsent(
+                        analyticsKey(operation, replacement), ignored -> new AnalyticsState());
+        replacementAnalytics.count.incrementAndGet();
+        replacementAnalytics.latencyMsTotal.addAndGet(latencyMs);
+        state.lastOccurredAt.set(Instant.now());
+    }
+
+    private static void updateOutcome(
+            ConnectorState state, Outcome outcome, int delta, Duration retryAfter) {
+        switch (outcome) {
+            case SUCCESS -> add(state.successes, delta);
+            case FAILURE -> add(state.failures, delta);
+            case TIMEOUT -> add(state.timeouts, delta);
+            case QUOTA -> {
+                add(state.quotaLimited, delta);
+                if (delta > 0) {
+                    updateRetryAfter(state, retryAfter);
+                }
+            }
+            case CANCELLED -> add(state.cancelled, delta);
+        }
+    }
+
+    private static void add(AtomicLong counter, int delta) {
+        counter.updateAndGet(value -> Math.max(0, value + delta));
+    }
+
+    private static String analyticsKey(String operation, Outcome outcome) {
+        return "connector." + operation + ":" + outcome.name().toLowerCase();
     }
 
     private static void updateRetryAfter(ConnectorState state, Duration retryAfter) {
@@ -244,7 +284,9 @@ public final class ConnectorTelemetry {
         private final String connector;
         private final String operation;
         private final long startedAtNanos;
-        private final AtomicBoolean finished = new AtomicBoolean();
+        private boolean finished;
+        private Outcome recordedOutcome;
+        private long recordedLatencyMs;
 
         private Operation(
                 ConnectorTelemetry owner, String connector, String operation, long startedAtNanos) {
@@ -278,10 +320,28 @@ public final class ConnectorTelemetry {
             return ConnectorTelemetry.elapsedMillis(startedAtNanos);
         }
 
-        private void finish(Outcome outcome, Duration retryAfter) {
-            if (finished.compareAndSet(false, true)) {
-                owner.finish(connector, operation, startedAtNanos, outcome, retryAfter);
+        private synchronized void finish(Outcome outcome, Duration retryAfter) {
+            if (finished) {
+                return;
             }
+            finished = true;
+            recordedOutcome = outcome;
+            recordedLatencyMs = owner.finish(connector, operation, startedAtNanos, outcome, retryAfter);
+        }
+
+        /** Reclassifies a normally returned adapter result after its domain outcome is known. */
+        public synchronized void reclassify(Outcome outcome, Duration retryAfter) {
+            if (!finished || outcome == null || recordedOutcome == outcome) {
+                return;
+            }
+            owner.reclassify(
+                    connector,
+                    operation,
+                    recordedOutcome,
+                    outcome,
+                    retryAfter,
+                    recordedLatencyMs);
+            recordedOutcome = outcome;
         }
     }
 

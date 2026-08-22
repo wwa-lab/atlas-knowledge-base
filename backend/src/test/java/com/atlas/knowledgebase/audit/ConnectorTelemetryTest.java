@@ -69,6 +69,24 @@ class ConnectorTelemetryTest {
     }
 
     @Test
+    void returnedDomainOutcomeCanReplaceTransportSuccess() {
+        ConnectorTelemetry telemetry = new ConnectorTelemetry();
+        ConnectorTelemetry.Operation operation = telemetry.start("dify", "retrieve");
+
+        operation.success();
+        operation.reclassify(ConnectorTelemetry.Outcome.QUOTA, Duration.ofSeconds(2));
+
+        assertThat(telemetry.snapshot("dify").successes()).isZero();
+        assertThat(telemetry.snapshot("dify").quotaLimited()).isEqualTo(1);
+        assertThat(telemetry.snapshot("dify").lastRetryAfterMs()).isEqualTo(2_000);
+        assertThat(telemetry.analyticsSnapshots())
+                .containsEntry(
+                        "connector.retrieve:quota",
+                        new ConnectorTelemetry.AnalyticsSnapshot(
+                                "connector.retrieve:quota", 1, 0, 0));
+    }
+
+    @Test
     void exposesResilienceBackoffAndCircuitStateWithoutProviderPayloads() {
         ConnectorTelemetry telemetry = new ConnectorTelemetry();
 
