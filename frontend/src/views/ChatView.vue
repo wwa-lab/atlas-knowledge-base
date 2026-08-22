@@ -5,15 +5,14 @@ import {
   chatDisabledReason,
   errorMessage,
   isChatSelectable,
+  isPartialCoverage,
+  normalizeConflict,
+  parseFailure,
   parseSseRecords,
+  type ChatCoverage,
+  type ChatFailure,
   type KnowledgeBaseSummary,
 } from '../chat/chatUtils'
-
-type Coverage = {
-  successful?: string[]
-  failed?: string[]
-  timed_out?: string[]
-}
 
 type Citation = {
   citation_id: string
@@ -30,9 +29,10 @@ type ChatMessage = {
   answer?: string | null
   request_id?: string | null
   citations?: Citation[]
-  coverage?: Coverage
+  coverage?: ChatCoverage
   conflict?: unknown
   error?: string
+  failure?: ChatFailure
 }
 
 type ChatThread = {
@@ -49,15 +49,18 @@ type ChatList = {
 class ChatApiError extends Error {
   readonly status: number
   readonly payload: unknown
+  readonly failure: ChatFailure
 
   constructor(
     message: string,
     status: number,
     payload: unknown,
+    failure = parseFailure(payload, message),
   ) {
     super(message)
     this.status = status
     this.payload = payload
+    this.failure = failure
   }
 }
 
@@ -78,6 +81,7 @@ async function getCsrfToken(): Promise<string> {
   const response = await fetch('/api/v1/auth/csrf', { credentials: 'include' })
   const payload = await readResponse(response)
   if (!response.ok || typeof payload !== 'object' || payload === null) {
+    csrfToken = null
     throw new ChatApiError(errorMessage(payload, 'Sign in to use Chat.'), response.status, payload)
   }
   const value = (payload as { csrf_token?: unknown }).csrf_token
@@ -99,7 +103,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...init, headers, credentials: 'include' })
   const payload = await readResponse(response)
   if (!response.ok) {
-    if (response.status === 401) csrfToken = null
+    if (response.status === 401 || response.status === 403) csrfToken = null
     throw new ChatApiError(errorMessage(payload, `Request failed (${response.status}).`), response.status, payload)
   }
   return payload as T
@@ -125,7 +129,7 @@ async function streamRequest(
   })
   if (!response.ok) {
     const payload = await readResponse(response)
-    if (response.status === 401) csrfToken = null
+    if (response.status === 401 || response.status === 403) csrfToken = null
     throw new ChatApiError(errorMessage(payload, `Request failed (${response.status}).`), response.status, payload)
   }
   if (!response.body) throw new ChatApiError('The Chat stream did not start.', response.status, null)
@@ -155,6 +159,7 @@ const busy = ref(false)
 const scopeSaving = ref(false)
 const error = ref('')
 const authRequired = ref(false)
+const staleScopeIds = ref<string[]>([])
 const activeAssistantId = ref<string | null>(null)
 const streamAbort = ref<AbortController | null>(null)
 
@@ -163,12 +168,64 @@ const selectedKnowledgeBases = computed(() =>
 )
 const hasMessages = computed(() => messages.value.length > 0)
 const canAsk = computed(
-  () => Boolean(selectedIds.value.length > 0 && draft.value.trim() && !busy.value),
+  () => Boolean(selectedIds.value.length > 0 && staleScopeIds.value.length === 0 && draft.value.trim() && !busy.value),
 )
 const hasSelectableKnowledgeBase = computed(() => knowledgeBases.value.some(isChatSelectable))
 
 function payloadRecord(data: unknown): Record<string, unknown> {
   return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}
+}
+
+function applyFailure(target: ChatMessage | null, failure: ChatFailure): void {
+  if (target) {
+    target.failure = failure
+    target.error = failure.message
+  }
+  if (failure.category === 'authentication' || failure.code === 'SESSION_REQUIRED') {
+    authRequired.value = true
+  }
+  error.value = failure.message
+}
+
+function nextStepLabel(nextStep: string | undefined): string | undefined {
+  if (!nextStep) return undefined
+  const labels: Record<string, string> = {
+    start_sso: 'Sign in with corporate SSO.',
+    fetch_csrf_and_retry: 'Refresh the session and retry.',
+    request_access: 'Request access to the knowledge base.',
+    retry_or_change_scope: 'Retry safely or change the Chat scope.',
+    retry_or_contact_support: 'Retry safely or contact Atlas support.',
+    retry_after_provider_recovers: 'Retry after the provider recovers.',
+  }
+  return labels[nextStep] ?? nextStep.replaceAll('_', ' ')
+}
+
+function failureNeedsSignIn(failure: ChatFailure | undefined): boolean {
+  return failure?.category === 'authentication' || failure?.code === 'SESSION_REQUIRED'
+}
+
+function retryableMessage(message: ChatMessage): boolean {
+  if (message.message_id.startsWith('local-')) return false
+  return ['failed', 'incomplete_cancelled'].includes(message.status) ||
+    (message.status === 'completed' && isPartialCoverage(message.coverage))
+}
+
+function coverageItems(coverage: ChatCoverage | undefined, key: keyof ChatCoverage): string[] {
+  const value = coverage?.[key]
+  return Array.isArray(value)
+    ? (value.filter((item): item is string => typeof item === 'string') as string[])
+    : []
+}
+
+function omittedCoverage(coverage: ChatCoverage | undefined): string[] {
+  const value = coverage?.item_omitted
+  return Array.isArray(value) ? value.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))) : []
+}
+
+function retryAfterText(coverage: ChatCoverage | undefined): string {
+  const retryAfter = coverage?.retry_after
+  if (!retryAfter || Object.keys(retryAfter).length === 0) return 'Not reported'
+  return Object.entries(retryAfter).map(([source, duration]) => `${source}: ${duration}`).join(', ')
 }
 
 function chooseInitialScope(items: string[] | undefined): string[] {
@@ -180,11 +237,20 @@ function chooseInitialScope(items: string[] | undefined): string[] {
   return first ? [first.logical_kb_id] : []
 }
 
+function validScopeIds(ids: string[]): string[] {
+  return ids.filter((id) => knowledgeBases.value.some((kb) => kb.logical_kb_id === id && isChatSelectable(kb)))
+}
+
 async function loadThread(threadId: string): Promise<void> {
   const loaded = await request<ChatThread>(`/api/v1/chats/${encodeURIComponent(threadId)}`)
   thread.value = loaded
-  selectedIds.value = [...loaded.logical_kb_ids]
+  const validIds = validScopeIds(loaded.logical_kb_ids)
+  staleScopeIds.value = loaded.logical_kb_ids.filter((id) => !validIds.includes(id))
+  selectedIds.value = validIds
   messages.value = [...(loaded.messages ?? [])]
+  if (staleScopeIds.value.length > 0) {
+    error.value = `Some saved Chat scope is no longer available: ${staleScopeIds.value.join(', ')}.`
+  }
 }
 
 async function ensureThread(): Promise<void> {
@@ -213,6 +279,7 @@ async function load(): Promise<void> {
     if (existing) {
       await loadThread(existing.thread_id)
     } else {
+      staleScopeIds.value = []
       selectedIds.value = chooseInitialScope(chatList.last_valid_logical_kb_ids)
     }
   } catch (cause) {
@@ -244,6 +311,7 @@ async function updateScope(nextIds: string[]): Promise<void> {
     )
     thread.value = updated
     selectedIds.value = [...updated.logical_kb_ids]
+    staleScopeIds.value = []
     if (mode) messages.value = []
   } catch (cause) {
     selectedIds.value = previous
@@ -251,6 +319,15 @@ async function updateScope(nextIds: string[]): Promise<void> {
   } finally {
     scopeSaving.value = false
   }
+}
+
+async function repairScope(): Promise<void> {
+  const next = selectedIds.value.length > 0 ? [...selectedIds.value] : chooseInitialScope(undefined)
+  if (next.length === 0) {
+    error.value = 'Select an available Chat-ready knowledge base to repair this scope.'
+    return
+  }
+  await updateScope(next)
 }
 
 async function toggleKnowledgeBase(kb: KnowledgeBaseSummary): Promise<void> {
@@ -296,17 +373,18 @@ function updateFromStream(assistant: ChatMessage, event: { event: string; data: 
     assistant.status = 'completed'
     assistant.answer = typeof data.answer === 'string' ? data.answer : assistant.answer
     assistant.citations = Array.isArray(data.citations) ? (data.citations as Citation[]) : []
-    assistant.coverage = payloadRecord(data.coverage) as Coverage
+    assistant.coverage = payloadRecord(data.coverage) as ChatCoverage
     assistant.conflict = data.conflict
+    assistant.failure = undefined
+    assistant.error = undefined
     assistant.request_id = typeof data.request_id === 'string' ? data.request_id : assistant.request_id
     activeAssistantId.value = null
     return
   }
   if (event.event === 'error') {
     assistant.status = 'failed'
-    assistant.error = errorMessage(data, 'The Chat turn failed safely.')
+    applyFailure(assistant, parseFailure(data, 'The Chat turn failed safely.'))
     activeAssistantId.value = null
-    error.value = assistant.error
   }
 }
 
@@ -321,13 +399,30 @@ async function streamAssistant(
   assistant.status = 'processing'
   assistant.answer = ''
   assistant.error = undefined
+  assistant.failure = undefined
+  let terminal = false
   try {
-    await streamRequest(path, body, controller.signal, (event) => updateFromStream(assistant, event))
+    await streamRequest(path, body, controller.signal, (event) => {
+      if (event.event === 'final' || event.event === 'error') terminal = true
+      updateFromStream(assistant, event)
+    })
+    if (!terminal && !controller.signal.aborted) {
+      assistant.status = 'failed'
+      applyFailure(assistant, {
+        category: 'connection',
+        code: 'STREAM_ENDED_EARLY',
+        message: 'The Chat stream ended before completion.',
+        next_step: 'retry_or_change_scope',
+      })
+      activeAssistantId.value = null
+    }
   } catch (cause) {
     if (controller.signal.aborted) return
     assistant.status = 'failed'
-    assistant.error = cause instanceof Error ? cause.message : 'The Chat stream failed safely.'
-    error.value = assistant.error
+    const failure = cause instanceof ChatApiError
+      ? cause.failure
+      : parseFailure(cause, cause instanceof Error ? cause.message : 'The Chat stream failed safely.')
+    applyFailure(assistant, failure)
     activeAssistantId.value = null
   } finally {
     if (streamAbort.value === controller) streamAbort.value = null
@@ -367,7 +462,10 @@ async function send(): Promise<void> {
     )
   } catch (cause) {
     draft.value = question
-    error.value = cause instanceof Error ? cause.message : 'The question could not be sent.'
+    const failure = cause instanceof ChatApiError
+      ? cause.failure
+      : parseFailure(cause, cause instanceof Error ? cause.message : 'The question could not be sent.')
+    applyFailure(null, failure)
   } finally {
     busy.value = false
   }
@@ -378,18 +476,44 @@ async function cancel(): Promise<void> {
   const currentThread = thread.value
   if (!assistant || !currentThread) return
   error.value = ''
+  let confirmed = assistant.message_id.startsWith('local-')
+  let reconciled = false
   try {
     if (!assistant.message_id.startsWith('local-')) {
-      await request(
+      const response = await request<{ status?: string }>(
         `/api/v1/chats/${encodeURIComponent(currentThread.thread_id)}/messages/${encodeURIComponent(assistant.message_id)}/cancel`,
         { method: 'POST' },
       )
+      confirmed = response.status === 'incomplete_cancelled'
+      if (!confirmed) throw new Error('The Chat cancellation was not confirmed.')
     }
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'The Chat turn could not be cancelled.'
+    if (cause instanceof ChatApiError && cause.status === 409) {
+      streamAbort.value?.abort()
+      try {
+        await loadThread(currentThread.thread_id)
+        reconciled = true
+        error.value = ''
+      } catch {
+        // Keep the original cancellation failure visible when reconciliation is unavailable.
+      }
+    }
+    if (!reconciled) {
+      const failure = cause instanceof ChatApiError
+        ? cause.failure
+        : parseFailure(cause, cause instanceof Error ? cause.message : 'The Chat turn could not be cancelled.')
+      applyFailure(assistant, failure)
+    }
   } finally {
     streamAbort.value?.abort()
-    assistant.status = 'incomplete_cancelled'
+    if (!reconciled && confirmed) {
+      assistant.status = 'incomplete_cancelled'
+      assistant.failure = undefined
+      assistant.error = undefined
+      error.value = ''
+    } else if (!reconciled && !confirmed) {
+      assistant.status = 'failed'
+    }
     activeAssistantId.value = null
     busy.value = false
   }
@@ -397,7 +521,7 @@ async function cancel(): Promise<void> {
 
 async function retry(message: ChatMessage): Promise<void> {
   const currentThread = thread.value
-  if (!currentThread || busy.value || !['failed', 'incomplete_cancelled'].includes(message.status)) return
+  if (!currentThread || busy.value || !retryableMessage(message)) return
   error.value = ''
   busy.value = true
   try {
@@ -421,11 +545,6 @@ function statusLabel(status: string): string {
   }[status] ?? status
 }
 
-function coverageItems(coverage: Coverage | undefined, key: keyof Coverage): string[] {
-  const value = coverage?.[key]
-  return Array.isArray(value) ? value : []
-}
-
 function conflictText(conflict: unknown): string {
   if (typeof conflict === 'string') return conflict
   try {
@@ -433,6 +552,10 @@ function conflictText(conflict: unknown): string {
   } catch {
     return 'A disagreement was detected.'
   }
+}
+
+function disabledReasonId(kb: KnowledgeBaseSummary): string {
+  return `kb-reason-${kb.logical_kb_id.replace(/[^A-Za-z0-9_-]/g, '-')}`
 }
 
 onMounted(load)
@@ -467,6 +590,12 @@ onBeforeUnmount(() => streamAbort.value?.abort())
           <span class="count-badge">{{ selectedIds.length }}/5</span>
         </div>
         <p class="panel-help">Select one to five Chat-ready sources. Browse-only sources remain visible but disabled.</p>
+        <p v-if="staleScopeIds.length" class="notice notice-warning scope-repair" role="alert">
+          Saved scope contains unavailable knowledge bases: {{ staleScopeIds.join(', ') }}.
+          <button type="button" class="button button-secondary" :disabled="scopeSaving || busy" @click="repairScope">
+            Repair scope
+          </button>
+        </p>
         <fieldset class="scope-list" :disabled="busy || scopeSaving">
           <legend class="sr-only">Chat knowledge-base scope</legend>
           <label
@@ -479,12 +608,13 @@ onBeforeUnmount(() => streamAbort.value?.abort())
               type="checkbox"
               :checked="selectedIds.includes(kb.logical_kb_id)"
               :disabled="!isChatSelectable(kb)"
+              :aria-describedby="isChatSelectable(kb) ? undefined : disabledReasonId(kb)"
               @change="toggleKnowledgeBase(kb)"
             />
             <span class="scope-option-copy">
               <strong>{{ kb.name }}</strong>
               <small v-if="isChatSelectable(kb)">Chat-ready · {{ kb.health ?? 'health unknown' }}</small>
-              <small v-else>{{ chatDisabledReason(kb) }}</small>
+              <small v-else :id="disabledReasonId(kb)">{{ chatDisabledReason(kb) }}</small>
             </span>
           </label>
           <p v-if="knowledgeBases.length === 0" class="empty-small">No catalog entries are available.</p>
@@ -524,26 +654,48 @@ onBeforeUnmount(() => streamAbort.value?.abort())
               </header>
               <p v-if="message.role === 'user'" class="message-text">{{ message.question }}</p>
               <div v-else class="assistant-content">
-                <p v-if="message.answer" class="message-text answer-text">{{ message.answer }}</p>
-                <p v-else-if="message.status === 'processing' || message.status === 'streaming'" class="message-placeholder" role="status">
-                  Gathering authorized evidence…
-                </p>
-                <p v-if="message.error" class="message-error" role="alert">{{ message.error }}</p>
-
-                <div v-if="message.coverage && (coverageItems(message.coverage, 'failed').length || coverageItems(message.coverage, 'timed_out').length)" class="coverage-banner" role="status">
+                <div v-if="message.coverage && isPartialCoverage(message.coverage)" class="coverage-banner" role="status">
                   <strong>Partial coverage</strong>
                   <span>Some selected sources did not complete. The answer is not presented as complete.</span>
                   <ul>
                     <li v-for="source in coverageItems(message.coverage, 'successful')" :key="`success-${source}`">Successful: {{ source }}</li>
                     <li v-for="source in coverageItems(message.coverage, 'failed')" :key="`failed-${source}`">Failed: {{ source }}</li>
                     <li v-for="source in coverageItems(message.coverage, 'timed_out')" :key="`timeout-${source}`">Timed out: {{ source }}</li>
+                    <li v-for="source in coverageItems(message.coverage, 'quota_limited')" :key="`quota-${source}`">Quota limited: {{ source }}</li>
+                    <li v-for="source in omittedCoverage(message.coverage)" :key="`omitted-${source}`">Item omitted: {{ source }}</li>
                   </ul>
                 </div>
 
-                <section v-if="message.conflict" class="conflict-section" aria-labelledby="conflict-title">
-                  <h3 id="conflict-title">Disagreement detected</h3>
-                  <p>Sources disagree. Review each viewpoint before treating one as canonical.</p>
-                  <pre>{{ conflictText(message.conflict) }}</pre>
+                <p v-if="message.answer" class="message-text answer-text">{{ message.answer }}</p>
+                <p v-else-if="message.status === 'processing' || message.status === 'streaming'" class="message-placeholder" role="status">
+                  Gathering authorized evidence…
+                </p>
+                <section v-if="message.conflict" class="conflict-section" :aria-labelledby="`conflict-title-${message.message_id}`">
+                  <template v-if="normalizeConflict(message.conflict).kind === 'mirror_sync_error'">
+                    <h3 :id="`conflict-title-${message.message_id}`">Mirror sync issue</h3>
+                    <p>{{ normalizeConflict(message.conflict).message || 'A mirror source is out of sync and is not treated as an independent authority.' }}</p>
+                  </template>
+                  <template v-else>
+                    <h3 :id="`conflict-title-${message.message_id}`">Disagreement detected</h3>
+                    <p>Canonical sources disagree. Review each viewpoint, provenance, and Owner before deciding.</p>
+                    <ol v-if="normalizeConflict(message.conflict).viewpoints.length" class="viewpoint-list">
+                      <li v-for="(viewpoint, index) in normalizeConflict(message.conflict).viewpoints" :key="`${message.message_id}-viewpoint-${index}`">
+                        <p>{{ viewpoint.claim || 'Viewpoint details were not provided.' }}</p>
+                        <dl>
+                          <div v-if="viewpoint.source"><dt>Source</dt><dd>{{ viewpoint.source }}</dd></div>
+                          <div v-if="viewpoint.version"><dt>Version</dt><dd>{{ viewpoint.version }}</dd></div>
+                          <div v-if="viewpoint.updated_at"><dt>Updated</dt><dd>{{ viewpoint.updated_at }}</dd></div>
+                          <div v-if="viewpoint.owner"><dt>Owner</dt><dd>{{ viewpoint.owner }}</dd></div>
+                        </dl>
+                        <ul v-if="viewpoint.citations?.length" class="citation-list" aria-label="Viewpoint citations">
+                          <li v-for="(citation, citationIndex) in viewpoint.citations" :key="`${message.message_id}-viewpoint-${index}-citation-${citationIndex}`">
+                            {{ typeof citation.title === 'string' ? citation.title : typeof citation.citation_id === 'string' ? citation.citation_id : 'Citation' }}
+                          </li>
+                        </ul>
+                      </li>
+                    </ol>
+                    <pre v-else>{{ conflictText(message.conflict) }}</pre>
+                  </template>
                 </section>
 
                 <details v-if="message.coverage" class="coverage-details">
@@ -552,8 +704,18 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                     <div><dt>Successful</dt><dd>{{ coverageItems(message.coverage, 'successful').join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Failed</dt><dd>{{ coverageItems(message.coverage, 'failed').join(', ') || 'None reported' }}</dd></div>
                     <div><dt>Timed out</dt><dd>{{ coverageItems(message.coverage, 'timed_out').join(', ') || 'None reported' }}</dd></div>
+                    <div><dt>Quota limited</dt><dd>{{ coverageItems(message.coverage, 'quota_limited').join(', ') || 'None reported' }}</dd></div>
+                    <div><dt>Items omitted</dt><dd>{{ omittedCoverage(message.coverage).join(', ') || 'None reported' }}</dd></div>
+                    <div><dt>Retry after</dt><dd>{{ retryAfterText(message.coverage) }}</dd></div>
                   </dl>
                 </details>
+
+                <p v-if="message.failure" class="message-failure" role="alert">
+                  <strong>{{ message.failure.category || 'unknown' }}</strong>: {{ message.failure.message }}
+                  <span v-if="message.failure.next_step">Next step: {{ nextStepLabel(message.failure.next_step) }}</span>
+                  <a v-if="failureNeedsSignIn(message.failure)" href="/api/v1/auth/sso/start">Sign in</a>
+                </p>
+                <p v-else-if="message.error" class="message-error" role="alert">{{ message.error }}</p>
 
                 <ul v-if="message.citations?.length" class="citation-list" aria-label="Citations">
                   <li v-for="citation in message.citations" :key="citation.citation_id">
@@ -562,7 +724,7 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                   </li>
                 </ul>
                 <button
-                  v-if="['failed', 'incomplete_cancelled'].includes(message.status) && !message.message_id.startsWith('local-')"
+                  v-if="retryableMessage(message)"
                   type="button"
                   class="button button-secondary retry-button"
                   :disabled="busy"
@@ -582,7 +744,7 @@ onBeforeUnmount(() => streamAbort.value?.abort())
             v-model="draft"
             rows="3"
             placeholder="Ask about an authorized knowledge base…"
-            :disabled="busy || selectedIds.length === 0"
+            :disabled="busy || selectedIds.length === 0 || staleScopeIds.length > 0"
             @keydown.meta.enter.prevent="send"
             @keydown.ctrl.enter.prevent="send"
           />

@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atlas.knowledgebase.session.SessionProperties;
 import com.atlas.knowledgebase.session.SessionService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -37,6 +39,7 @@ class ChatApiTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private SessionProperties sessionProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private ObjectMapper objectMapper;
 
     @AfterEach
     void resetModelEntitlement() {
@@ -48,6 +51,61 @@ class ChatApiTest {
         mockMvc.perform(get("/api/v1/chats"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+    }
+
+    @Test
+    void completedThreadHistoryIncludesPersistedEvidenceProjection() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Chat History Projection");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        askAndAwaitStreamError(owner, threadId, "How do we rotate the gateway cert?");
+        String assistantId =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT message_id FROM chat_message
+                        WHERE thread_id = ? AND message_role = 'assistant' AND status = 'completed'
+                        """,
+                        String.class,
+                        threadId);
+        jdbcTemplate.update(
+                "UPDATE chat_message SET conflict_section = ? WHERE message_id = ?",
+                "{\"viewpoints\":[{\"claim\":\"Rotate every 90 days\"}]}",
+                assistantId);
+
+        String historyBody =
+                mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        JsonNode history = objectMapper.readTree(historyBody);
+        JsonNode assistant = null;
+        for (JsonNode message : history.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                assistant = message;
+                break;
+            }
+        }
+        assertThat(assistant).isNotNull();
+        assertThat(assistant.path("status").asText()).isEqualTo("completed");
+        assertThat(assistant.path("answer").asText()).isNotBlank();
+        assertThat(assistant.path("citations").get(0).path("citation_id").asText()).isNotBlank();
+        assertThat(assistant.path("coverage").path("successful").get(0).asText()).isNotBlank();
+        assertThat(assistant.path("conflict").path("viewpoints").get(0).path("claim").asText())
+                .isEqualTo("Rotate every 90 days");
     }
 
     @Test

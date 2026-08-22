@@ -39,6 +39,12 @@ final class ChatPayloadProjector {
         body.put("question", message.questionText());
         body.put("answer", "completed".equals(message.status()) ? message.answerText() : null);
         body.put("request_id", message.requestId());
+        if ("assistant".equals(message.role()) && "completed".equals(message.status())) {
+            body.put("citations", citations.summariesByMessageId(message.messageId()));
+            body.put("coverage", storedCoverage(message));
+            body.put("conflict", storedConflict(message));
+            body.put("classification", message.classification());
+        }
         return body;
     }
 
@@ -48,7 +54,7 @@ final class ChatPayloadProjector {
                 message.answerText(),
                 citations.summariesByMessageId(message.messageId()),
                 storedCoverage(message),
-                null);
+                storedConflict(message));
     }
 
     Map<String, Object> completed(
@@ -83,6 +89,17 @@ final class ChatPayloadProjector {
             return coverage == null ? Map.of() : Map.copyOf(coverage);
         } catch (JsonProcessingException e) {
             return Map.of();
+        }
+    }
+
+    private Object storedConflict(ChatMessageRecord message) {
+        if (message.conflictSectionJson() == null || message.conflictSectionJson().isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(message.conflictSectionJson(), Object.class);
+        } catch (JsonProcessingException e) {
+            return null;
         }
     }
 

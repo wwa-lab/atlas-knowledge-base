@@ -125,18 +125,30 @@ public class ChatMessageRepository {
     @Transactional
     public int completeIfInFlight(
             String messageId, String answerText, String coverageJson, Instant completedAt) {
-        return updateAnswerIfInFlight(messageId, "completed", answerText, coverageJson, completedAt);
+        return completeIfInFlight(messageId, answerText, coverageJson, null, completedAt);
+    }
+
+    @Transactional
+    public int completeIfInFlight(
+            String messageId,
+            String answerText,
+            String coverageJson,
+            String conflictSectionJson,
+            Instant completedAt) {
+        return updateAnswerIfInFlight(
+                messageId, "completed", answerText, coverageJson, conflictSectionJson, completedAt);
     }
 
     /** @return rows updated; 0 means completed/failed already won. */
     @Transactional
     public int cancelIfInFlight(String messageId, Instant completedAt) {
-        return updateAnswerIfInFlight(messageId, "incomplete_cancelled", null, null, completedAt);
+        return updateAnswerIfInFlight(
+                messageId, "incomplete_cancelled", null, null, null, completedAt);
     }
 
     @Transactional
     public int failIfInFlight(String messageId, Instant completedAt) {
-        return updateAnswerIfInFlight(messageId, "failed", null, null, completedAt);
+        return updateAnswerIfInFlight(messageId, "failed", null, null, null, completedAt);
     }
 
     @Transactional
@@ -179,16 +191,18 @@ public class ChatMessageRepository {
             String status,
             String answerText,
             String coverageJson,
+            String conflictSectionJson,
             Instant completedAt) {
         return jdbcTemplate.update(
                 """
                 UPDATE chat_message
-                SET status = ?, answer_text = ?, coverage = ?, completed_at = ?
+                SET status = ?, answer_text = ?, coverage = ?, conflict_section = ?, completed_at = ?
                 WHERE message_id = ? AND status IN ('processing', 'streaming')
                 """,
                 status,
                 answerText,
                 coverageJson,
+                conflictSectionJson,
                 completedAt == null ? null : Timestamp.from(completedAt),
                 messageId);
     }
