@@ -436,3 +436,225 @@ TASK-015 is architecturally suitable to merge. Externalize connector budgets and
 - Worktree remained clean; no files were edited.
 
 # Merge Gate: Pass
+
+---
+
+# Gate B — Independent Review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** `mvp-spec.md`; MVP architecture, data-flow, and data-model; `mvp-design.md`; API implementation guide; ADR-0002, ADR-0004, ADR-0006, and ADR-0007
+- **Tasks reviewed:** `mvp-tasks.md`, TASK-015
+- **Diff reviewed:** `origin/main...HEAD` at `56d5aa30ac78a9dda3e8d8ac1cac9ab627f41601`
+- **Code inspected:** All changed production and test files under `adapters`, `chat`, `retrieval`, and `web`; the review-record file was not used as evidence
+- **Review objective:** Independently determine whether PR #33 implements TASK-015 while preserving per-turn access control, coverage truthfulness, and architectural boundaries
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 68%
+- **Verdict:** Partially aligned
+- **Rationale:** The PR provides a well-separated retrieval module, parallel stub dispatch, deterministic provenance-preserving RRF, partial coverage, item omission, and fail-closed handling for typed security and unknown failures. However, the adapter contract cannot represent real complete-binding authorization denial, governed feature flags are bypassed, suppressed bindings disappear from completeness accounting, and an explicitly open connector timeout is hardcoded. These are blocking access-control and orchestration-boundary gaps.
+
+---
+
+## Areas of Good Alignment
+
+- `RetrievalOrchestrator` is separated from Chat and provider adapters, consistent with the modular-monolith design.
+- Stub retrievers are restricted to `local` and `non-prod`; no real provider calls or real excerpts are introduced.
+- Retrieval fan-out is parallel, and timeout/failure/security/unknown outcomes remain distinguishable.
+- Security outcomes suspend the affected logical KB and prevent its evidence from reaching generation.
+- Unknown adapter exceptions fail closed rather than degrading into an ordinary partial answer.
+- Ordinary timeout/failure can produce disclosed partial coverage when other grounded evidence exists.
+- All-failure/no-evidence paths prevent generation and return actionable coverage details.
+- Item-level omission retains the KB while excluding the restricted hit.
+- RRF is deterministic, preserves every provenance path across deduplication, and does not expose raw scores through the API.
+- Browse-only and model-ineligible KBs are not intentionally dispatched.
+- Tests cover RRF/provenance, partial timeout, all-failure, security, unknown failure, binding-denial fixture, item omission, and API coverage/error behavior.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. Complete-binding authorization is not represented by the adapter contract
+
+- **Design / task expected:** Every turn must re-authorize each selected KB and each current-user binding. A complete-binding access denial must make that KB unavailable without being confused with ordinary retrieval failure or a security-boundary incident.
+- **Code currently does:** `RetrievalOrchestrator.bindingAuthorized()` at `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:264` repeats KB-level authorization and recognizes binding denial only through the stub-only `source_identity.retrieval_fixture == "binding_denied"` convention. `Retriever.Outcome` at `backend/src/main/java/com/atlas/knowledgebase/adapters/Retriever.java:40` has no binding-authorization outcome; a real adapter can report only `FAILED`, `SECURITY`, `TIMEOUT`, or `UNKNOWN`.
+- **Why it matters:** TASK-019–021 adapters cannot express FR-47 correctly through this interface. Mapping ordinary access denial to `FAILED` permits partial treatment; mapping it to `SECURITY` unnecessarily suspends the logical KB. Thus TASK-015 has not established the required per-turn binding authorization boundary.
+- **Recommended fix:** Add a first-class binding authorization port or typed adapter outcome such as `BINDING_ACCESS_DENIED`, call it for every current binding before retrieval, and preserve its distinction from item omission, ordinary retrieval failure, and security-boundary failure. Make the stub implement the same contract and add integration tests for multi-binding KB denial.
+
+#### 2. Binding feature flags and complete-binding coverage are bypassed
+
+- **Design / task expected:** FR-69 requires independent Source Profile/binding feature flags. Runtime controls must stop dispatch immediately, and coverage must not imply a complete KB when a configured binding is unavailable.
+- **Code currently does:** Dispatch filtering at `RetrievalOrchestrator.java:85` checks only `enabled` and `killSwitch`; it ignores `featureFlag`, binding health, and freshness. `ChatService.resolveScope()` at `backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:560` likewise snapshots only enabled/non-killed bindings. Disabled or killed bindings are removed before coverage/block evaluation, while `featureFlag=false` bindings are still retrieved. The new orchestrator tests construct `featureFlag=false` bindings and nevertheless expect successful retrieval.
+- **Why it matters:** A binding explicitly held behind a feature flag can participate in Chat. Conversely, a suppressed binding in a multi-binding KB can silently disappear, allowing the remaining subset to look fully successful instead of being disclosed or blocked. This undermines access/governance controls and truthful coverage.
+- **Recommended fix:** Centralize governed binding dispatch eligibility, enforce `featureFlag`, health, enabled/kill-switch, and required freshness before dispatch, and represent every configured binding in the turn decision. Add tests for feature-flag-off, disabled/killed, unavailable, stale-required, and mixed-binding cases.
+
+#### 3. The connector timeout is an invented global constant
+
+- **Design / task expected:** Connector timeout, quota, concurrency, backoff, and circuit-breaker budgets are independent and runtime-configured; exact timeout values remain open pending pilot evidence and must not be invented.
+- **Code currently does:** `RetrievalOrchestrator.BINDING_TIMEOUT` is hardcoded to two seconds at `RetrievalOrchestrator.java:41`, applied to every provider, and backed by a shared unbounded virtual-thread executor.
+- **Why it matters:** This prematurely fixes an explicitly unresolved production behavior, cannot express per-connector budgets, and will either cut off valid slow providers or fail to constrain concurrency once real adapters arrive.
+- **Recommended fix:** Introduce validated retrieval configuration keyed by provider/profile, with only an explicitly local stub default where needed. Pass the configured budget to adapters and establish bounded per-provider concurrency before real adapters use this orchestrator.
+
+### Minor
+
+#### `ModelChannel.Request` does not defensively copy its evidence list
+
+- **Design / task expected:** Boundary DTOs should be immutable.
+- **Code currently does:** `ModelChannel.Request` at `backend/src/main/java/com/atlas/knowledgebase/adapters/ModelChannel.java:14` accepts `List<String>` without a compact constructor using `List.copyOf`.
+- **Why it matters:** Current Chat construction happens to supply an unmodifiable `toList()` result, but the public boundary itself permits mutation by other callers.
+- **Recommended fix:** Normalize null to an empty list and defensively copy the list in the record constructor.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB authorization | Implemented |
+| Per-turn complete-binding authorization | Partial |
+| Parallel stub retrieval | Implemented |
+| Success/fail/timeout coverage map | Partial |
+| Security/unknown fail-closed behavior | Implemented |
+| Ordinary partial coverage | Implemented |
+| Item-level omission | Implemented |
+| RRF ranking and provenance preservation | Implemented |
+| Feature flag/runtime-control enforcement | Missing/Partial |
+| Independent connector budgets | Missing |
+| Stub-only/no-real-excerpt boundary | Implemented |
+| TASK-015 API integration | Implemented |
+| Citations/Evidence Drawer | Intentionally deferred to TASK-016 |
+| Real adapters/model gateway | Intentionally deferred to TASK-019–022 |
+
+**Task coverage:**
+
+- **Clearly implemented:** Parallel stub retrieval, ordinary partial timeout, no-evidence refusal, security/unknown fail-closed handling, item omission, RRF, coverage persistence and final-event output.
+- **Partially implemented:** Per-turn binding re-authorization and complete coverage accounting.
+- **Not yet reflected in code:** A production-capable binding authorization decision boundary.
+- **Code changes not clearly mapped to any task:** None identified; the review-record file is required by repository workflow.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- The two-second universal connector timeout.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** Binding authorization policy is embedded in retrieval orchestration through parsing stub fixture JSON rather than represented by an authorization/adapter boundary.
+- **Misplaced responsibilities:** `RetrievalOrchestrator` interprets `source_identity.retrieval_fixture` directly.
+- **Coupling issues:** Real retrievers cannot report ordinary complete-binding authorization denial through `Retriever.Result`.
+- **Hidden shortcuts:** `featureFlag` is ignored; disabled/killed bindings disappear before coverage accounting; a global timeout substitutes for the open provider-specific configuration.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Partial. Security and unknown failures block generation correctly, but suppressed/configured bindings can disappear silently.
+- **Validation behavior:** Partial. KB eligibility is rechecked, but governed binding eligibility and real binding authorization are incomplete.
+- **Retry / skip / resume / failure handling:** Ordinary partial, no-evidence, and safe retry integration are present; provider-specific budget behavior remains missing.
+- **User-visible behavior:** Partial coverage and no-evidence errors are explicit, but coverage may omit bindings excluded before dispatch.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Partial; retrieval is behind a port, but binding authorization cannot be represented correctly.
+- **External system handling:** Stub-only as intended; real providers remain out of scope.
+- **Secret / credential safety:** Aligned; no credentials or real excerpts were added to stub payloads or responses.
+- **Logging / audit hooks:** Success, security, and unknown paths emit content-free audit data. Ordinary timeout/failure audit and telemetry remain deferred to TASK-027.
+- **Error propagation at integration boundaries:** Typed security and ordinary failures are preserved, but routine binding access denial lacks a production adapter outcome.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blockers before proceeding:**
+  1. Establish a first-class per-binding authorization result/port.
+  2. Enforce binding feature flags and account for suppressed bindings in coverage/completeness decisions.
+  3. Replace the invented universal timeout with validated provider/profile configuration.
+- **Acceptable deviations:**
+  - Simple in-process RRF is explicitly requested by TASK-015; the later internals ADR remains open.
+  - Empty citations/conflict payloads are acceptable because TASK-016 and later conflict/evidence work are outside this PR.
+  - Fixture-only model input is acceptable for TASK-015.
+- **Required corrections:** All three Major findings and the Architecture P0 findings below.
+
+---
+
+## Recommended Fixes
+
+1. Extend the retrieval/authorization port so adapters can distinguish complete-binding denial, item omission, ordinary retrieval failure, and security failure.
+2. Build a single governed binding-dispatch decision that enforces feature flag, enabled/kill switch, health, freshness, authorization, and coverage representation.
+3. Externalize per-provider timeout and concurrency configuration; avoid a universal hardcoded two-second budget.
+4. Add tests for feature-flag-off, disabled/killed multi-binding KBs, binding-health/freshness rejection, and real-port authorization denial.
+5. Defensively copy `ModelChannel.Request.evidenceIds`.
+
+## Minimal Fix Path
+
+- Add a typed binding authorization outcome and use it before retrieval.
+- Include all configured current bindings in the turn decision, enforcing their runtime controls and preserving them in coverage/block decisions.
+- Introduce validated provider-keyed timeout properties with a local stub default.
+- Add focused orchestrator and Chat API tests for those branches.
+
+---
+
+## Open Risks / Questions
+
+- The accepted task explicitly permits the simple in-process RRF implementation; tuning, storage, and richer dedup policy still require the deferred internals ADR.
+- `ModelChannel.Request` currently carries evidence identifiers rather than the generic prompt/messages plus minimum excerpts required by ADR-0007. This is acceptable for the TASK-015 stub but must be deliberately revised in TASK-022.
+- `CompletableFuture.orTimeout` does not guarantee interruption of a provider call. Real adapters must enforce I/O-layer deadlines and cancellation when TASK-019–021 land.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 64%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] The retrieval adapter boundary cannot represent current-user complete-binding authorization denial; stub fixture parsing substitutes for the authorization contract — `RetrievalOrchestrator.java:264`, `Retriever.java:40` — adapter decoupling and access-control boundary.
+- [ ] Governed binding feature flags are bypassed, and filtered bindings disappear from completeness/coverage decisions — `RetrievalOrchestrator.java:85`, `ChatService.java:560` — configuration controls and fail-closed orchestration.
+
+### P1 (Fix Next Touch)
+
+- [ ] A universal two-second timeout and shared unbounded executor replace the required externalized, independent provider budgets — `RetrievalOrchestrator.java:41`, `RetrievalOrchestrator.java:50` — configuration externalization and resilience.
+- [ ] The current `ModelChannel.Request` evidence-ID-only shape will require a contract revision before ADR-0007 generic grounded payloads can be implemented — `ModelChannel.java:14` — future adapter compatibility.
+
+### P2 (Track)
+
+- [ ] `ModelChannel.Request.evidenceIds` is not defensively copied — `ModelChannel.java:14` — boundary immutability.
+
+## Good Practices Confirmed
+
+- Feature-based backend packages keep Chat, retrieval, adapters, and shared web concerns separated.
+- DTO-style records and defensive copies are used across most new retrieval results.
+- Duplicate provider handlers fail at startup rather than depending on bean order.
+- RRF is isolated, deterministic, and preserves provenance.
+- Typed failures prevent unknown/security exceptions from silently becoming partial success.
+- Stub adapter/profile separation protects the real-content spike gate.
+
+## Recommendation
+
+Fix the authorization and governed-binding dispatch boundary before TASK-016 or any real adapter work. Then externalize provider budgets so TASK-019–021 can plug into this orchestrator without rewriting its safety model.
+
+## Verification Performed
+
+- `git fetch origin --prune` — succeeded
+- `git diff --check origin/main...HEAD -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — passed
+- `./mvnw -q test` — passed
+- Worktree remained clean; no repository files were edited
+
+# Gate B Merge Gate: Fail
+
+Major access-control/orchestration findings and Architecture P0 violations remain; PR #33 must not merge in its current state.
