@@ -537,6 +537,7 @@ public class RetrievalOrchestrator {
                     if (securityKbs.contains(logicalKbId) || unknownKbs.contains(logicalKbId)) {
                         break;
                     }
+                    successful.add(bindingId);
                     List<Retriever.Hit> safeHits = new ArrayList<>();
                     boolean contained = false;
                     for (Retriever.Hit hit : outcome.result().hits()) {
@@ -562,7 +563,6 @@ public class RetrievalOrchestrator {
                                 "security");
                     }
                     if (!safeHits.isEmpty()) {
-                        successful.add(bindingId);
                         ranked.add(
                                 new ReciprocalRankFusion.RankedList(
                                         logicalKbId,

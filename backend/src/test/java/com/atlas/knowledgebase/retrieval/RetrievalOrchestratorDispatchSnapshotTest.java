@@ -224,6 +224,7 @@ class RetrievalOrchestratorDispatchSnapshotTest {
         RetrievalTurn turn = orchestrator.retrieve(user(), "question", scope);
 
         assertThat(turn.fused()).extracting(hit -> hit.hit().documentId()).containsExactly("safe");
+        assertThat(strings(turn, "successful")).containsExactly(binding.bindingId());
         assertThat(strings(turn, "prompt_injection_contained")).containsExactly(binding.bindingId());
         assertThat(turn.coverage().toString()).doesNotContain("system prompt");
         verify(auditEvents)

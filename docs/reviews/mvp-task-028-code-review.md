@@ -21,3 +21,12 @@ Review comment:
 ## Gate A — final review
 
 No discrete correctness, security, or maintainability issues were identified in the diff. The changes add containment before fusion and avoid copying suspicious source text into coverage/audit details.
+
+## Gate B — initial review
+
+The patch introduces a coverage regression for valid successful retrievals that produce no safe hits. This can make the response omit the status of a selected binding, violating the existing coverage-disclosure behavior.
+
+Review comment:
+
+- [P2] Preserve successful coverage for empty retrievals — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:564-565`
+  When a retriever returns `SUCCESS` with zero hits, or with hits that are all filtered out, this condition now skips adding the binding to `coverage.successful`. Before this change, a successful search with no evidence was still disclosed as a successful binding; now the final turn can show no evidence with empty `successful`, `failed`, and `timed_out`, hiding that the selected source was actually queried successfully. Record retrieval success independently from whether `safeHits` is empty, and only gate fusion on non-empty hits.
