@@ -915,7 +915,9 @@ mutation. The optional `operation` is `disable` (default), `kill_switch`, `rollb
 
 The confirmation request for disable, kill switch, rollback, and retire is the same
 `{ "confirm": true, "impact_preview_id": "imp_1" }`. A missing, mismatched, stale, or replayed
-preview is rejected with `409`; confirmation never trusts client-supplied binding state.
+preview is rejected with `409`; confirmation never trusts client-supplied binding state. The
+server claims the preview through a unique database key in the same transaction as the mutation,
+so concurrent confirmations cannot both apply.
 
 ### POST `/admin/bindings/{binding_id}/kill-switch`
 
@@ -931,8 +933,9 @@ the live `config_version` remains monotonic and audit history is append-only.
 
 ### POST `/admin/bindings/{binding_id}/retire`
 
-Disables and kill-switches the binding. If it is the last retrieval-enabled binding of its logical
-knowledge base, the KB follows `active|suspended -> retired`; otherwise the logical KB remains
+Disables and kill-switches the binding. If it is the last binding eligible for actual retrieval
+(binding feature flag/provider flag/health and KB chat eligibility are included), the KB follows
+`active|suspended -> retired`; otherwise the logical KB remains
 available through its other safe bindings. Retired KBs are excluded from catalog selection and
 retrieval by the existing lifecycle gate.
 

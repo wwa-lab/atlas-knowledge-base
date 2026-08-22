@@ -685,13 +685,7 @@ public class RetrievalOrchestrator {
     }
 
     private boolean runtimeEligible(LogicalKnowledgeBaseRecord kb, BindingRecord binding) {
-        return binding.enabled()
-                && !binding.killSwitch()
-                && binding.featureFlag()
-                && properties.enabled(binding.providerProfile())
-                && binding.health() != null
-                && !"unavailable".equals(binding.health())
-                && !kb.freshnessRequired();
+        return RetrievalEligibility.isEligible(kb, binding, properties);
     }
 
     private BindingRecord authoritativeBinding(BindingRecord snapshot) {

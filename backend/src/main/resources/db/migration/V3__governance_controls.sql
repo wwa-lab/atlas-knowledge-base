@@ -24,3 +24,18 @@ CREATE TABLE binding_config_history (
 
 CREATE INDEX idx_binding_history_lookup
     ON binding_config_history (binding_id, config_version);
+
+-- A preview is a one-time capability. The primary key makes confirmation claims
+-- atomic across concurrent admin requests; the claim rolls back with the mutation
+-- transaction when a later validation or state update fails.
+CREATE TABLE governance_preview_claim (
+    impact_preview_id VARCHAR2(64) NOT NULL,
+    operation VARCHAR2(32) NOT NULL,
+    binding_id VARCHAR2(64) NOT NULL,
+    user_id VARCHAR2(64) NOT NULL,
+    claimed_at TIMESTAMP NOT NULL,
+    CONSTRAINT pk_governance_preview_claim PRIMARY KEY (impact_preview_id)
+);
+
+CREATE INDEX idx_governance_preview_claim_binding
+    ON governance_preview_claim (binding_id, operation);

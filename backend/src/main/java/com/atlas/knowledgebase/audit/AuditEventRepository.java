@@ -93,13 +93,4 @@ public class AuditEventRepository {
                 .findFirst();
     }
 
-    public boolean existsByActionAndPreview(String action, String previewId) {
-        Integer count =
-                jdbcTemplate.queryForObject(
-                        "SELECT COUNT(*) FROM audit_event WHERE action = ? AND INSTR(details, ?) > 0",
-                        Integer.class,
-                        action,
-                        "\"impact_preview_id\":\"" + previewId + "\"");
-        return count != null && count > 0;
-    }
 }

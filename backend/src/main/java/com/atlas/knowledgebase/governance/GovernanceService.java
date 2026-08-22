@@ -9,6 +9,8 @@ import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.registry.RegistryForbiddenException;
+import com.atlas.knowledgebase.retrieval.RetrievalEligibility;
+import com.atlas.knowledgebase.retrieval.RetrievalProperties;
 import com.atlas.knowledgebase.session.AtlasRoles;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.AtlasUserRepository;
@@ -33,26 +35,32 @@ public class GovernanceService {
     private final LogicalKnowledgeBaseRepository knowledgeBases;
     private final BindingRepository bindings;
     private final AuditEventRepository auditEvents;
+    private final GovernancePreviewClaimRepository previewClaims;
     private final AtlasUserRepository users;
     private final SourceProbe probe;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final RetrievalProperties retrievalProperties;
 
     public GovernanceService(
             LogicalKnowledgeBaseRepository knowledgeBases,
             BindingRepository bindings,
             AuditEventRepository auditEvents,
+            GovernancePreviewClaimRepository previewClaims,
             AtlasUserRepository users,
             SourceProbe probe,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            RetrievalProperties retrievalProperties) {
         this.knowledgeBases = knowledgeBases;
         this.bindings = bindings;
         this.auditEvents = auditEvents;
+        this.previewClaims = previewClaims;
         this.users = users;
         this.probe = probe;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.retrievalProperties = retrievalProperties;
     }
 
     @Transactional
@@ -88,7 +96,11 @@ public class GovernanceService {
         details.put("affected_binding_count", 1);
         details.put("runtime_binding_ids", runtimeBindingIds(binding.logicalKbId()));
         details.put("unrelated_knowledge_bases_remain", true);
-        details.put("would_retire_logical_kb", wouldRetireKnowledgeBase(binding));
+        // Disable and Kill Switch are runtime controls only; an explicit Retire preview is the
+        // operation that predicts whether this binding is the last actually retrievable one.
+        details.put(
+                "would_retire_logical_kb",
+                operation == Operation.RETIRE && wouldRetireKnowledgeBase(binding));
         if (rollbackTarget != null) {
             details.put("rollback_target_config_version", rollbackTarget.configVersion());
         }
@@ -131,7 +143,8 @@ public class GovernanceService {
     public Map<String, Object> rollback(
             AtlasUserRecord user, String bindingId, Confirmation confirmation) {
         requireAdmin(user);
-        PreviewContext preview = requirePreview(bindingId, confirmation, Operation.ROLLBACK);
+        PreviewContext preview =
+                requirePreview(bindingId, confirmation, Operation.ROLLBACK, user.userId());
         BindingRecord current = preview.binding();
         LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(current.logicalKbId());
         if ("retired".equals(kb.lifecycle())) {
@@ -170,7 +183,8 @@ public class GovernanceService {
     public Map<String, Object> retire(
             AtlasUserRecord user, String bindingId, Confirmation confirmation) {
         requireAdmin(user);
-        PreviewContext preview = requirePreview(bindingId, confirmation, Operation.RETIRE);
+        PreviewContext preview =
+                requirePreview(bindingId, confirmation, Operation.RETIRE, user.userId());
         BindingRecord current = preview.binding();
         LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(current.logicalKbId());
         if (!"active".equals(kb.lifecycle()) && !"suspended".equals(kb.lifecycle())) {
@@ -229,7 +243,7 @@ public class GovernanceService {
             Confirmation confirmation,
             Operation operation) {
         requireAdmin(user);
-        PreviewContext preview = requirePreview(bindingId, confirmation, operation);
+        PreviewContext preview = requirePreview(bindingId, confirmation, operation, user.userId());
         BindingRecord current = preview.binding();
         BindingRecord changed =
                 switch (operation) {
@@ -253,7 +267,10 @@ public class GovernanceService {
     }
 
     private PreviewContext requirePreview(
-            String bindingId, Confirmation confirmation, Operation expectedOperation) {
+            String bindingId,
+            Confirmation confirmation,
+            Operation expectedOperation,
+            String actorUserId) {
         if (confirmation == null || !confirmation.confirm()) {
             throw new GovernanceValidationException(
                     "CONFIRM_REQUIRED", "Governance changes require confirm=true.");
@@ -277,17 +294,22 @@ public class GovernanceService {
             throw new GovernanceConflictException(
                     "IMPACT_PREVIEW_INVALID", "The impact preview does not match this binding.");
         }
-        if (auditEvents.existsByActionAndPreview(expectedOperation.auditAction, previewId)) {
-            throw new GovernanceConflictException(
-                    "IMPACT_PREVIEW_REPLAYED",
-                    "The impact preview has already been consumed; run a new preview.");
-        }
         JsonNode details = readDetails(preview.detailsJson());
         if (!expectedOperation.wireName.equals(details.path("operation").asText())
                 || !bindingId.equals(details.path("binding_id").asText())) {
             throw new GovernanceConflictException(
                     "IMPACT_PREVIEW_MISMATCH", "The impact preview does not match this operation.");
         }
+        // The unique claim is deliberately made before the mutable-state reads below. A
+        // sequential replay gets the stable replay error, while a concurrent confirmation is
+        // serialized by the database primary key. Any later validation failure rolls the claim
+        // back with this transaction so the administrator can retry with a fresh state.
+        previewClaims.claim(
+                previewId,
+                expectedOperation.wireName,
+                bindingId,
+                actorUserId,
+                clock.instant());
         BindingRecord binding = requireBinding(bindingId);
         int expectedVersion = details.path("config_version").asInt(-1);
         if (expectedVersion != binding.configVersion()
@@ -362,17 +384,21 @@ public class GovernanceService {
     }
 
     private boolean wouldRetireKnowledgeBase(BindingRecord binding) {
+        LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(binding.logicalKbId());
         return bindings.findByLogicalKbId(binding.logicalKbId()).stream()
-                .allMatch(
+                .noneMatch(
                         other ->
-                                other.bindingId().equals(binding.bindingId())
-                                        ? !binding.enabled() || binding.killSwitch()
-                                        : !other.enabled() || other.killSwitch());
+                                !other.bindingId().equals(binding.bindingId())
+                                        && RetrievalEligibility.isEligible(
+                                                kb, other, retrievalProperties));
     }
 
     private List<String> runtimeBindingIds(String logicalKbId) {
+        LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(logicalKbId);
         return bindings.findByLogicalKbId(logicalKbId).stream()
-                .filter(binding -> binding.enabled() && !binding.killSwitch())
+                .filter(
+                        binding ->
+                                RetrievalEligibility.isEligible(kb, binding, retrievalProperties))
                 .map(BindingRecord::bindingId)
                 .sorted()
                 .toList();
