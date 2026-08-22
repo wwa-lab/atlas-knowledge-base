@@ -5,6 +5,7 @@ import {
   isPartialCoverage,
   isChatSelectable,
   isServerMessageId,
+  mergeKnowledgeBaseCatalogPage,
   normalizeConflict,
   parseFailure,
   parseSseRecords,
@@ -52,6 +53,21 @@ describe('chat utilities', () => {
         chat_disabled_reason: 'Needs a validated .kb manifest.',
       }),
     ).toBe('Needs a validated .kb manifest.')
+  })
+
+  it('keeps Chat-ready entries from later catalog pages and de-duplicates retries', () => {
+    const firstPage = [{ logical_kb_id: 'lkb_1', name: 'First page' }]
+    const merged = mergeKnowledgeBaseCatalogPage(firstPage, {
+      items: [
+        { logical_kb_id: 'lkb_1', name: 'First page (duplicate)' },
+        { logical_kb_id: 'lkb_2', name: 'Second page' },
+      ],
+      next_cursor: 'lkb_2',
+    })
+    expect(merged).toEqual([
+      { logical_kb_id: 'lkb_1', name: 'First page' },
+      { logical_kb_id: 'lkb_2', name: 'Second page' },
+    ])
   })
 
   it('fails closed for unknown health and reports explicit unavailable health', () => {

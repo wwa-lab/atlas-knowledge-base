@@ -9,6 +9,26 @@ export type KnowledgeBaseSummary = {
   chat_disabled_reason?: string
 }
 
+export type KnowledgeBaseCatalogPage = {
+  items?: KnowledgeBaseSummary[]
+  next_cursor?: string | null
+}
+
+/** Merge catalog pages without allowing a repeated cursor/page to duplicate entries. */
+export function mergeKnowledgeBaseCatalogPage(
+  existing: KnowledgeBaseSummary[],
+  page: KnowledgeBaseCatalogPage,
+): KnowledgeBaseSummary[] {
+  const merged = [...existing]
+  const knownIds = new Set(existing.map((item) => item.logical_kb_id))
+  for (const item of page.items ?? []) {
+    if (knownIds.has(item.logical_kb_id)) continue
+    knownIds.add(item.logical_kb_id)
+    merged.push(item)
+  }
+  return merged
+}
+
 export type ChatStreamEvent = {
   event: string
   data: unknown

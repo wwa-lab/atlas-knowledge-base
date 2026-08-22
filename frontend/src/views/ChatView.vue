@@ -7,11 +7,13 @@ import {
   isChatSelectable,
   isServerMessageId,
   isPartialCoverage,
+  mergeKnowledgeBaseCatalogPage,
   normalizeConflict,
   parseFailure,
   parseSseRecords,
   type ChatCoverage,
   type ChatFailure,
+  type KnowledgeBaseCatalogPage,
   type KnowledgeBaseSummary,
 } from '../chat/chatUtils'
 
@@ -270,16 +272,36 @@ async function ensureThread(): Promise<void> {
   thread.value = created
 }
 
+async function loadCatalog(): Promise<KnowledgeBaseSummary[]> {
+  let items: KnowledgeBaseSummary[] = []
+  const seenCursors = new Set<string>()
+  let cursor: string | undefined
+  while (true) {
+    if (cursor) {
+      if (seenCursors.has(cursor)) break
+      seenCursors.add(cursor)
+    }
+    const params = new URLSearchParams({ limit: '100' })
+    if (cursor) params.set('cursor', cursor)
+    const page = await request<KnowledgeBaseCatalogPage>(`/api/v1/knowledge-bases?${params.toString()}`)
+    items = mergeKnowledgeBaseCatalogPage(items, page)
+    const next = typeof page.next_cursor === 'string' && page.next_cursor.trim() ? page.next_cursor : undefined
+    if (!next) break
+    cursor = next
+  }
+  return items
+}
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   authRequired.value = false
   try {
     const [catalog, chatList] = await Promise.all([
-      request<{ items?: KnowledgeBaseSummary[] }>('/api/v1/knowledge-bases'),
+      loadCatalog(),
       request<ChatList>('/api/v1/chats'),
     ])
-    knowledgeBases.value = catalog.items ?? []
+    knowledgeBases.value = catalog
     const existing = chatList.items?.[0]
     if (existing) {
       await loadThread(existing.thread_id)
