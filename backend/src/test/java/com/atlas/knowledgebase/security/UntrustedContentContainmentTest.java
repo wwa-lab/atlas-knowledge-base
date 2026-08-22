@@ -86,6 +86,16 @@ class UntrustedContentContainmentTest {
                 .isEqualTo("embedded_instruction");
     }
 
+    @Test
+    void keepsJavaScriptProseButContainsExecutableJavaScriptUris() {
+        assertThat(containment.inspect(hit("JavaScript: async patterns")).contained())
+                .isFalse();
+        assertThat(containment.inspect(hit("javascript:alert(1)")).reason())
+                .isEqualTo("active_markup");
+        assertThat(containment.inspect(hit("<a href=\"javascript:alert(1)\">run</a>")).reason())
+                .isEqualTo("active_markup");
+    }
+
     private static Retriever.Hit hit(String excerpt) {
         return new Retriever.Hit(
                 "corp/runbook",

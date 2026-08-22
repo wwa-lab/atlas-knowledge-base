@@ -19,7 +19,10 @@ public final class UntrustedContentContainment {
                             "active_markup",
                             Pattern.compile(
                                     "(?is)<\\s*(?:script|iframe|object|embed|style)\\b|"
-                                            + "javascript\\s*:|<[^>]{0,2048}\\bon[a-z]+\\s*=|\\{\\{.*?\\}\\}")),
+                                            + "(?:\\b(?:href|src)\\s*=\\s*[\\\"']?\\s*javascript\\s*:|"
+                                            + "(?:^|[\\s\\\"'(<])javascript\\s*:\\s*(?:/{1,2}|"
+                                            + "[a-z_$][\\w$]*(?:\\.[a-z_$][\\w$]*)*\\s*(?:\\(|=|;)))|"
+                                            + "<[^>]{0,2048}\\bon[a-z]+\\s*=|\\{\\{.*?\\}\\}")),
                     new Rule(
                             "embedded_instruction",
                             Pattern.compile(

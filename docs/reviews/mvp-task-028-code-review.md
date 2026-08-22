@@ -69,3 +69,12 @@ Full review comments:
 
 - [P2] Surface contained hits as partial coverage — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-612`
   When a retriever returns both safe hits and contained prompt-injection hits, the answer can complete with `prompt_injection_contained` in coverage but without `partial_coverage` or `item_omitted`; the existing client partial-coverage logic only checks failed/timed-out/quota/item-omitted fields, so the containment is hidden and the answer is presented as full coverage. Mark the turn as partial or update the consumer so contained evidence is actually reported on completed answers.
+
+## Gate A — follow-up after disclosure and coverage fixes
+
+The containment layer is wired before fusion, but one active-markup heuristic is broad enough to suppress ordinary JavaScript documentation. This is a retrieval correctness regression for common knowledge-base content.
+
+Review comment:
+
+- [P2] Constrain javascript detection to URI contexts — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:21-22`
+  When a legitimate KB title or excerpt contains ordinary text such as `JavaScript: async patterns`, this case-insensitive `javascript\\s*:` branch classifies the hit as `active_markup`; because `RetrievalOrchestrator` drops contained hits before fusion, normal engineering documentation can disappear or produce `NO_EVIDENCE`. Limit this branch to actual URI/HTML contexts rather than any occurrence of the word followed by a colon.
