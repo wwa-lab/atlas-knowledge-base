@@ -30,3 +30,7 @@ atlas:
       dify: 4
       git_markdown: 4
       confluence: 4
+    provider-enabled:
+      dify: true
+      git_markdown: true
+      confluence: true

@@ -658,3 +658,218 @@ Fix the authorization and governed-binding dispatch boundary before TASK-016 or 
 # Gate B Merge Gate: Fail
 
 Major access-control/orchestration findings and Architecture P0 violations remain; PR #33 must not merge in its current state.
+
+---
+
+# Gate A — Post-Gate-B Remediation Review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, specification FR-31–FR-57/FR-69, architecture/data flow/data model, detailed design, API implementation guide, TASK-015, ADR-0002/0004/0006/0007
+- **Tasks reviewed:** `TASK-015: Retrieval orchestrator (stubs first)`
+- **Diff reviewed:** `git diff origin/main...HEAD` at `d3501d9`
+- **Review objective:** Independent Gate A review of retrieval authorization, governance coverage, budgets, failure behavior, API alignment, and immutability
+- Prior review records were not used as evidence or defense.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 72%
+- **Verdict:** Partially aligned
+- **Rationale:** The implementation now has a real current-user authorization adapter contract, completes binding authorization before retrieval dispatch, truthfully accounts for binding-level runtime controls, and preserves ordinary-partial versus fail-closed behavior. Three Major gaps remain: the persisted answer scope is not the immutable configuration actually retrieved, deduplication violates the accepted composite identity rule, and timeout completion does not stop underlying provider work.
+
+---
+
+## Areas of Good Alignment
+
+- `Retriever.authorize(AuthorizationRequest)` is a genuine adapter-plane boundary carrying user, KB, binding, provider, source identity, and timeout context.
+- All authorization futures are joined and blocked KBs removed before retrieval futures are created.
+- Binding `enabled`, kill switch, binding feature flag, unavailable/null health, and unprovable required freshness are checked before authorization or retrieval and remain visible in coverage.
+- Access denial excludes the whole logical KB; security failures suspend it; unknown failures fail closed without incorrectly suspending it.
+- Ordinary timeout/failure can produce partial coverage only when other grounded evidence exists; all-ordinary-failure produces no generated answer.
+- Item-level omission remains a successful binding path without excluding the KB.
+- Provider timeout and concurrency values are positive-validated and independently keyed by provider.
+- Non-prod/prod budgets have required environment placeholders with no invented deployed defaults.
+- `Result`, `RankedList`, provenance lists, model-channel evidence IDs, and turn collections use defensive copies.
+- API errors retain the accepted `{error:{category,code,message,request_id,next_step,details}}` shape.
+- Raw RRF scores are not exposed.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. The persisted answer snapshot can differ from the configuration actually retrieved
+
+- **Design / task expected:** REQ-CHAT-004 and FR-35 require every answer to retain the exact configuration version and binding set used.
+- **Code currently does:** `ChatService` resolves and stores binding IDs/config versions before calling retrieval at [ChatService.java:168](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:168). `RetrievalOrchestrator` then independently reloads KBs and current bindings at [RetrievalOrchestrator.java:95](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:95). The `RetrievalTurn` does not return the versions/bindings actually used.
+- **Why it matters:** A binding/config change between those reads can cause retrieval from a newly added or changed binding while persisting the old snapshot, or persist a removed binding that was not searched. That breaks evidence-boundary traceability, auditability, and retry correctness.
+- **Recommended fix:** Dispatch from one immutable per-turn scope snapshot, or return the exact KB versions/binding records used from the orchestrator and persist those. Add a concurrent configuration-change test.
+
+#### 2. Deduplication uses only fingerprint instead of the accepted composite evidence identity
+
+- **Design / task expected:** REQ-RAG-015 requires canonical source identity, URL, version, and content fingerprint to participate in deduplication.
+- **Code currently does:** RRF keys candidates solely by `hit.fingerprint()` at [ReciprocalRankFusion.java:24](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ReciprocalRankFusion.java:24), retaining the first hit as canonical.
+- **Why it matters:** Distinct documents or versions with coincidentally equal content fingerprints can be collapsed. Although provenance paths remain, the selected title/excerpt/version/locator comes from only the first hit, creating incorrect evidence identity and future citation risk.
+- **Recommended fix:** Extend the adapter hit contract with canonical source identity and URL, construct the specified composite dedup key, and test same-fingerprint/different-source and same-source/different-version cases.
+
+#### 3. A timed-out future does not stop the provider operation or release its concurrency permit
+
+- **Design / task expected:** Independent timeout and concurrency budgets must bound connector work; no connector operation should continue indefinitely after its turn has timed out.
+- **Code currently does:** `orTimeout(...)` completes the future exceptionally at [RetrievalOrchestrator.java:125](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:125) and [RetrievalOrchestrator.java:204](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:204), but it does not cancel or interrupt the supplier. The supplier may remain blocked in `Semaphore.acquire()` or the adapter call at [RetrievalOrchestrator.java:423](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:423).
+- **Why it matters:** A hung adapter can hold a permit indefinitely, starve later turns, and a queued task can issue a provider call after its turn has already reported timeout. The configured budget bounds caller waiting, not provider work.
+- **Recommended fix:** Use timed permit acquisition and a cancellable/deadline-aware adapter operation, propagating cancellation to the connector client. Test with a deliberately blocking retriever and verify no late call and restored permit capacity.
+
+### Minor
+
+#### Source-profile feature flags are not independently represented
+
+- **Design / task expected:** FR-69 and the architecture require independent Source Profile and binding feature flags.
+- **Code currently does:** Runtime gating reads only `BindingRecord.featureFlag()` at [RetrievalOrchestrator.java:406](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:406). One `StubRetriever` handles all three profiles and has only one global stub enable switch at [StubRetriever.java:18](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/adapters/StubRetriever.java:18).
+- **Why it matters:** Dify, Git, and Confluence cannot be independently profile-disabled while retaining their binding settings.
+- **Recommended fix:** Add independently validated profile flags before TASK-017/real adapters and include a profile-disabled binding in truthful coverage.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB/current-user binding authorization | Implemented |
+| Authorization before retrieval dispatch | Implemented |
+| Binding runtime controls and truthful coverage | Implemented |
+| Source-profile feature flags | Partial |
+| Required-freshness safety | Implemented as conservative fail-closed stub path |
+| Independent timeout/concurrency configuration | Implemented |
+| Runtime timeout enforcement/cancellation | Partial |
+| Ordinary partial vs access/security/unknown behavior | Implemented |
+| Item-level omission | Implemented |
+| RRF ranking and provenance preservation | Implemented |
+| Composite evidence deduplication | Partial |
+| Exact immutable answer scope/config snapshot | Partial |
+| API error/final payload behavior | Implemented |
+| Real provider calls | Intentionally omitted; TASK-019–021 |
+
+**Task coverage:**
+
+- Clearly implemented: per-turn authorization seam, parallel stubs, coverage, fail-closed/partial/item omission, in-process RRF.
+- Partially implemented: bounded provider execution, immutable scope traceability, required composite dedup.
+- Not yet reflected: real adapters, citations/Evidence Drawer, quota/backoff/circuit breaker, production freshness evidence; these belong to later tasks.
+- Unsupported scope additions: None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- Hardcoded RRF `K=60` is documented in code, but no accepted RRF/dedup ADR exists. TASK-015 explicitly permits the documented in-process implementation, so this is recorded as an unresolved SDD risk rather than a separate blocking finding.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** Retrieval reloads registry state independently from the Chat scope snapshot, splitting ownership of the evidence boundary.
+- **Misplaced responsibilities:** None otherwise identified.
+- **Coupling issues:** `RetrievalTurn` lacks the actual binding/config snapshot needed by Chat persistence.
+- **Hidden shortcuts:** Fingerprint-only dedup; timeout without cancellation; one global stub flag for three profiles.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Authorization ordering and failure branches align; persisted retrieval snapshot does not.
+- **Validation behavior:** Provider budgets are positive-validated; source-profile flags are absent.
+- **Retry / failure handling:** Failure classification aligns, but timed-out work can continue in the background.
+- **User-visible behavior:** Partial coverage and fail-closed API outcomes align.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Authorization and retrieval ports are correctly placed.
+- **External system handling:** Stub-only as TASK-015 permits.
+- **Secret / credential safety:** No credentials or real excerpts introduced.
+- **Logging / audit hooks:** Content-free success/security/unknown events exist.
+- **Error propagation:** Typed adapter security/failure and unknown exception behavior align; actual timeout cancellation does not.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blockers:** Three Major findings above
+- **Acceptable deviations:** Conservative required-freshness fail-closed behavior for stub retrieval; real adapters/citations/deeper resilience deferred by accepted tasks
+- **Required corrections:** Immutable retrieval snapshot, composite dedup key, cancellable bounded provider execution
+
+---
+
+## Recommended Fixes
+
+1. Make a single immutable scope/config/binding snapshot authoritative for dispatch and persistence.
+2. Implement REQ-RAG-015’s composite dedup identity.
+3. Make timeout enforcement cancel connector work and bound semaphore acquisition.
+4. Add profile-level feature flags before the governance/real-adapter path.
+5. Add regression tests for config races, same-fingerprint distinct evidence, blocking retrievers, and profile-disable coverage.
+
+## Minimal Fix Path
+
+- Extend `RetrievalTurn` or the retrieval request with immutable KB-version and binding snapshots.
+- Expand `Retriever.Hit` with the accepted dedup identity fields and replace the fingerprint-only key.
+- Replace unbounded permit acquisition plus `orTimeout` with deadline-aware acquisition and cancellation.
+- Add focused unit/integration tests; no API shape change is required.
+
+---
+
+## Open Risks / Questions
+
+- Required freshness currently always blocks when `freshness_required=true`; this is safe for unproven stub evidence, but a verified-fresh path must exist before activation of such KBs.
+- The accepted specification/architecture require an ADR for RRF/dedup internals, while TASK-015 permits documenting the in-process choice now. The SDD chain should reconcile that before production use.
+- Quota, backoff, and circuit breaker behavior remains later-task work.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 70%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] Chat and retrieval do not share one immutable configuration/binding snapshot — [ChatService.java:168](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:168), [RetrievalOrchestrator.java:95](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:95) — evidence-boundary ownership and audit traceability
+- [ ] Fingerprint-only dedup discards the accepted composite source/version identity — [ReciprocalRankFusion.java:24](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ReciprocalRankFusion.java:24) — provenance/evidence architecture
+
+### P1 (Fix Next Touch)
+
+- [ ] Timeout completion does not own cancellation of underlying connector work — [RetrievalOrchestrator.java:125](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:125) — resilience and independently bounded adapters
+- [ ] Profile-level feature flags are missing from the adapter plane — [StubRetriever.java:18](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/adapters/StubRetriever.java:18) — configuration externalization and connector isolation
+
+### P2 (Track)
+
+None identified.
+
+## Good Practices Confirmed
+
+- Feature-based `chat`, `retrieval`, `adapters`, `registry`, and shared web error packages.
+- Process-local adapter interfaces preserve the ADR-0002 modular-monolith boundary.
+- Provider budgets are externalized, provider-specific, validated, and have no deployed defaults.
+- DTOs/records and returned collections are predominantly immutable.
+- Error categories and HTTP envelopes align with the accepted API guide.
+- Security failure state transition and audit remain in application services rather than adapters.
+- No database/schema or provider-secret boundary drift.
+
+## Verification
+
+- `git fetch origin --prune` — passed
+- Prescribed `git diff --check` against `origin/main...HEAD` — passed
+- `./mvnw -q test` — passed: 112 tests, 0 failures, 0 errors, 0 skipped
+- Worktree remained unmodified.
+
+## Recommendation
+
+Do not merge until the three Major/P0 correctness gaps are remediated and covered by regression tests. Binding authorization ordering and fail-closed behavior are otherwise materially aligned.
+
+# Gate A Merge Gate: Fail

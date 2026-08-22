@@ -85,7 +85,19 @@ public class StubRetriever implements Retriever {
                     default ->
                             "{\"dataset_id\":\"ds_fixture\",\"document_id\":\"" + documentId + "\"}";
                 };
+        String sourceUrl =
+                switch (request.providerProfile()) {
+                    case "git_markdown" ->
+                            "https://github.example/org/runbooks/blob/abc123def/docs/"
+                                    + suffix
+                                    + ".md";
+                    case "confluence" ->
+                            "https://confluence.example/pages/" + documentId;
+                    default -> "atlas://dify/ds_fixture/" + documentId;
+                };
         return new Hit(
+                request.providerProfile() + ":" + documentId,
+                sourceUrl,
                 documentId,
                 "Fixture " + suffix,
                 "Local retrieval fixture; not a real internal excerpt (" + suffix + ").",

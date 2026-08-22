@@ -125,14 +125,22 @@ public class ChatMessageRepository {
     }
 
     @Transactional
-    public int markProcessingIfRetryable(String messageId) {
+    public int markProcessingIfRetryable(
+            String messageId,
+            String logicalKbScopeJson,
+            String bindingSetJson,
+            String configVersionsJson) {
         return jdbcTemplate.update(
                 """
                 UPDATE chat_message
-                SET status = ?, answer_text = NULL, coverage = NULL, completed_at = NULL
+                SET status = ?, answer_text = NULL, logical_kb_scope = ?, binding_set = ?,
+                    config_versions = ?, coverage = NULL, completed_at = NULL
                 WHERE message_id = ? AND status IN ('incomplete_cancelled', 'failed')
                 """,
                 "processing",
+                logicalKbScopeJson,
+                bindingSetJson,
+                configVersionsJson,
                 messageId);
     }
 

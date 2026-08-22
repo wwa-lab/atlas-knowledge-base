@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest
 @ActiveProfiles("local")
@@ -23,6 +24,7 @@ class RetrievalOrchestratorTest {
     @Autowired private AtlasUserRepository users;
     @Autowired private LogicalKnowledgeBaseRepository knowledgeBases;
     @Autowired private BindingRepository bindings;
+    @Autowired private RetrievalProperties properties;
 
     @Test
     void timeoutIsPartialCoverageAndDoesNotFailClosed() {
@@ -40,7 +42,7 @@ class RetrievalOrchestratorTest {
                         now);
 
         RetrievalTurn turn =
-                retrieval.retrieve(
+                retrieve(
                         user, "How do we rotate the gateway cert?", List.of(ok.logicalKbId(), slow.logicalKbId()));
 
         assertThat(turn.blocked()).isFalse();
@@ -67,7 +69,7 @@ class RetrievalOrchestratorTest {
                         "{\"retrieval_fixture\":\"timeout\"}",
                         now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.NO_EVIDENCE);
         assertThat(turn.fused()).isEmpty();
@@ -89,7 +91,7 @@ class RetrievalOrchestratorTest {
                 "{\"repo\":\"org/runbooks\",\"retrieval_fixture\":\"binding_denied\"}",
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_ACCESS);
         assertThat(turn.fused()).isEmpty();
@@ -115,13 +117,33 @@ class RetrievalOrchestratorTest {
                 false,
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
         assertThat(turn.fused()).isEmpty();
         @SuppressWarnings("unchecked")
         List<String> failed = (List<String>) turn.coverage().get("failed");
         assertThat(failed).contains("bnd_ret_flag_off");
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void providerProfileFlagStopsOnlyThatProfileAndBlocksIncompleteKb() {
+        Instant now = Instant.parse("2026-08-22T03:01:20Z");
+        AtlasUserRecord user = owner("usr_ret_profile_off", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_profile_off", user.userId(), now);
+        binding("bnd_ret_profile_dify", kb.logicalKbId(), "dify", "{}", now);
+        binding("bnd_ret_profile_git", kb.logicalKbId(), "git_markdown", "{}", now);
+        properties.setProviderEnabled(
+                java.util.Map.of("dify", true, "git_markdown", false, "confluence", true));
+
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed).contains("bnd_ret_profile_dify", "bnd_ret_profile_git");
     }
 
     @Test
@@ -161,7 +183,7 @@ class RetrievalOrchestratorTest {
                 true,
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
         assertThat(turn.fused()).isEmpty();
@@ -198,7 +220,7 @@ class RetrievalOrchestratorTest {
                                 now));
         binding("bnd_ret_freshness", kb.logicalKbId(), "dify", "{}", now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
         @SuppressWarnings("unchecked")
@@ -218,7 +240,7 @@ class RetrievalOrchestratorTest {
                 "{\"retrieval_fixture\":\"security\"}",
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.SECURITY);
         assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
@@ -241,7 +263,7 @@ class RetrievalOrchestratorTest {
                 "{\"retrieval_fixture\":\"throw_security\"}",
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.SECURITY);
         assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
@@ -263,7 +285,7 @@ class RetrievalOrchestratorTest {
                 now);
 
         RetrievalTurn turn =
-                retrieval.retrieve(user, "question", List.of(ok.logicalKbId(), failed.logicalKbId()));
+                retrieve(user, "question", List.of(ok.logicalKbId(), failed.logicalKbId()));
 
         assertThat(turn.blocked()).isFalse();
         @SuppressWarnings("unchecked")
@@ -286,7 +308,7 @@ class RetrievalOrchestratorTest {
                 "{\"retrieval_fixture\":\"throw_unknown\"}",
                 now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.UNKNOWN);
         assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
@@ -306,7 +328,7 @@ class RetrievalOrchestratorTest {
                         "{\"retrieval_fixture\":\"item_omit\"}",
                         now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.blocked()).isFalse();
         @SuppressWarnings("unchecked")
@@ -343,7 +365,7 @@ class RetrievalOrchestratorTest {
                                 now));
         binding("bnd_ret_browse", kb.logicalKbId(), "git_markdown", "{\"repo\":\"org/runbooks\"}", now);
 
-        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
 
         assertThat(turn.fused()).isEmpty();
         @SuppressWarnings("unchecked")
@@ -355,6 +377,19 @@ class RetrievalOrchestratorTest {
         return users.insert(
                 new AtlasUserRecord(
                         userId, "sso-" + userId, "Owner", null, "[\"end_user\",\"kb_owner\"]", true, now, now));
+    }
+
+    private RetrievalTurn retrieve(
+            AtlasUserRecord user, String question, List<String> logicalKbIds) {
+        List<RetrievalScope.KnowledgeBaseSnapshot> snapshots =
+                logicalKbIds.stream()
+                        .map(
+                                logicalKbId ->
+                                        new RetrievalScope.KnowledgeBaseSnapshot(
+                                                knowledgeBases.findById(logicalKbId).orElseThrow(),
+                                                bindings.findByLogicalKbId(logicalKbId)))
+                        .toList();
+        return retrieval.retrieve(user, question, new RetrievalScope(snapshots));
     }
 
     private LogicalKnowledgeBaseRecord chatReadyKb(String logicalKbId, String ownerUserId, Instant now) {

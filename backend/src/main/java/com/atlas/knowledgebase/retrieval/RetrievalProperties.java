@@ -12,6 +12,7 @@ public class RetrievalProperties {
 
     private Map<String, Duration> providerTimeouts = new LinkedHashMap<>();
     private Map<String, Integer> providerConcurrency = new LinkedHashMap<>();
+    private Map<String, Boolean> providerEnabled = new LinkedHashMap<>();
 
     public Map<String, Duration> getProviderTimeouts() {
         return Map.copyOf(providerTimeouts);
@@ -31,6 +32,27 @@ public class RetrievalProperties {
                 providerConcurrency == null
                         ? new LinkedHashMap<>()
                         : new LinkedHashMap<>(providerConcurrency);
+    }
+
+    public Map<String, Boolean> getProviderEnabled() {
+        return Map.copyOf(providerEnabled);
+    }
+
+    public void setProviderEnabled(Map<String, Boolean> providerEnabled) {
+        this.providerEnabled =
+                providerEnabled == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerEnabled);
+    }
+
+    public boolean enabled(String providerProfile) {
+        Boolean enabled = providerEnabled.get(providerProfile);
+        if (enabled == null) {
+            throw new IllegalStateException(
+                    "An explicit retrieval feature flag is required for provider "
+                            + providerProfile);
+        }
+        return enabled;
     }
 
     public Duration timeoutFor(String providerProfile) {
@@ -57,6 +79,7 @@ public class RetrievalProperties {
                 provider -> {
                     timeoutFor(provider);
                     concurrencyFor(provider);
+                    enabled(provider);
                 });
     }
 }

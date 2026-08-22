@@ -98,6 +98,9 @@ class ChatApiTest {
                         "SELECT answer_text FROM chat_message WHERE message_id = ?", String.class, assistantId);
         assertThat(status).isEqualTo("incomplete_cancelled");
         assertThat(answer).isNull();
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET config_version = 2 WHERE logical_kb_id = ?",
+                kbId);
 
         MvcResult retry =
                 mockMvc.perform(
@@ -121,6 +124,12 @@ class ChatApiTest {
                         Integer.class,
                         threadId);
         assertThat(completed).isEqualTo(1);
+        String retriedVersions =
+                jdbcTemplate.queryForObject(
+                        "SELECT config_versions FROM chat_message WHERE message_id = ?",
+                        String.class,
+                        assistantId);
+        assertThat(retriedVersions).contains("\"" + kbId + "\":2");
         mockMvc.perform(
                         post("/api/v1/chats/" + threadId + "/scope")
                                 .cookie(owner.session())

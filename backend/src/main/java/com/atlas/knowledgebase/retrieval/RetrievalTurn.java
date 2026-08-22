@@ -9,6 +9,7 @@ public record RetrievalTurn(
         List<ReciprocalRankFusion.FusedHit> fused,
         List<Map<String, Object>> citations,
         Object conflict,
+        RetrievalScope scope,
         Block block,
         String blockLogicalKbId,
         String blockBindingId) {
@@ -17,6 +18,7 @@ public record RetrievalTurn(
         coverage = coverage == null ? Map.of() : Map.copyOf(coverage);
         fused = fused == null ? List.of() : List.copyOf(fused);
         citations = citations == null ? List.of() : List.copyOf(citations);
+        scope = scope == null ? new RetrievalScope(List.of()) : scope;
     }
 
     public enum Block {

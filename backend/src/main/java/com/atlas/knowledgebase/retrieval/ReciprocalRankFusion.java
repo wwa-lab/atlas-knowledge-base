@@ -11,8 +11,9 @@ import java.util.Map;
  * Reciprocal Rank Fusion as the product ranking constraint (REQ-RAG-003 / FR-36).
  *
  * <p>Score for document {@code d} is {@code Σ 1 / (k + rank_i(d))} over retriever lists, with
- * {@code k = 60} (the common constant). Dedup is by fingerprint; every provenance path is kept.
- * Component storage, k-tuning, and cache isolation remain ADR-gated.
+ * {@code k = 60} (the common constant). Dedup uses the accepted composite evidence identity:
+ * canonical source identity, source URL, version, and content fingerprint. Every provenance path
+ * is kept. Component storage, k-tuning, and cache isolation remain ADR-gated.
  */
 public final class ReciprocalRankFusion {
 
@@ -21,7 +22,7 @@ public final class ReciprocalRankFusion {
     private ReciprocalRankFusion() {}
 
     public static List<FusedHit> fuse(List<RankedList> lists) {
-        Map<String, Acc> byFingerprint = new LinkedHashMap<>();
+        Map<DedupKey, Acc> byIdentity = new LinkedHashMap<>();
         for (RankedList list : lists) {
             if (list == null || list.hits() == null) {
                 continue;
@@ -34,9 +35,15 @@ public final class ReciprocalRankFusion {
                 }
                 int rank = hit.rank() > 0 ? hit.rank() : position;
                 double add = 1.0d / (K + rank);
+                DedupKey key =
+                        new DedupKey(
+                                hit.canonicalSourceIdentity(),
+                                hit.sourceUrl(),
+                                hit.version(),
+                                hit.fingerprint());
                 Acc acc =
-                        byFingerprint.computeIfAbsent(
-                                hit.fingerprint(),
+                        byIdentity.computeIfAbsent(
+                                key,
                                 ignored -> new Acc(0.0d, new ArrayList<>(), hit));
                 acc.score += add;
                 acc.paths.add(
@@ -45,19 +52,22 @@ public final class ReciprocalRankFusion {
                 position++;
             }
         }
-        return byFingerprint.values().stream()
+        return byIdentity.entrySet().stream()
                 .sorted(
-                        Comparator.comparingDouble((Acc acc) -> acc.score)
+                        Comparator.comparingDouble(
+                                        (Map.Entry<DedupKey, Acc> entry) -> entry.getValue().score)
                                 .reversed()
-                                .thenComparing(acc -> acc.canonical.fingerprint()))
+                                .thenComparing(entry -> entry.getKey().stableValue()))
                 .map(
-                        acc ->
-                                new FusedHit(
-                                        acc.canonical,
-                                        List.copyOf(acc.paths),
-                                        acc.paths.getFirst().logicalKbId(),
-                                        acc.paths.getFirst().bindingId(),
-                                        acc.paths.getFirst().provider()))
+                        entry -> {
+                            Acc acc = entry.getValue();
+                            return new FusedHit(
+                                    acc.canonical,
+                                    List.copyOf(acc.paths),
+                                    acc.paths.getFirst().logicalKbId(),
+                                    acc.paths.getFirst().bindingId(),
+                                    acc.paths.getFirst().provider());
+                        })
                 .toList();
     }
 
@@ -95,6 +105,19 @@ public final class ReciprocalRankFusion {
             this.score = score;
             this.paths = paths;
             this.canonical = canonical;
+        }
+    }
+
+    private record DedupKey(
+            String canonicalSourceIdentity, String sourceUrl, String version, String fingerprint) {
+        private String stableValue() {
+            return canonicalSourceIdentity
+                    + "\u0000"
+                    + sourceUrl
+                    + "\u0000"
+                    + version
+                    + "\u0000"
+                    + fingerprint;
         }
     }
 }

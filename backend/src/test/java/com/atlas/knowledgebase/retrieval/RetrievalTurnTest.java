@@ -22,6 +22,7 @@ class RetrievalTurnTest {
                         List.of(),
                         List.of(),
                         null,
+                        new RetrievalScope(List.of()),
                         RetrievalTurn.Block.NONE,
                         null,
                         null);

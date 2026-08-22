@@ -9,6 +9,7 @@ import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.retrieval.RetrievalOrchestrator;
+import com.atlas.knowledgebase.retrieval.RetrievalScope;
 import com.atlas.knowledgebase.retrieval.RetrievalTurn;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.SessionService;
@@ -167,6 +168,7 @@ public class ChatService {
         ChatThreadRecord thread = requireOwnThread(user, threadId);
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
         RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
+        RetrievalScope actualScope = turn.scope();
         Instant now = clock.instant();
         String requestId = "req_" + SessionService.randomToken().substring(0, 16);
         ChatMessageRecord userMessage =
@@ -178,9 +180,9 @@ public class ChatService {
                                 "completed",
                                 question,
                                 null,
-                                writeJson(resolved.logicalKbIds()),
-                                writeJson(resolved.bindingIds()),
-                                writeJson(resolved.configVersions()),
+                                writeJson(actualScope.logicalKbIds()),
+                                writeJson(actualScope.bindingIds()),
+                                writeJson(actualScope.configVersions()),
                                 null,
                                 null,
                                 resolved.classification(),
@@ -196,9 +198,9 @@ public class ChatService {
                                 "processing",
                                 null,
                                 null,
-                                writeJson(resolved.logicalKbIds()),
-                                writeJson(resolved.bindingIds()),
-                                writeJson(resolved.configVersions()),
+                                writeJson(actualScope.logicalKbIds()),
+                                writeJson(actualScope.bindingIds()),
+                                writeJson(actualScope.configVersions()),
                                 null,
                                 null,
                                 resolved.classification(),
@@ -206,7 +208,7 @@ public class ChatService {
                                 now,
                                 null));
         threads.touch(threadId, now);
-        audit(user.userId(), resolved.logicalKbIds().getFirst(), "chat_ask", "allow", "ok");
+        audit(user.userId(), actualScope.logicalKbIds().getFirst(), "chat_ask", "allow", "ok");
         return startGeneration(user, assistant, question, resolved, turn, false);
     }
 
@@ -297,7 +299,13 @@ public class ChatService {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
         inFlight.put(assistant.messageId(), flight);
-        if (retry && messages.markProcessingIfRetryable(assistant.messageId()) == 0) {
+        if (retry
+                && messages.markProcessingIfRetryable(
+                                assistant.messageId(),
+                                writeJson(turn.scope().logicalKbIds()),
+                                writeJson(turn.scope().bindingIds()),
+                                writeJson(turn.scope().configVersions()))
+                        == 0) {
             inFlight.remove(assistant.messageId(), flight);
             throw new ChatConflictException("NOT_RETRYABLE", "This message cannot be retried.");
         }
@@ -388,7 +396,7 @@ public class ChatService {
                             }
                             audit(
                                     user.userId(),
-                                    resolved.logicalKbIds().getFirst(),
+                                    turn.scope().logicalKbIds().getFirst(),
                                     retry ? "chat_retry" : "chat_complete",
                                     "allow",
                                     "ok");
@@ -429,7 +437,7 @@ public class ChatService {
 
     private RetrievalTurn retrieveOrThrow(
             AtlasUserRecord user, String question, ResolvedScope resolved) {
-        RetrievalTurn turn = retrieval.retrieve(user, question, resolved.logicalKbIds());
+        RetrievalTurn turn = retrieval.retrieve(user, question, resolved.retrievalScope());
         if (turn.block() == RetrievalTurn.Block.BINDING_ACCESS) {
             throw new ChatForbiddenException(
                     "KB_BINDING_ACCESS_MISSING",
@@ -538,6 +546,7 @@ public class ChatService {
         List<String> logicalKbIds = List.copyOf(unique);
         List<String> bindingIds = new ArrayList<>();
         Map<String, Integer> versions = new LinkedHashMap<>();
+        List<RetrievalScope.KnowledgeBaseSnapshot> snapshots = new ArrayList<>();
         String classification = null;
         for (String logicalKbId : logicalKbIds) {
             LogicalKnowledgeBaseRecord kb =
@@ -565,12 +574,18 @@ public class ChatService {
                     || (kb.classification() != null && kb.classification().compareTo(classification) > 0)) {
                 classification = kb.classification();
             }
-            for (BindingRecord binding : bindings.findByLogicalKbId(logicalKbId)) {
+            List<BindingRecord> currentBindings = bindings.findByLogicalKbId(logicalKbId);
+            for (BindingRecord binding : currentBindings) {
                 bindingIds.add(binding.bindingId());
             }
+            snapshots.add(new RetrievalScope.KnowledgeBaseSnapshot(kb, currentBindings));
         }
         return new ResolvedScope(
-                logicalKbIds, List.copyOf(bindingIds), versions, classification == null ? "internal" : classification);
+                logicalKbIds,
+                List.copyOf(bindingIds),
+                versions,
+                classification == null ? "internal" : classification,
+                new RetrievalScope(snapshots));
     }
 
     private Map<String, Object> threadProjection(ChatThreadRecord thread) {
@@ -684,7 +699,8 @@ public class ChatService {
             List<String> logicalKbIds,
             List<String> bindingIds,
             Map<String, Integer> configVersions,
-            String classification) {}
+            String classification,
+            RetrievalScope retrievalScope) {}
 
     private record InFlight(SseEmitter emitter, AtomicBoolean cancelled) {}
 }

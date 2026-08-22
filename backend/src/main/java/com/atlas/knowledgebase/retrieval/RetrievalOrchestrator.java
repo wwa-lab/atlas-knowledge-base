@@ -6,14 +6,12 @@ import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
 import com.atlas.knowledgebase.registry.BindingRecord;
-import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.SessionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,14 +20,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,45 +32,34 @@ import org.springframework.stereotype.Service;
 public class RetrievalOrchestrator {
 
     private final LogicalKnowledgeBaseRepository knowledgeBases;
-    private final BindingRepository bindings;
     private final KbAccessService access;
     private final RetrieverRegistry retrievers;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final RetrievalProperties properties;
-    private final Map<String, Semaphore> providerLimits;
-    private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
+    private final ProviderExecution providerExecution;
 
     public RetrievalOrchestrator(
             LogicalKnowledgeBaseRepository knowledgeBases,
-            BindingRepository bindings,
             KbAccessService access,
             RetrieverRegistry retrievers,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock,
-            RetrievalProperties properties) {
+            RetrievalProperties properties,
+            ProviderExecution providerExecution) {
         this.knowledgeBases = knowledgeBases;
-        this.bindings = bindings;
         this.access = access;
         this.retrievers = retrievers;
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.properties = properties;
-        properties.validateProfiles(retrievers.providers());
-        Map<String, Semaphore> limits = new LinkedHashMap<>();
-        retrievers.providers()
-                .forEach(
-                        provider ->
-                                limits.put(
-                                        provider,
-                                        new Semaphore(properties.concurrencyFor(provider))));
-        this.providerLimits = Map.copyOf(limits);
+        this.providerExecution = providerExecution;
     }
 
-    public RetrievalTurn retrieve(AtlasUserRecord user, String question, List<String> logicalKbIds) {
+    public RetrievalTurn retrieve(AtlasUserRecord user, String question, RetrievalScope scope) {
         Set<String> successful = new LinkedHashSet<>();
         Set<String> failed = new LinkedHashSet<>();
         Set<String> timedOut = new LinkedHashSet<>();
@@ -92,12 +73,13 @@ public class RetrievalOrchestrator {
         String blockBinding = null;
 
         List<BindingWork> authorizationWork = new ArrayList<>();
-        for (String logicalKbId : logicalKbIds) {
-            LogicalKnowledgeBaseRecord kb = knowledgeBases.findById(logicalKbId).orElse(null);
-            if (kb == null || !access.authorized(user, kb) || !access.chatEligible(user, kb)) {
+        for (RetrievalScope.KnowledgeBaseSnapshot snapshot : scope.knowledgeBases()) {
+            LogicalKnowledgeBaseRecord kb = snapshot.knowledgeBase();
+            String logicalKbId = kb.logicalKbId();
+            if (!access.authorized(user, kb) || !access.chatEligible(user, kb)) {
                 continue;
             }
-            List<BindingRecord> current = bindings.findByLogicalKbId(logicalKbId);
+            List<BindingRecord> current = snapshot.bindings();
             currentBindings.put(logicalKbId, current);
             boolean runtimeUnavailable = false;
             for (BindingRecord binding : current) {
@@ -119,25 +101,17 @@ public class RetrievalOrchestrator {
         }
 
         List<BindingWork> retrievalWork = new ArrayList<>();
-        List<CompletableFuture<BindingAuthorization>> authorizationFutures = new ArrayList<>();
+        List<PendingAuthorization> authorizationCalls = new ArrayList<>();
         for (BindingWork item : authorizationWork) {
-            Duration timeout = properties.timeoutFor(item.binding().providerProfile());
-            authorizationFutures.add(
-                    CompletableFuture.supplyAsync(
-                                    () ->
-                                            withProviderPermit(
-                                                    item.binding().providerProfile(),
-                                                    () -> authorizeOne(user, item, timeout)),
-                                    workers)
-                            .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
-                            .exceptionally(
-                                    error ->
-                                            new BindingAuthorization(
-                                                    item,
-                                                    classifyAuthorizationFailure(error))));
+            authorizationCalls.add(
+                    new PendingAuthorization(
+                            item,
+                            providerExecution.submit(
+                                    item.binding().providerProfile(),
+                                    timeout -> authorizeOne(user, item, timeout))));
         }
-        for (CompletableFuture<BindingAuthorization> future : authorizationFutures) {
-            BindingAuthorization authorization = future.join();
+        for (PendingAuthorization pending : authorizationCalls) {
+            BindingAuthorization authorization = awaitAuthorization(pending);
             BindingWork item = authorization.item();
             String logicalKbId = item.kb().logicalKbId();
             String bindingId = item.binding().bindingId();
@@ -198,26 +172,17 @@ public class RetrievalOrchestrator {
         }
         retrievalWork.removeIf(item -> preRetrievalBlocked.contains(item.kb().logicalKbId()));
 
-        List<CompletableFuture<BindingOutcome>> futures = new ArrayList<>();
+        List<PendingRetrieval> retrievalCalls = new ArrayList<>();
         for (BindingWork item : retrievalWork) {
-            Duration timeout = properties.timeoutFor(item.binding().providerProfile());
-            futures.add(
-                    CompletableFuture.supplyAsync(
-                                    () ->
-                                            withProviderPermit(
-                                                    item.binding().providerProfile(),
-                                                    () -> retrieveOne(user, question, item, timeout)),
-                                    workers)
-                            .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
-                            .exceptionally(
-                                    error ->
-                                            new BindingOutcome(
-                                                    item.kb().logicalKbId(),
-                                                    item.binding(),
-                                                    classifyFailure(error))));
+            retrievalCalls.add(
+                    new PendingRetrieval(
+                            item,
+                            providerExecution.submit(
+                                    item.binding().providerProfile(),
+                                    timeout -> retrieveOne(user, question, item, timeout))));
         }
-        for (CompletableFuture<BindingOutcome> future : futures) {
-            BindingOutcome outcome = future.join();
+        for (PendingRetrieval pending : retrievalCalls) {
+            BindingOutcome outcome = awaitRetrieval(pending);
             String bindingId = outcome.binding().bindingId();
             String logicalKbId = outcome.logicalKbId();
             switch (outcome.result().outcome()) {
@@ -279,11 +244,13 @@ public class RetrievalOrchestrator {
         Set<String> blockedKbs = new LinkedHashSet<>(securityKbs);
         blockedKbs.addAll(unknownKbs);
         if (!blockedKbs.isEmpty()) {
-            successful.removeIf(
-                    bindingId -> {
-                        BindingRecord binding = bindings.findById(bindingId).orElse(null);
-                        return binding != null && blockedKbs.contains(binding.logicalKbId());
-                    });
+            Set<String> blockedBindingIds = new LinkedHashSet<>();
+            blockedKbs.forEach(
+                    blockedKb ->
+                            currentBindings.getOrDefault(blockedKb, List.of()).stream()
+                                    .map(BindingRecord::bindingId)
+                                    .forEach(blockedBindingIds::add));
+            successful.removeAll(blockedBindingIds);
             ranked.removeIf(list -> blockedKbs.contains(list.logicalKbId()));
             for (String blockedKb : blockedKbs) {
                 markWholeKbFailed(
@@ -312,12 +279,7 @@ public class RetrievalOrchestrator {
         }
 
         return new RetrievalTurn(
-                coverage, fused, List.of(), null, block, blockKb, blockBinding);
-    }
-
-    @PreDestroy
-    void closeWorkers() {
-        workers.close();
+                coverage, fused, List.of(), null, scope, block, blockKb, blockBinding);
     }
 
     private BindingAuthorization authorizeOne(
@@ -365,6 +327,42 @@ public class RetrievalOrchestrator {
         return new BindingOutcome(kb.logicalKbId(), binding, result);
     }
 
+    private BindingAuthorization awaitAuthorization(PendingAuthorization pending) {
+        try {
+            return providerExecution.await(pending.call());
+        } catch (TimeoutException e) {
+            return new BindingAuthorization(
+                    pending.item(), Retriever.AuthorizationResult.timeout());
+        } catch (ExecutionException e) {
+            return new BindingAuthorization(
+                    pending.item(), classifyAuthorizationFailure(e.getCause()));
+        } catch (InterruptedException e) {
+            return new BindingAuthorization(
+                    pending.item(), Retriever.AuthorizationResult.unknown());
+        }
+    }
+
+    private BindingOutcome awaitRetrieval(PendingRetrieval pending) {
+        try {
+            return providerExecution.await(pending.call());
+        } catch (TimeoutException e) {
+            return new BindingOutcome(
+                    pending.item().kb().logicalKbId(),
+                    pending.item().binding(),
+                    Retriever.Result.timeout());
+        } catch (ExecutionException e) {
+            return new BindingOutcome(
+                    pending.item().kb().logicalKbId(),
+                    pending.item().binding(),
+                    classifyFailure(e.getCause()));
+        } catch (InterruptedException e) {
+            return new BindingOutcome(
+                    pending.item().kb().logicalKbId(),
+                    pending.item().binding(),
+                    Retriever.Result.unknown());
+        }
+    }
+
     private Retriever.AuthorizationResult classifyAuthorizationFailure(Throwable error) {
         Throwable cause = unwrap(error);
         if (cause instanceof TimeoutException) {
@@ -397,7 +395,7 @@ public class RetrievalOrchestrator {
 
     private Throwable unwrap(Throwable error) {
         Throwable current = error;
-        while (current instanceof CompletionException && current.getCause() != null) {
+        while (current instanceof ExecutionException && current.getCause() != null) {
             current = current.getCause();
         }
         return current;
@@ -407,6 +405,7 @@ public class RetrievalOrchestrator {
         return binding.enabled()
                 && !binding.killSwitch()
                 && binding.featureFlag()
+                && properties.enabled(binding.providerProfile())
                 && binding.health() != null
                 && !"unavailable".equals(binding.health())
                 && !kb.freshnessRequired();
@@ -418,27 +417,6 @@ public class RetrievalOrchestrator {
                 .map(BindingRecord::bindingId)
                 .filter(bindingId -> !timedOut.contains(bindingId))
                 .forEach(failed::add);
-    }
-
-    private <T> T withProviderPermit(String providerProfile, Supplier<T> operation) {
-        Semaphore limit = providerLimits.get(providerProfile);
-        if (limit == null) {
-            throw new IllegalStateException(
-                    "No retrieval concurrency limit configured for provider " + providerProfile);
-        }
-        boolean acquired = false;
-        try {
-            limit.acquire();
-            acquired = true;
-            return operation.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new CompletionException(e);
-        } finally {
-            if (acquired) {
-                limit.release();
-            }
-        }
     }
 
     private void audit(
@@ -474,6 +452,12 @@ public class RetrievalOrchestrator {
 
     private record BindingAuthorization(
             BindingWork item, Retriever.AuthorizationResult result) {}
+
+    private record PendingAuthorization(
+            BindingWork item, ProviderExecution.TimedCall<BindingAuthorization> call) {}
+
+    private record PendingRetrieval(
+            BindingWork item, ProviderExecution.TimedCall<BindingOutcome> call) {}
 
     private record BindingOutcome(
             String logicalKbId, BindingRecord binding, Retriever.Result result) {}

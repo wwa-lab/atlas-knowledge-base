@@ -16,6 +16,7 @@ class RetrievalPropertiesTest {
         properties.setProviderTimeouts(
                 Map.of("dify", Duration.ofSeconds(1), "confluence", Duration.ofSeconds(3)));
         properties.setProviderConcurrency(Map.of("dify", 2, "confluence", 5));
+        properties.setProviderEnabled(Map.of("dify", true, "confluence", false));
 
         properties.validateProfiles(Set.of("dify", "confluence"));
 
@@ -23,6 +24,8 @@ class RetrievalPropertiesTest {
         assertThat(properties.timeoutFor("confluence")).isEqualTo(Duration.ofSeconds(3));
         assertThat(properties.concurrencyFor("dify")).isEqualTo(2);
         assertThat(properties.concurrencyFor("confluence")).isEqualTo(5);
+        assertThat(properties.enabled("dify")).isTrue();
+        assertThat(properties.enabled("confluence")).isFalse();
     }
 
     @Test
@@ -30,6 +33,7 @@ class RetrievalPropertiesTest {
         RetrievalProperties properties = new RetrievalProperties();
         properties.setProviderTimeouts(Map.of("dify", Duration.ZERO));
         properties.setProviderConcurrency(Map.of("dify", 0));
+        properties.setProviderEnabled(Map.of("dify", true));
 
         assertThatThrownBy(() -> properties.validateProfiles(Set.of("dify")))
                 .isInstanceOf(IllegalStateException.class)

@@ -75,13 +75,28 @@ public interface Retriever {
             Duration timeout) {}
 
     record Hit(
+            String canonicalSourceIdentity,
+            String sourceUrl,
             String documentId,
             String title,
             String excerpt,
             String version,
             String locatorJson,
             int rank,
-            String fingerprint) {}
+            String fingerprint) {
+        public Hit {
+            requireIdentity(canonicalSourceIdentity, "canonicalSourceIdentity");
+            requireIdentity(sourceUrl, "sourceUrl");
+            requireIdentity(version, "version");
+            requireIdentity(fingerprint, "fingerprint");
+        }
+
+        private static void requireIdentity(String value, String field) {
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException(field + " is required for evidence identity");
+            }
+        }
+    }
 
     enum Outcome {
         SUCCESS,
