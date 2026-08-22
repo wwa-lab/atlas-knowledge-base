@@ -14,6 +14,7 @@ import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
+import com.atlas.knowledgebase.security.UntrustedContentContainment;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.SessionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -38,6 +39,9 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class RetrievalOrchestrator {
+
+    private static final UntrustedContentContainment CONTENT_CONTAINMENT =
+            new UntrustedContentContainment();
 
     private final LogicalKnowledgeBaseRepository knowledgeBases;
     private final BindingRepository bindings;
@@ -87,6 +91,7 @@ public class RetrievalOrchestrator {
         Set<String> failed = new LinkedHashSet<>();
         Set<String> timedOut = new LinkedHashSet<>();
         Set<String> quotaLimited = new LinkedHashSet<>();
+        Set<String> promptInjectionContained = new LinkedHashSet<>();
         Map<String, String> retryAfter = new LinkedHashMap<>();
         List<ReciprocalRankFusion.RankedList> ranked = new ArrayList<>();
         Set<String> accessDeniedKbs = new LinkedHashSet<>();
@@ -533,12 +538,38 @@ public class RetrievalOrchestrator {
                         break;
                     }
                     successful.add(bindingId);
-                    ranked.add(
-                            new ReciprocalRankFusion.RankedList(
-                                    logicalKbId,
-                                    bindingId,
-                                    outcome.binding().providerProfile(),
-                                    outcome.result().hits()));
+                    List<Retriever.Hit> safeHits = new ArrayList<>();
+                    boolean contained = false;
+                    for (Retriever.Hit hit : outcome.result().hits()) {
+                        UntrustedContentContainment.Decision decision =
+                                CONTENT_CONTAINMENT.inspect(hit);
+                        if (decision.contained()) {
+                            contained = true;
+                            continue;
+                        }
+                        safeHits.add(hit);
+                    }
+                    if (contained) {
+                        promptInjectionContained.add(bindingId);
+                        audit(
+                                user.userId(),
+                                logicalKbId,
+                                bindingId,
+                                outcome.binding().providerProfile(),
+                                "prompt_injection_contained",
+                                "deny",
+                                "contained",
+                                pending.call().latencyMs(),
+                                "security");
+                    }
+                    if (!safeHits.isEmpty()) {
+                        ranked.add(
+                                new ReciprocalRankFusion.RankedList(
+                                        logicalKbId,
+                                        bindingId,
+                                        outcome.binding().providerProfile(),
+                                        safeHits));
+                    }
                     audit(
                             user.userId(),
                             logicalKbId,
@@ -578,6 +609,10 @@ public class RetrievalOrchestrator {
         coverage.put("timed_out", List.copyOf(timedOut));
         coverage.put("quota_limited", List.copyOf(quotaLimited));
         coverage.put("retry_after", Map.copyOf(retryAfter));
+        coverage.put("prompt_injection_contained", List.copyOf(promptInjectionContained));
+        if (!promptInjectionContained.isEmpty()) {
+            coverage.put("partial_coverage", true);
+        }
 
         boolean anyEvidence = !fused.isEmpty();
         BlockSelection selection = selectBlock(blockCandidates, anyEvidence);
