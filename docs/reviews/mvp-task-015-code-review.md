@@ -880,6 +880,193 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 ## Review Scope
 
+- Revision reviewed: `607384f490a9b5b69b5f2f07c682319e76c71823`
+- Base: `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- Diff: `git diff origin/main...607384f490a9b5b69b5f2f07c682319e76c71823`
+- Reviewed all 42 changed production, test, and configuration files.
+- Excluded `docs/reviews/mvp-task-015-code-review.md` and PR narrative from evidence.
+- Review was read-only; no files were modified.
+
+## Overall Assessment
+
+**Partially aligned; not merge-ready.**
+
+The implementation substantially covers provider isolation, independent execution limits, cancellation, Retry-After state, complete-binding authorization, RRF provenance, coverage reporting, and SSE correlation. Two correctness/security-boundary defects remain at the core of TASK-015:
+
+1. Retrieval dispatch can use stale binding and classification state.
+2. Mixed-scope block precedence can return metadata for a different failure than the selected block.
+
+Both are Major findings and fail Gate A.
+
+## Findings
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. Retrieval dispatch revalidates the KB record but continues using stale binding and classification snapshots
+
+**Evidence**
+
+- Ask-time scope, binding IDs, configuration versions, and classification are captured and persisted before asynchronous retrieval starts: `backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:173-224`.
+- The snapshot is initially assembled from current KB and binding records at `ChatService.java:669-721`.
+- At retrieval time, the orchestrator reloads only the logical KB record. It explicitly assigns bindings from the earlier snapshot and has no `BindingRepository` dependency: `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:36-61`, `:89-95`.
+- Runtime eligibility checks therefore evaluate the stale binding object: `RetrievalOrchestrator.java:123-139`, `:594-601`.
+- The returned provenance scope is also the original scope: `RetrievalOrchestrator.java:404-405`.
+- Current `chatEligible` checks lifecycle, capability, model eligibility, health, and authorization, but not classification policy: `backend/src/main/java/com/atlas/knowledgebase/access/KbAccessService.java:35-45`.
+- The existing drift test only changes KB lifecycle and explicitly asserts preservation of the old snapshot; it does not exercise binding disable/kill-switch/config drift or classification drift: `backend/src/test/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestratorTest.java:585-623`.
+
+**Impact**
+
+A binding disabled, kill-switched, reconfigured, removed, or otherwise made ineligible after ask persistence but before actual provider dispatch may still be authorized and queried. A KB classification change is likewise not re-evaluated against the classification policy. Persisted binding/config/classification provenance can consequently describe the earlier snapshot rather than the authoritative state actually governing dispatch.
+
+This violates REQ-AUTH-004/007, FR-31/35/53/56, the immediate runtime-control requirement, and the per-turn authoritative authorization/current-state requirements.
+
+**Minimal verifiable fix**
+
+- Inject and reload `BindingRepository` immediately before authorization and provider dispatch.
+- Re-run classification policy using the authoritative KB and binding records.
+- Fail closed on relevant drift, or atomically establish and persist a replacement authoritative retrieval snapshot before dispatch.
+- Preserve an immutable provenance snapshot of the records actually used.
+- Add race-focused tests covering binding disable, kill switch, configuration-version drift, removal/addition, and classification changes between ask persistence and dispatch. Assert that no affected retriever is invoked.
+
+#### 2. Mixed failure classes can select one block while returning another failure’s KB/binding metadata
+
+**Evidence**
+
+- The orchestrator maintains only one shared `blockKb`/`blockBinding`: `RetrievalOrchestrator.java:80-87`.
+- Discovery and authorization failures populate that pair according to encounter order, often only while it is null: `RetrievalOrchestrator.java:95-139`, `:166-239`.
+- Final block selection is calculated independently using precedence `SECURITY > UNKNOWN > ACCESS > UNAVAILABLE > QUOTA > NO_EVIDENCE`: `RetrievalOrchestrator.java:388-402`.
+- The independently selected block is returned with the earlier encounter-order metadata: `RetrievalOrchestrator.java:404-405`.
+- `ChatService` exposes these identifiers as actionable access-error details: `ChatService.java:576-583`.
+- Existing tests cover access denial plus safe evidence and unavailability plus safe evidence, but not multiple simultaneous failure classes in different scope orders: `RetrievalOrchestratorTest.java:483-582`.
+
+**Reproduction by code path**
+
+If an unavailable KB is visited first, it sets `blockKb`. A later access-denied KB adds `accessDeniedKbs` without replacing that metadata. Final precedence selects `BINDING_ACCESS`, but the response identifies the unavailable KB/binding. The same defect can occur with security, unknown, quota, and timeout combinations.
+
+**Impact**
+
+The response may tell a user to reconnect or request access for an unrelated binding. Coverage may remain accurate, but the primary error, identifiers, and next action are not truthful or order-independent. This violates the mixed-scope coverage/block-precedence and actionable-error requirements.
+
+**Minimal verifiable fix**
+
+- Track representative metadata separately for every failure class, or retain structured per-binding failures.
+- When resolving final precedence, select both the block enum and metadata from the same failure class.
+- Add table-driven tests for every precedence pair in both scope orders, asserting block, KB ID, binding ID, coverage, error code, and next action.
+
+### Minor
+
+None required for the merge decision.
+
+## Areas of Good Alignment
+
+- Complete-binding authorization fans out before retrieval and removes an entire affected KB from usable evidence when a binding fails authorization.
+- Security and unknown authorization outcomes fail closed and suppress sibling evidence; security outcomes suspend the KB.
+- Ordinary provider timeout/failure behavior permits truthful partial coverage where safe evidence remains.
+- Provider profiles have separate concurrency, quota, backoff, and circuit state.
+- Retry-After is captured and enforced through provider availability state.
+- Request cancellation is propagated through retrieval and provider futures, with guarded terminal transitions.
+- RRF uses the specified constant and retains contributing provenance paths while avoiding raw provider-score exposure.
+- SSE processing, terminal error/final events, persisted messages, and retries maintain request correlation.
+- Production profiles do not silently enable the local stub retrieval/model path.
+
+## Requirement and Task Coverage
+
+| Area | Assessment |
+|---|---|
+| Independent provider deadlines/budgets | Implemented for caller-visible completion |
+| Provider isolation | Aligned |
+| Cancellation | Aligned for in-process workers |
+| Retry-After enforcement | Aligned |
+| Complete-binding authorization | Aligned |
+| Current KB-state revalidation | Partially aligned |
+| Current binding/classification revalidation | Not aligned |
+| Immutable provenance | Present, but can preserve the wrong pre-dispatch snapshot |
+| Mixed-scope coverage | Mostly aligned |
+| Block precedence and actionable metadata | Not aligned |
+| RRF provenance | Aligned |
+| SSE correlation | Aligned |
+| TASK-015 acceptance | Partial |
+
+No material scope creep was found. The additional classification/configuration safeguards are relevant to TASK-015’s retrieval security boundary.
+
+## Test-Coverage Assessment
+
+The suite has strong unit/integration coverage for isolated provider outcomes, cancellation, concurrency, Retry-After, RRF, SSE correlation, and single-class partial scopes. Missing tests correspond directly to both Major defects:
+
+- No binding/configuration/classification drift between snapshot and dispatch.
+- No order-independent mixed failure-class precedence test.
+
+Passing tests therefore do not establish the two required invariants.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Architecture Score
+
+**78% — structurally reasonable, with a blocking authority-boundary gap.**
+
+## P0 Violations
+
+None classified as structural P0.
+
+## P1 Violations
+
+### Authoritative state ownership is split across ChatService and RetrievalOrchestrator
+
+`ChatService` owns binding/classification resolution, while `RetrievalOrchestrator` owns dispatch-time authorization but cannot reload bindings or re-run classification. This creates a time-of-check/time-of-use boundary across asynchronous execution.
+
+The minimal architecture correction is to give the dispatch boundary access to all authoritative repositories/policies required to construct or validate the definitive retrieval scope.
+
+### Failure precedence and failure identity use separate state models
+
+A single encounter-order identifier pair is combined with a separately computed precedence enum. Model failure class and its identifiers as one value so they cannot diverge.
+
+## P2 Observations
+
+Provider deadlines correctly terminate caller-visible futures and interrupt workers. However, `ProviderExecution.java:79-115` passes the original full timeout after semaphore/quota waiting, while deadline termination at `:362-387` relies on thread interruption rather than a provider-specific deadline token. Real adapters must be verified to honor interruption or receive the remaining budget. This is a follow-up hardening risk, not an additional merge-blocking finding for the current stub-first slice.
+
+## Architecture Strengths
+
+- Retriever adapters and model channels are behind explicit ports.
+- Provider execution policy is centralized.
+- Provider runtime state is isolated by profile.
+- Retrieval coverage and fused-hit provenance are explicit domain values.
+- Cancellation and terminal-state coordination avoid common double-completion races.
+- No new database or deployment boundary was introduced unnecessarily.
+
+## Verification Evidence
+
+Executed at the exact revision:
+
+- `git diff --check origin/main...607384f490a9b5b69b5f2f07c682319e76c71823 -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — **passed**
+- `./mvnw -q test` — **passed**, exit code 0
+- Exact revision before verification — `607384f490a9b5b69b5f2f07c682319e76c71823`
+- Exact revision after verification — `607384f490a9b5b69b5f2f07c682319e76c71823`
+- Worktree status before and after — clean
+- SDD-skill verification was not required because `.agents/skills/` and the skill lock were unchanged.
+- Frontend and Oracle migration verification were not applicable because the diff does not change frontend or Flyway/data-model artifacts.
+
+## Readiness and Recommended Sequence
+
+Merge readiness: **No**
+
+1. Make binding and classification revalidation authoritative at provider-dispatch time.
+2. Couple block precedence with same-class metadata.
+3. Add the focused race and mixed-precedence tests described above.
+4. Re-run `git diff --check` and `./mvnw -q test`.
+5. Repeat Gate A on the corrected exact revision.
+
+# Gate A Merge Gate: Fail
+
+---
+
+# Code vs Design Review Report
+
+## Review Scope
+
 - **Revision:** `d5e787d16546a7ce67398bb343cb8aa89bc41950`
 - **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
 - **Diff reviewed:** `git diff origin/main...d5e787d16546a7ce67398bb343cb8aa89bc41950`

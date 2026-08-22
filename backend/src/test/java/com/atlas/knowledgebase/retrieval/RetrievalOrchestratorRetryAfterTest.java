@@ -8,7 +8,10 @@ import static org.mockito.Mockito.when;
 import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.Retriever;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.chat.ChatClassificationPolicy;
+import com.atlas.knowledgebase.chat.ChatClassificationProperties;
 import com.atlas.knowledgebase.registry.BindingRecord;
+import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
@@ -40,6 +43,7 @@ class RetrievalOrchestratorRetryAfterTest {
     private RetrievalOrchestrator orchestrator;
     private final Map<String, LogicalKnowledgeBaseRecord> currentKnowledgeBases =
             new ConcurrentHashMap<>();
+    private final Map<String, List<BindingRecord>> currentBindings = new ConcurrentHashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -50,18 +54,30 @@ class RetrievalOrchestratorRetryAfterTest {
         LogicalKnowledgeBaseRepository knowledgeBases =
                 mock(LogicalKnowledgeBaseRepository.class);
         currentKnowledgeBases.clear();
+        currentBindings.clear();
         when(knowledgeBases.findById(any()))
                 .thenAnswer(
                         invocation ->
                                 Optional.ofNullable(
                                         currentKnowledgeBases.get(invocation.getArgument(0))));
+        BindingRepository bindings = mock(BindingRepository.class);
+        when(bindings.findByLogicalKbId(any()))
+                .thenAnswer(
+                        invocation ->
+                                currentBindings.getOrDefault(
+                                        invocation.getArgument(0), List.of()));
         KbAccessService access = mock(KbAccessService.class);
         when(access.authorized(any(), any())).thenReturn(true);
         when(access.chatEligible(any(), any())).thenReturn(true);
+        ChatClassificationProperties classificationProperties =
+                new ChatClassificationProperties();
+        classificationProperties.setApprovedValues(Set.of("internal"));
         orchestrator =
                 new RetrievalOrchestrator(
                         knowledgeBases,
+                        bindings,
                         access,
+                        new ChatClassificationPolicy(classificationProperties),
                         registry,
                         mock(AuditEventRepository.class),
                         new ObjectMapper(),
@@ -256,7 +272,7 @@ class RetrievalOrchestratorRetryAfterTest {
     }
 
     private BindingRecord binding(String bindingId, String logicalKbId, String provider) {
-        return new BindingRecord(
+        BindingRecord binding = new BindingRecord(
                 bindingId,
                 logicalKbId,
                 provider,
@@ -274,6 +290,18 @@ class RetrievalOrchestratorRetryAfterTest {
                 1,
                 NOW,
                 NOW);
+        currentBindings.compute(
+                logicalKbId,
+                (ignored, bindings) -> {
+                    java.util.LinkedHashMap<String, BindingRecord> updated =
+                            new java.util.LinkedHashMap<>();
+                    if (bindings != null) {
+                        bindings.forEach(existing -> updated.put(existing.bindingId(), existing));
+                    }
+                    updated.put(binding.bindingId(), binding);
+                    return List.copyOf(updated.values());
+                });
+        return binding;
     }
 
     private AtlasUserRecord user() {

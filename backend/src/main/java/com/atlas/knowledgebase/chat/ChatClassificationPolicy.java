@@ -15,7 +15,7 @@ public final class ChatClassificationPolicy {
         this.properties = properties;
     }
 
-    String resolve(List<RetrievalScope.KnowledgeBaseSnapshot> snapshots) {
+    public String resolve(List<RetrievalScope.KnowledgeBaseSnapshot> snapshots) {
         String resolved = null;
         for (RetrievalScope.KnowledgeBaseSnapshot snapshot : snapshots) {
             String classification = snapshot.knowledgeBase().classification();

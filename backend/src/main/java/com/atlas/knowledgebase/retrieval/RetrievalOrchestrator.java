@@ -7,7 +7,10 @@ import com.atlas.knowledgebase.adapters.Retriever;
 import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.chat.ChatClassificationPolicy;
+import com.atlas.knowledgebase.chat.ChatValidationException;
 import com.atlas.knowledgebase.registry.BindingRecord;
+import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
@@ -17,10 +20,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -34,7 +39,9 @@ import org.springframework.stereotype.Service;
 public class RetrievalOrchestrator {
 
     private final LogicalKnowledgeBaseRepository knowledgeBases;
+    private final BindingRepository bindings;
     private final KbAccessService access;
+    private final ChatClassificationPolicy classificationPolicy;
     private final RetrieverRegistry retrievers;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
@@ -44,7 +51,9 @@ public class RetrievalOrchestrator {
 
     public RetrievalOrchestrator(
             LogicalKnowledgeBaseRepository knowledgeBases,
+            BindingRepository bindings,
             KbAccessService access,
+            ChatClassificationPolicy classificationPolicy,
             RetrieverRegistry retrievers,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
@@ -52,7 +61,9 @@ public class RetrievalOrchestrator {
             RetrievalProperties properties,
             ProviderExecution providerExecution) {
         this.knowledgeBases = knowledgeBases;
+        this.bindings = bindings;
         this.access = access;
+        this.classificationPolicy = classificationPolicy;
         this.retrievers = retrievers;
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
@@ -83,59 +94,118 @@ public class RetrievalOrchestrator {
         Set<String> securityKbs = new LinkedHashSet<>();
         Set<String> unknownKbs = new LinkedHashSet<>();
         Map<String, List<BindingRecord>> currentBindings = new LinkedHashMap<>();
-        String blockKb = null;
-        String blockBinding = null;
+        EnumMap<RetrievalTurn.Block, BlockCandidate> blockCandidates =
+                new EnumMap<>(RetrievalTurn.Block.class);
 
         List<BindingWork> authorizationWork = new ArrayList<>();
+        List<RetrievalScope.KnowledgeBaseSnapshot> authoritativeSnapshots = new ArrayList<>();
         for (RetrievalScope.KnowledgeBaseSnapshot snapshot : scope.knowledgeBases()) {
             cancellation.throwIfCancelled();
             String logicalKbId = snapshot.knowledgeBase().logicalKbId();
-            List<BindingRecord> current = snapshot.bindings();
-            currentBindings.put(logicalKbId, current);
+            List<BindingRecord> authoritativeBindings =
+                    bindings.findByLogicalKbId(logicalKbId);
+            List<BindingRecord> coverageBindings =
+                    RetrievalDispatchGuard.mergeBindings(
+                            snapshot.bindings(), authoritativeBindings);
+            currentBindings.put(logicalKbId, coverageBindings);
             LogicalKnowledgeBaseRecord kb = knowledgeBases.findById(logicalKbId).orElse(null);
             if (kb == null) {
                 unavailableKbs.add(logicalKbId);
-                markWholeKbFailed(current, failed, timedOut);
-                if (blockKb == null) {
-                    blockKb = logicalKbId;
-                    blockBinding = firstBindingId(current);
-                }
+                markWholeKbFailed(coverageBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                        logicalKbId,
+                        firstBindingId(coverageBindings));
                 continue;
+            }
+            authoritativeSnapshots.add(
+                    new RetrievalScope.KnowledgeBaseSnapshot(kb, authoritativeBindings));
+            boolean invalid = false;
+            if (!Objects.equals(
+                    snapshot.knowledgeBase().classification(), kb.classification())) {
+                securityKbs.add(logicalKbId);
+                markWholeKbFailed(coverageBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.SECURITY,
+                        logicalKbId,
+                        firstBindingId(coverageBindings));
+                invalid = true;
             }
             if (!access.authorized(user, kb)) {
                 accessDeniedKbs.add(logicalKbId);
-                markWholeKbFailed(current, failed, timedOut);
-                if (blockKb == null) {
-                    blockKb = logicalKbId;
-                    blockBinding = firstBindingId(current);
-                }
-                continue;
-            }
-            if (!access.chatEligible(user, kb)) {
+                markWholeKbFailed(coverageBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.BINDING_ACCESS,
+                        logicalKbId,
+                        firstBindingId(coverageBindings));
+                invalid = true;
+            } else if (!access.chatEligible(user, kb)) {
                 unavailableKbs.add(logicalKbId);
-                markWholeKbFailed(current, failed, timedOut);
-                if (blockKb == null) {
-                    blockKb = logicalKbId;
-                    blockBinding = firstBindingId(current);
-                }
+                markWholeKbFailed(coverageBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                        logicalKbId,
+                        firstBindingId(coverageBindings));
+                invalid = true;
+            }
+            if (snapshot.knowledgeBase().configVersion() != kb.configVersion()
+                    || !RetrievalDispatchGuard.sameBindings(
+                            snapshot.bindings(), authoritativeBindings)) {
+                unavailableKbs.add(logicalKbId);
+                markWholeKbFailed(coverageBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                        logicalKbId,
+                        firstBindingId(coverageBindings));
+                invalid = true;
+            }
+            if (invalid) {
                 continue;
             }
             boolean runtimeUnavailable = false;
-            for (BindingRecord binding : current) {
+            for (BindingRecord binding : authoritativeBindings) {
                 if (!runtimeEligible(kb, binding)) {
                     runtimeUnavailable = true;
-                    blockKb = logicalKbId;
-                    blockBinding = binding.bindingId();
                     failed.add(binding.bindingId());
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                            logicalKbId,
+                            binding.bindingId());
                 }
             }
             if (runtimeUnavailable) {
                 unavailableKbs.add(logicalKbId);
-                markWholeKbFailed(current, failed, timedOut);
+                markWholeKbFailed(authoritativeBindings, failed, timedOut);
                 continue;
             }
-            for (BindingRecord binding : current) {
+            for (BindingRecord binding : authoritativeBindings) {
                 authorizationWork.add(new BindingWork(kb, binding));
+            }
+        }
+
+        try {
+            if (!authoritativeSnapshots.isEmpty()) {
+                classificationPolicy.resolve(authoritativeSnapshots);
+            }
+        } catch (ChatValidationException invalidClassification) {
+            authorizationWork.clear();
+            for (RetrievalScope.KnowledgeBaseSnapshot snapshot : authoritativeSnapshots) {
+                String logicalKbId = snapshot.knowledgeBase().logicalKbId();
+                securityKbs.add(logicalKbId);
+                List<BindingRecord> kbBindings =
+                        currentBindings.getOrDefault(logicalKbId, List.of());
+                markWholeKbFailed(kbBindings, failed, timedOut);
+                recordBlock(
+                        blockCandidates,
+                        RetrievalTurn.Block.SECURITY,
+                        logicalKbId,
+                        firstBindingId(kbBindings));
             }
         }
 
@@ -170,10 +240,11 @@ public class RetrievalOrchestrator {
                 case ACCESS_DENIED -> {
                     failed.add(bindingId);
                     accessDeniedKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.BINDING_ACCESS,
+                            logicalKbId,
+                            bindingId);
                 }
                 case QUOTA -> {
                     recordFailure(
@@ -183,10 +254,11 @@ public class RetrievalOrchestrator {
                             authorization.providerRejected());
                     quotaLimited.add(bindingId);
                     quotaKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.QUOTA,
+                            logicalKbId,
+                            bindingId);
                 }
                 case TIMEOUT -> {
                     recordFailure(
@@ -196,10 +268,11 @@ public class RetrievalOrchestrator {
                             authorization.providerRejected());
                     timedOut.add(bindingId);
                     unavailableKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                            logicalKbId,
+                            bindingId);
                 }
                 case FAILED -> {
                     recordFailure(
@@ -209,18 +282,20 @@ public class RetrievalOrchestrator {
                             authorization.providerRejected());
                     failed.add(bindingId);
                     unavailableKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.BINDING_UNAVAILABLE,
+                            logicalKbId,
+                            bindingId);
                 }
                 case SECURITY -> {
                     failed.add(bindingId);
                     securityKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.SECURITY,
+                            logicalKbId,
+                            bindingId);
                     knowledgeBases.suspend(logicalKbId);
                     audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "fail_closed");
                 }
@@ -232,10 +307,11 @@ public class RetrievalOrchestrator {
                             authorization.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.UNKNOWN,
+                            logicalKbId,
+                            bindingId);
                     audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "unknown");
                 }
             }
@@ -283,6 +359,11 @@ public class RetrievalOrchestrator {
                             outcome.providerRejected());
                     quotaLimited.add(bindingId);
                     quotaKbs.add(logicalKbId);
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.QUOTA,
+                            logicalKbId,
+                            bindingId);
                 }
                 case TIMEOUT -> {
                     recordFailure(
@@ -303,10 +384,11 @@ public class RetrievalOrchestrator {
                 case SECURITY -> {
                     failed.add(bindingId);
                     securityKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.SECURITY,
+                            logicalKbId,
+                            bindingId);
                     knowledgeBases.suspend(logicalKbId);
                     audit(
                             user.userId(),
@@ -324,10 +406,11 @@ public class RetrievalOrchestrator {
                             outcome.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
-                    if (blockKb == null) {
-                        blockKb = logicalKbId;
-                        blockBinding = bindingId;
-                    }
+                    recordBlock(
+                            blockCandidates,
+                            RetrievalTurn.Block.UNKNOWN,
+                            logicalKbId,
+                            bindingId);
                     audit(
                             user.userId(),
                             logicalKbId,
@@ -385,24 +468,18 @@ public class RetrievalOrchestrator {
         coverage.put("quota_limited", List.copyOf(quotaLimited));
         coverage.put("retry_after", Map.copyOf(retryAfter));
 
-        RetrievalTurn.Block block = RetrievalTurn.Block.NONE;
         boolean anyEvidence = !fused.isEmpty();
-        if (!securityKbs.isEmpty()) {
-            block = RetrievalTurn.Block.SECURITY;
-        } else if (!unknownKbs.isEmpty()) {
-            block = RetrievalTurn.Block.UNKNOWN;
-        } else if (!accessDeniedKbs.isEmpty()) {
-            block = RetrievalTurn.Block.BINDING_ACCESS;
-        } else if (!unavailableKbs.isEmpty()) {
-            block = RetrievalTurn.Block.BINDING_UNAVAILABLE;
-        } else if (!quotaKbs.isEmpty() && !anyEvidence) {
-            block = RetrievalTurn.Block.QUOTA;
-        } else if (!anyEvidence) {
-            block = RetrievalTurn.Block.NO_EVIDENCE;
-        }
+        BlockSelection selection = selectBlock(blockCandidates, anyEvidence);
 
         return new RetrievalTurn(
-                coverage, fused, List.of(), null, scope, block, blockKb, blockBinding);
+                coverage,
+                fused,
+                List.of(),
+                null,
+                scope,
+                selection.block(),
+                selection.logicalKbId(),
+                selection.bindingId());
     }
 
     private BindingAuthorization authorizeOne(
@@ -613,6 +690,39 @@ public class RetrievalOrchestrator {
         return bindings.isEmpty() ? null : bindings.getFirst().bindingId();
     }
 
+    private void recordBlock(
+            EnumMap<RetrievalTurn.Block, BlockCandidate> candidates,
+            RetrievalTurn.Block block,
+            String logicalKbId,
+            String bindingId) {
+        candidates.putIfAbsent(block, new BlockCandidate(logicalKbId, bindingId));
+    }
+
+    private BlockSelection selectBlock(
+            EnumMap<RetrievalTurn.Block, BlockCandidate> candidates, boolean anyEvidence) {
+        List<RetrievalTurn.Block> precedence =
+                List.of(
+                        RetrievalTurn.Block.SECURITY,
+                        RetrievalTurn.Block.UNKNOWN,
+                        RetrievalTurn.Block.BINDING_ACCESS,
+                        RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        for (RetrievalTurn.Block block : precedence) {
+            BlockCandidate candidate = candidates.get(block);
+            if (candidate != null) {
+                return new BlockSelection(block, candidate.logicalKbId(), candidate.bindingId());
+            }
+        }
+        BlockCandidate quota = candidates.get(RetrievalTurn.Block.QUOTA);
+        if (!anyEvidence && quota != null) {
+            return new BlockSelection(
+                    RetrievalTurn.Block.QUOTA, quota.logicalKbId(), quota.bindingId());
+        }
+        if (!anyEvidence) {
+            return new BlockSelection(RetrievalTurn.Block.NO_EVIDENCE, null, null);
+        }
+        return new BlockSelection(RetrievalTurn.Block.NONE, null, null);
+    }
+
     private void audit(
             String userId,
             String logicalKbId,
@@ -643,6 +753,11 @@ public class RetrievalOrchestrator {
     }
 
     private record BindingWork(LogicalKnowledgeBaseRecord kb, BindingRecord binding) {}
+
+    private record BlockCandidate(String logicalKbId, String bindingId) {}
+
+    private record BlockSelection(
+            RetrievalTurn.Block block, String logicalKbId, String bindingId) {}
 
     private record BindingAuthorization(
             BindingWork item,
