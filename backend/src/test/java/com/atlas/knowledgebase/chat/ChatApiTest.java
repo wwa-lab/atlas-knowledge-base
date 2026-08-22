@@ -1132,6 +1132,66 @@ class ChatApiTest {
     }
 
     @Test
+    void killSwitchStopsNewRetrievalAndRedactsPersistedHistory() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Kill Switch Security KB");
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        askAndAwaitStreamError(owner, threadId, "How do we rotate the gateway cert?");
+        String assistantId =
+                jdbcTemplate.queryForObject(
+                        "SELECT message_id FROM chat_message WHERE thread_id = ? AND message_role = 'assistant' AND status = 'completed'",
+                        String.class,
+                        threadId);
+
+        jdbcTemplate.update("UPDATE binding SET kill_switch = 1 WHERE binding_id = ?", bindingId);
+
+        JsonNode redactedHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode assistant = null;
+        for (JsonNode message : redactedHistory.path("messages")) {
+            if (assistantId.equals(message.path("message_id").asText())) {
+                assistant = message;
+                break;
+            }
+        }
+        assertThat(assistant).isNotNull();
+        assertThat(assistant.path("answer").isNull()).isTrue();
+        assertThat(assistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(assistant.has("citations")).isFalse();
+        assertThat(assistant.has("coverage")).isFalse();
+        assertThat(assistant.has("classification")).isFalse();
+
+        String blockedStream =
+                askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+        assertThat(blockedStream)
+                .contains("event:error")
+                .contains("\"category\":\"retrieval\"")
+                .contains("\"code\":\"KB_BINDING_UNAVAILABLE\"")
+                .contains(bindingId);
+    }
+
+    @Test
     void bindingAccessFailureNamesTheActionableKnowledgeBaseAndBinding() throws Exception {
         LoggedIn owner = loginOwner();
         String kbId =
