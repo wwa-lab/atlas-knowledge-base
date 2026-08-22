@@ -11,7 +11,7 @@ describe('SPA route placeholders', () => {
   it('declares Chat, Knowledge bases, and Settings', () => {
     const names = routes.map((route) => route.name)
     expect(names).toEqual(
-      expect.arrayContaining(['chat', 'knowledge-bases', 'settings']),
+      expect.arrayContaining(['chat', 'knowledge-bases', 'settings', 'registration', 'admin']),
     )
   })
 })

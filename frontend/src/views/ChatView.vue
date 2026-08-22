@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
+import EvidenceDrawer from '../evidence/EvidenceDrawer.vue'
 import {
   chatDisabledReason,
   errorMessage,
@@ -168,6 +169,7 @@ const authRequired = ref(false)
 const staleScopeIds = ref<string[]>([])
 const activeAssistantId = ref<string | null>(null)
 const streamAbort = ref<AbortController | null>(null)
+const selectedCitationId = ref<string | null>(null)
 
 const selectedKnowledgeBases = computed(() =>
   knowledgeBases.value.filter((kb) => selectedIds.value.includes(kb.logical_kb_id)),
@@ -599,6 +601,21 @@ function disabledReasonId(kb: KnowledgeBaseSummary): string {
   return `kb-reason-${kb.logical_kb_id.replace(/[^A-Za-z0-9_-]/g, '-')}`
 }
 
+function openEvidence(citationId: string | undefined): void {
+  if (typeof citationId === 'string' && citationId.trim()) selectedCitationId.value = citationId
+}
+
+function conflictCitationId(citation: Record<string, unknown>): string | undefined {
+  return typeof citation.citation_id === 'string' ? citation.citation_id : undefined
+}
+
+function conflictCitationLabel(citation: Record<string, unknown>): string {
+  for (const key of ['title', 'source', 'citation_id']) {
+    if (typeof citation[key] === 'string' && citation[key]) return citation[key] as string
+  }
+  return 'Citation'
+}
+
 onMounted(load)
 onBeforeUnmount(() => streamAbort.value?.abort())
 </script>
@@ -733,7 +750,8 @@ onBeforeUnmount(() => streamAbort.value?.abort())
                         </dl>
                         <ul v-if="viewpoint.citations?.length" class="citation-list" aria-label="Viewpoint citations">
                           <li v-for="(citation, citationIndex) in viewpoint.citations" :key="`${message.message_id}-viewpoint-${index}-citation-${citationIndex}`">
-                            {{ typeof citation.title === 'string' ? citation.title : typeof citation.citation_id === 'string' ? citation.citation_id : 'Citation' }}
+                            <button v-if="conflictCitationId(citation)" class="citation-button" type="button" @click="openEvidence(conflictCitationId(citation))">{{ conflictCitationLabel(citation) }}</button>
+                            <span v-else>{{ conflictCitationLabel(citation) }}</span>
                           </li>
                         </ul>
                       </li>
@@ -763,8 +781,10 @@ onBeforeUnmount(() => streamAbort.value?.abort())
 
                 <ul v-if="message.citations?.length" class="citation-list" aria-label="Citations">
                   <li v-for="citation in message.citations" :key="citation.citation_id">
-                    <span aria-hidden="true">[{{ citation.citation_id }}]</span>
-                    {{ citation.title || citation.provider || citation.logical_kb_id || 'Source' }}
+                    <button class="citation-button" type="button" @click="openEvidence(citation.citation_id)">
+                      <span aria-hidden="true">[{{ citation.citation_id }}]</span>
+                      {{ citation.title || citation.provider || citation.logical_kb_id || 'Source' }}
+                    </button>
                   </li>
                 </ul>
                 <button
@@ -804,5 +824,6 @@ onBeforeUnmount(() => streamAbort.value?.abort())
         </form>
       </section>
     </div>
+    <EvidenceDrawer v-if="selectedCitationId" :citation-id="selectedCitationId" @close="selectedCitationId = null" />
   </section>
 </template>
