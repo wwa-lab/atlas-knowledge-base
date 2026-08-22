@@ -96,6 +96,14 @@ class UntrustedContentContainmentTest {
                 .isEqualTo("active_markup");
     }
 
+    @Test
+    void keepsOrdinaryTemplateExamplesButContainsExecutionMacros() {
+        assertThat(containment.inspect(hit("Render {{ name }} in the greeting.")).contained())
+                .isFalse();
+        assertThat(containment.inspect(hit("{{ exec \"rm -rf /\" }}")).reason())
+                .isEqualTo("active_markup");
+    }
+
     private static Retriever.Hit hit(String excerpt) {
         return new Retriever.Hit(
                 "corp/runbook",

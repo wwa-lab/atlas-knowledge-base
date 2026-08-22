@@ -78,3 +78,12 @@ Review comment:
 
 - [P2] Constrain javascript detection to URI contexts — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:21-22`
   When a legitimate KB title or excerpt contains ordinary text such as `JavaScript: async patterns`, this case-insensitive `javascript\\s*:` branch classifies the hit as `active_markup`; because `RetrievalOrchestrator` drops contained hits before fusion, normal engineering documentation can disappear or produce `NO_EVIDENCE`. Limit this branch to actual URI/HTML contexts rather than any occurrence of the word followed by a colon.
+
+## Gate A — follow-up after javascript heuristic fix
+
+The containment layer is wired before fusion, but the template-delimiter heuristic is broad enough to suppress ordinary documentation examples. This is a retrieval correctness regression for common frontend and API content.
+
+Review comment:
+
+- [P2] Avoid dropping template syntax as active markup — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:25-25`
+  When a valid KB article contains ordinary template examples such as Vue/Mustache `{{ name }}` snippets, this rule classifies the hit as `active_markup`; because the orchestrator now drops contained hits before fusion, common frontend or API documentation can disappear or produce `NO_EVIDENCE`. Treat template delimiters as data unless they are in a rendered/active context, or rely on output sanitization rather than filtering all such evidence.
