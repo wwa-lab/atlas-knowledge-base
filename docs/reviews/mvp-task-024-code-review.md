@@ -176,3 +176,193 @@ The five tests cover utility selection and basic SSE parsing only. There are no 
 - GET thread history currently lacks coverage/citation/conflict projection, so live-stream behavior and reopened-history behavior diverge.
 
 **Gate A verdict: FAIL — implementation is not ready for merge without the required corrections.**
+
+## Gate A — fresh-context rerun (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** `docs/05-design/mvp-design.md`, `docs/03-spec/mvp-spec.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-024
+- **Prior report consulted:** `docs/reviews/mvp-task-024-code-review.md`
+- **Code inspected:** `frontend/src/views/ChatView.vue`, `frontend/src/chat/chatUtils.ts`, frontend tests/styles, Chat history/completion repositories and projector, `ChatApiTest`
+- **Review objective:** Fresh Gate A review after `b255e01`, covering streaming terminal states, coverage/conflict/error rendering, scope recovery, cancellation/retry, history projection, persistence, accessibility, and security boundaries.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 82%
+- **Verdict:** Partially aligned
+- **Rationale:** The commit addresses most findings from the initial review: coverage now precedes answers and supports partial retries, structured failure metadata is preserved, stale scopes are recoverable, SSE EOF is terminalized, cancellation races after server processing are reconciled, CSRF 403 resets the token, accessibility IDs are unique, and history includes persisted evidence projections. Two meaningful gaps remain: cancellation before the first `processing` event can mark only the browser-local message cancelled while backend generation continues, and reopened history exposes completed source-derived content without current KB/binding reauthorization or redaction. **Gate A verdict: Fail — corrections required before merge.**
+
+---
+
+## Areas of Good Alignment
+
+- Root route lands on Chat.
+- Selector enforces authorized, active, Chat-ready, model-eligible KBs and the 1–5 logical-KB limit.
+- Browse-only/model-ineligible KBs remain visible with disabled reasons.
+- Cookie-authenticated requests use `credentials: 'include'`; no provider/model tokens are stored in browser storage.
+- SSE processing/token/final/error event handling matches the current backend.
+- Clean EOF without a terminal event becomes a failed, retryable message.
+- Coverage appears before the answer and includes successful, failed, timed-out, quota-limited, omitted, and retry-after information.
+- Completed partial answers expose safe replay retry.
+- Canonical and mirror conflict branches have distinct UI paths when the payload carries an explicit discriminator.
+- Stale restored scopes are disclosed and repairable.
+- Cancel 409/`ALREADY_COMPLETED` responses reload thread state instead of overwriting a completed answer.
+- CSRF cache is cleared on both 401 and 403.
+- Disabled-input explanations have unique IDs and `aria-describedby`.
+- Backend terminal writes remain conditional on `processing`/`streaming`.
+- GET-thread history now projects persisted citations, coverage, conflict, and classification.
+- Conflict persistence is included in the atomic completion transaction.
+- Verification passed:
+  - `cd frontend && npm test`: 9/9
+  - `cd frontend && npm run build`: passed
+  - `./mvnw -q -pl backend -Dtest=ChatApiTest test`: 20/20
+  - exact `git diff --check`: passed
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. Cancel before the first `processing` SSE event does not cancel backend work
+
+- **Design / task expected:** Cancel must produce an incomplete generation and must not allow the backend request to continue and complete.
+- **Code currently does:** `send()` creates a `local-assistant-*` ID. `streamAssistant()` sets that local ID as active before awaiting CSRF acquisition and the streaming fetch. In `cancel()`, local IDs set `confirmed = true` and skip the backend `/cancel` request (`frontend/src/views/ChatView.vue:474–519`).
+- **Why it matters:** If the user clicks Cancel while CSRF/network setup is pending, the browser marks the message `incomplete_cancelled` and aborts its fetch, but the backend ask may already be accepted or may proceed. It can later persist a completed answer that the UI no longer displays.
+- **Recommended fix:** Keep cancellation pending until the server `processing` event supplies the real message ID, then call the backend cancel endpoint; alternatively disable Cancel until server reservation is confirmed. Never mark a local-only message cancelled without backend acknowledgement.
+
+#### 2. Reopened history does not reauthorize source access before exposing answer/evidence
+
+- **Design / task expected:** `FR-50`, the data-flow edge case, and the accepted user story require reopened history to hide/redact generated content and evidence when current authorization has been revoked.
+- **Code currently does:** `ChatService.get()` checks only thread ownership, then `ChatPayloadProjector.message()` returns completed answer, citations, coverage, conflict, and classification unconditionally (`ChatService.java:120–128`, `ChatPayloadProjector.java:34–47`). Citation summaries also come from `summariesByMessageId()` without current binding authorization.
+- **Why it matters:** A user can retain access to a private thread while a provider connection, binding, or source permission has been revoked, and still receive source-derived answer/citation data.
+- **Recommended fix:** Reauthorize the stored logical-KB/binding scope during history projection. If any source is no longer authorized or usable, redact answer, citations, coverage, and conflict while retaining only permitted non-sensitive state/scope metadata. Add a revocation regression test.
+
+### Minor
+
+#### 1. Conflict payload handling still depends on an undocumented discriminator
+
+- **Design / task expected:** Canonical disagreements must render as viewpoints with provenance; mirror divergence must render as a sync error.
+- **Code currently does:** `normalizeConflict()` recognizes canonical/mirror only when `kind`, `type`, or `classification` contains the relevant text. Otherwise the UI falls back to raw JSON in `<pre>` (`chatUtils.ts:138–170`, `ChatView.vue:673–698`). The new backend history test uses a `viewpoints` payload without a discriminator, which would take the raw fallback path.
+- **Why it matters:** The API/design set does not define a conflict payload schema, so valid conflict data may not receive the required authority-aware rendering.
+- **Recommended fix:** Define and enforce a canonical conflict schema, including an explicit `kind`, and test both live and history projections. Severity is reduced because the accepted contract is currently underspecified and retrieval emits `null` conflict data today.
+
+#### 2. Critical Chat state transitions still lack component/integration tests
+
+There are utility tests and backend API coverage, but no `ChatView` tests for:
+
+- pre-`processing` cancellation;
+- clean EOF UI transition and retry;
+- 409 cancellation reconciliation;
+- stale-scope repair;
+- CSRF 403 reset;
+- coverage ordering;
+- structured conflict/error rendering;
+- history redaction after authorization loss.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Default Chat landing | Implemented |
+| Chat-ready selector and 1–5 limit | Implemented |
+| Disabled Browse-only/model-ineligible reasons | Implemented |
+| Restored scope validation and stale recovery | Implemented, but current source/binding reauthorization remains backend-owned |
+| SSE processing/token/final/error handling | Mostly implemented |
+| Clean EOF handling | Implemented |
+| Partial coverage ordering and fields | Implemented |
+| Safe retry for completed partial answers | Implemented as backend replay |
+| Canonical conflict rendering | Partial — schema/discriminator remains implicit |
+| Mirror sync-error rendering | Partial — works only for recognized payload shapes |
+| Structured failure categories and next steps | Implemented for live stream/API failures |
+| Cancel/retry state safety | Partial — pre-`processing` cancel race remains |
+| CSRF/session handling | Mostly implemented |
+| No browser token storage | Implemented |
+| GET-thread history projection | Implemented structurally |
+| History reauthorization/redaction | Missing |
+| Conflict persistence | Implemented |
+| Accessibility IDs and described-by relationships | Implemented |
+| Component-level transition tests | Missing |
+
+**Task coverage:**
+
+- **Clearly implemented:** Chat shell, selector, streaming, structured failures, coverage display, conflict branches, stale-scope repair, cancel/retry controls, CSRF reset, history projections, conflict persistence.
+- **Partially implemented:** Cancellation safety, conflict contract fidelity, history security behavior, frontend test coverage.
+- **Not reflected in code:** Current-source reauthorization/redaction for reopened history.
+- **Code changes not clearly mapped to design:** None significant.
+
+**Behaviors implemented but not clearly supported by design:** None significant; the API-guide amendments for history projection and completed-partial replay are consistent with the intended Chat flow.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** Chat view owns transport and state directly; acceptable for TASK-024.
+- **Coupling issues:** Conflict and server payloads remain loosely typed and heuristically normalized.
+- **Hidden shortcuts:** History projection bypasses the current source/binding authorization boundary; local-only cancellation assumes server processing has already begun.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Mostly aligned; pre-`processing` cancellation is unsafe.
+- **Validation behavior:** Aligned for interactive and restored KB scope.
+- **Retry / skip / resume / failure handling:** Partial; server-side CAS and 409 reconciliation are aligned, but local-only cancellation is not.
+- **User-visible behavior:** Coverage and structured failures are substantially improved; history can still display content that should be redacted after revocation.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Cookie session and CSRF handling align with the contract.
+- **Secret / credential safety:** No browser token persistence or provider credentials found.
+- **Logging / audit hooks:** No frontend audit requirement is specified.
+- **Error propagation:** Retrieval/API errors preserve structured metadata. Backend runtime model failures can still close the SSE stream without a named error, leaving the frontend to classify the result as generic early termination; this remains a downstream model-channel risk.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No.
+- **Suitable for local testing/build handoff:** Yes.
+- **Blockers before proceeding:**
+  1. Make cancellation safe before the first server `processing` event.
+  2. Reauthorize and redact source-derived history content after access loss.
+- **Acceptable deviations:** Synthetic conflict payloads, deferred live model-channel behavior, and later Evidence Drawer interaction work.
+- **Required corrections:** The two Major findings above.
+
+---
+
+## Recommended Fixes
+
+1. Add a pending-cancel handshake or disable cancellation until the server message ID is known.
+2. Reauthorize each stored KB/binding during GET-thread projection and redact inaccessible completed messages.
+3. Freeze a conflict payload schema with explicit canonical/mirror kinds.
+4. Add component tests for the critical Chat state transitions.
+
+## Minimal Fix Path
+
+- Fix pre-`processing` cancellation so local UI state cannot diverge from backend state.
+- Add history authorization/redaction before projecting completed answer/evidence fields.
+- Add focused regression tests for both behaviors.
+
+## Open Risks / Questions
+
+- The conflict payload schema remains unspecified across the accepted design and API contract.
+- Backend model-generation exceptions may still produce an empty/early-terminated SSE stream instead of a typed model failure.
+- History redaction behavior must be coordinated with the existing Evidence current-authorization boundary and later TASK-031 security tests.
+
+**Gate A verdict: FAIL — the implementation is improved and largely aligned, but the two Major findings require correction before merge.**

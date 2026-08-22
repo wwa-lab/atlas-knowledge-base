@@ -18,15 +18,18 @@ import com.atlas.knowledgebase.session.SessionService;
 import com.atlas.knowledgebase.web.ApiErrorResponses;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
@@ -122,10 +125,68 @@ public class ChatService {
         Map<String, Object> body = projections.thread(thread);
         List<Map<String, Object>> history = new ArrayList<>();
         for (ChatMessageRecord message : messages.findByThreadId(threadId)) {
-            history.add(projections.message(message));
+            boolean exposeCompletedContent =
+                    !"assistant".equals(message.role())
+                            || !"completed".equals(message.status())
+                            || historyContentAuthorized(user, message);
+            history.add(projections.message(message, exposeCompletedContent));
         }
         body.put("messages", history);
         return body;
+    }
+
+    /**
+     * Re-checks the current KB/binding boundary before reopening answer content. A stored
+     * answer-time snapshot is not an authorization grant: any scope, config, lifecycle, health,
+     * or binding-runtime drift fails closed and leaves only redacted message state visible.
+     */
+    private boolean historyContentAuthorized(AtlasUserRecord user, ChatMessageRecord message) {
+        try {
+            ResolvedScope current = resolveScope(user, readIds(message.logicalKbScopeJson()));
+            if (!sameAnswerTimeScope(message, current)) {
+                return false;
+            }
+            return current.retrievalScope().knowledgeBases().stream()
+                    .allMatch(
+                            snapshot ->
+                                    !snapshot.bindings().isEmpty()
+                                            && snapshot.bindings().stream()
+                                                    .allMatch(this::historyBindingUsable));
+        } catch (RuntimeException deniedOrDrifted) {
+            return false;
+        }
+    }
+
+    private boolean sameAnswerTimeScope(ChatMessageRecord message, ResolvedScope current) {
+        try {
+            List<Map<String, String>> storedBindings =
+                    objectMapper.readValue(
+                            message.bindingSetJson(),
+                            new TypeReference<List<Map<String, String>>>() {});
+            Set<Map<String, String>> storedBindingSet =
+                    storedBindings == null ? Set.of() : new HashSet<>(storedBindings);
+            Set<Map<String, String>> currentBindingSet =
+                    new HashSet<>(current.retrievalScope().bindingSnapshots());
+            if (storedBindingSet.isEmpty()
+                    || storedBindingSet.size() != currentBindingSet.size()
+                    || !storedBindingSet.equals(currentBindingSet)) {
+                return false;
+            }
+            JsonNode storedVersions = objectMapper.readTree(message.configVersionsJson());
+            JsonNode currentVersions =
+                    objectMapper.valueToTree(current.retrievalScope().configVersions());
+            return storedVersions != null && storedVersions.equals(currentVersions);
+        } catch (JsonProcessingException | RuntimeException malformedSnapshot) {
+            return false;
+        }
+    }
+
+    private boolean historyBindingUsable(BindingRecord binding) {
+        return binding.enabled()
+                && !binding.killSwitch()
+                && binding.featureFlag()
+                && binding.health() != null
+                && !"unavailable".equals(binding.health());
     }
 
     public Map<String, Object> changeScope(

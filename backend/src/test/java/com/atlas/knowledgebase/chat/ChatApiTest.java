@@ -106,6 +106,31 @@ class ChatApiTest {
         assertThat(assistant.path("coverage").path("successful").get(0).asText()).isNotBlank();
         assertThat(assistant.path("conflict").path("viewpoints").get(0).path("claim").asText())
                 .isEqualTo("Rotate every 90 days");
+
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        jdbcTemplate.update("UPDATE binding SET enabled = 0 WHERE binding_id = ?", bindingId);
+        JsonNode redactedHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode redactedAssistant = null;
+        for (JsonNode message : redactedHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                redactedAssistant = message;
+                break;
+            }
+        }
+        assertThat(redactedAssistant).isNotNull();
+        assertThat(redactedAssistant.path("answer").isNull()).isTrue();
+        assertThat(redactedAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(redactedAssistant.has("citations")).isFalse();
+        assertThat(redactedAssistant.has("coverage")).isFalse();
+        assertThat(redactedAssistant.has("conflict")).isFalse();
     }
 
     @Test

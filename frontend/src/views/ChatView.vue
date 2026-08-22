@@ -5,6 +5,7 @@ import {
   chatDisabledReason,
   errorMessage,
   isChatSelectable,
+  isServerMessageId,
   isPartialCoverage,
   normalizeConflict,
   parseFailure,
@@ -169,6 +170,9 @@ const selectedKnowledgeBases = computed(() =>
 const hasMessages = computed(() => messages.value.length > 0)
 const canAsk = computed(
   () => Boolean(selectedIds.value.length > 0 && staleScopeIds.value.length === 0 && draft.value.trim() && !busy.value),
+)
+const canCancel = computed(
+  () => busy.value && activeAssistantId.value !== null && isServerMessageId(activeAssistantId.value),
 )
 const hasSelectableKnowledgeBase = computed(() => knowledgeBases.value.some(isChatSelectable))
 
@@ -474,19 +478,20 @@ async function send(): Promise<void> {
 async function cancel(): Promise<void> {
   const assistant = messages.value.find((message) => message.message_id === activeAssistantId.value)
   const currentThread = thread.value
-  if (!assistant || !currentThread) return
+  if (!assistant || !currentThread || !isServerMessageId(assistant.message_id)) {
+    error.value = 'Wait until the server reserves this Chat turn before cancelling.'
+    return
+  }
   error.value = ''
-  let confirmed = assistant.message_id.startsWith('local-')
+  let confirmed = false
   let reconciled = false
   try {
-    if (!assistant.message_id.startsWith('local-')) {
-      const response = await request<{ status?: string }>(
-        `/api/v1/chats/${encodeURIComponent(currentThread.thread_id)}/messages/${encodeURIComponent(assistant.message_id)}/cancel`,
-        { method: 'POST' },
-      )
-      confirmed = response.status === 'incomplete_cancelled'
-      if (!confirmed) throw new Error('The Chat cancellation was not confirmed.')
-    }
+    const response = await request<{ status?: string }>(
+      `/api/v1/chats/${encodeURIComponent(currentThread.thread_id)}/messages/${encodeURIComponent(assistant.message_id)}/cancel`,
+      { method: 'POST' },
+    )
+    confirmed = response.status === 'incomplete_cancelled'
+    if (!confirmed) throw new Error('The Chat cancellation was not confirmed.')
   } catch (cause) {
     if (cause instanceof ChatApiError && cause.status === 409) {
       streamAbort.value?.abort()
@@ -751,7 +756,9 @@ onBeforeUnmount(() => streamAbort.value?.abort())
           <div class="composer-footer">
             <span class="composer-hint">Enter a question · ⌘/Ctrl + Enter to send</span>
             <div class="composer-actions">
-              <button v-if="busy" type="button" class="button button-secondary" @click="cancel">Cancel</button>
+              <button v-if="busy" type="button" class="button button-secondary" :disabled="!canCancel" @click="cancel">
+                {{ canCancel ? 'Cancel' : 'Reserving…' }}
+              </button>
               <button type="submit" class="button button-primary" :disabled="!canAsk">Ask Atlas</button>
             </div>
           </div>

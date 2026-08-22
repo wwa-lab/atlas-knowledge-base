@@ -372,9 +372,13 @@ Non-compliant docs must never receive fabricated/title-only citations.
 **Response:** The `messages` array contains the user questions and assistant
 states. Completed assistant messages include the persisted `citations`,
 `coverage`, `conflict`, and `classification` projections used by the Chat
-surface. Incomplete or failed assistant messages do not expose answer bodies.
-The projection is subject to the same current-session ownership and
-authorization boundary as the thread itself.
+surface when the stored KB/binding scope still passes current authorization and
+runtime checks. If that boundary has drifted or access has been revoked, the
+completed assistant state retains only non-sensitive metadata and sets
+`content_redacted: true`; `answer`, `citations`, `coverage`, `conflict`, and
+`classification` are omitted. Incomplete or failed assistant messages do not
+expose answer bodies. The projection is subject to the same current-session
+ownership and authorization boundary as the thread itself.
 
 ### POST `/chats/{thread_id}/scope`
 

@@ -60,6 +60,11 @@ export function isChatSelectable(kb: KnowledgeBaseSummary): boolean {
   )
 }
 
+/** A server-reserved message id is required before a mutation can target cancellation. */
+export function isServerMessageId(messageId: string): boolean {
+  return Boolean(messageId) && !messageId.startsWith('local-')
+}
+
 export function chatDisabledReason(kb: KnowledgeBaseSummary): string {
   if (kb.chat_disabled_reason) return kb.chat_disabled_reason
   if (kb.access?.authorized !== true) return 'Authorization is required.'

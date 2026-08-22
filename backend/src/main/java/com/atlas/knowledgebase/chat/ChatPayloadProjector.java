@@ -32,18 +32,25 @@ final class ChatPayloadProjector {
     }
 
     Map<String, Object> message(ChatMessageRecord message) {
+        return message(message, true);
+    }
+
+    Map<String, Object> message(ChatMessageRecord message, boolean exposeCompletedContent) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("message_id", message.messageId());
         body.put("role", message.role());
         body.put("status", message.status());
         body.put("question", message.questionText());
-        body.put("answer", "completed".equals(message.status()) ? message.answerText() : null);
+        boolean completed = "completed".equals(message.status());
+        body.put("answer", completed && exposeCompletedContent ? message.answerText() : null);
         body.put("request_id", message.requestId());
-        if ("assistant".equals(message.role()) && "completed".equals(message.status())) {
+        if ("assistant".equals(message.role()) && completed && exposeCompletedContent) {
             body.put("citations", citations.summariesByMessageId(message.messageId()));
             body.put("coverage", storedCoverage(message));
             body.put("conflict", storedConflict(message));
             body.put("classification", message.classification());
+        } else if ("assistant".equals(message.role()) && completed) {
+            body.put("content_redacted", true);
         }
         return body;
     }

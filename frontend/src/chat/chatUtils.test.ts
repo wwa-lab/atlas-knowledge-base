@@ -4,6 +4,7 @@ import {
   chatDisabledReason,
   isPartialCoverage,
   isChatSelectable,
+  isServerMessageId,
   normalizeConflict,
   parseFailure,
   parseSseRecords,
@@ -116,6 +117,11 @@ describe('chat utilities', () => {
   it('recognizes ordinary partial coverage markers', () => {
     expect(isPartialCoverage({ successful: ['bnd_1'], timed_out: ['bnd_2'] })).toBe(true)
     expect(isPartialCoverage({ successful: ['bnd_1'] })).toBe(false)
+  })
+
+  it('requires a server reservation before a message can be cancelled', () => {
+    expect(isServerMessageId('local-assistant-1')).toBe(false)
+    expect(isServerMessageId('msg_1')).toBe(true)
   })
 
   it('normalizes canonical and mirror conflict payloads for structured rendering', () => {
