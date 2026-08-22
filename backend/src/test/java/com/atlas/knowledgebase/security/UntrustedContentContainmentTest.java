@@ -40,6 +40,17 @@ class UntrustedContentContainmentTest {
         assertThat(containment.inspect(obfuscated).reason()).isEqualTo("embedded_instruction");
     }
 
+    @Test
+    void containsOversizedFieldsInsteadOfLeavingAnUninspectedSuffix() {
+        String paddedExcerpt = "a".repeat(16_384) + "<script>exfiltrate()</script>";
+
+        UntrustedContentContainment.Decision decision = containment.inspect(hit(paddedExcerpt));
+
+        assertThat(decision.contained()).isTrue();
+        assertThat(decision.reason()).isEqualTo("field_too_large");
+        assertThat(decision.toString()).doesNotContain("exfiltrate");
+    }
+
     private static Retriever.Hit hit(String excerpt) {
         return new Retriever.Hit(
                 "corp/runbook",

@@ -49,6 +49,9 @@ public final class UntrustedContentContainment {
         }
         for (String field : fields(hit)) {
             String normalized = normalize(field);
+            if (normalized.length() > MAX_FIELD_CHARS) {
+                return Decision.contained("field_too_large");
+            }
             for (Rule rule : RULES) {
                 if (rule.pattern().matcher(normalized).find()) {
                     return Decision.contained(rule.reason());
@@ -79,10 +82,7 @@ public final class UntrustedContentContainment {
             return "";
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        normalized = normalized.replaceAll("\\p{Cf}", "");
-        return normalized.length() <= MAX_FIELD_CHARS
-                ? normalized
-                : normalized.substring(0, MAX_FIELD_CHARS);
+        return normalized.replaceAll("\\p{Cf}", "");
     }
 
     private record Rule(String reason, Pattern pattern) {}
