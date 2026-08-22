@@ -2,6 +2,8 @@ package com.atlas.knowledgebase.discovery;
 
 import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.GitBrowse;
+import com.atlas.knowledgebase.audit.AuditEventRecord;
+import com.atlas.knowledgebase.audit.AuditEventRepository;
 import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.ContentAuditResultRecord;
@@ -10,6 +12,8 @@ import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.AtlasUserRepository;
+import com.atlas.knowledgebase.session.SessionService;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,6 +35,8 @@ public class CatalogService {
     private final AtlasUserRepository users;
     private final GitBrowse gitBrowse;
     private final KbAccessService access;
+    private final AuditEventRepository auditEvents;
+    private final Clock clock;
 
     public CatalogService(
             LogicalKnowledgeBaseRepository knowledgeBases,
@@ -38,13 +44,17 @@ public class CatalogService {
             ContentAuditResultRepository audits,
             AtlasUserRepository users,
             GitBrowse gitBrowse,
-            KbAccessService access) {
+            KbAccessService access,
+            AuditEventRepository auditEvents,
+            Clock clock) {
         this.knowledgeBases = knowledgeBases;
         this.bindings = bindings;
         this.audits = audits;
         this.users = users;
         this.gitBrowse = gitBrowse;
         this.access = access;
+        this.auditEvents = auditEvents;
+        this.clock = clock;
     }
 
     public Map<String, Object> list(AtlasUserRecord user, CatalogQuery query) {
@@ -76,6 +86,7 @@ public class CatalogService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("items", items);
         body.put("next_cursor", next);
+        audit(user.userId(), null, null, null, "catalog_list", "allowed", "success", null);
         return body;
     }
 
@@ -87,6 +98,7 @@ public class CatalogService {
         boolean authorized = authorized(user, kb);
         Map<String, Object> body = listProjection(user, kb);
         if (!authorized) {
+            audit(user.userId(), logicalKbId, null, null, "catalog_detail", "allowed", "redacted", "authorization");
             return body;
         }
         List<BindingRecord> bindingRows = bindings.findByLogicalKbId(logicalKbId);
@@ -112,6 +124,7 @@ public class CatalogService {
         body.put(
                 "chat_start_allowed",
                 "chat_ready".equals(kb.capability()) && kb.modelEligible());
+        audit(user.userId(), logicalKbId, null, null, "catalog_detail", "allowed", "success", null);
         return body;
     }
 
@@ -133,6 +146,7 @@ public class CatalogService {
                                 })
                         .toList());
         body.put("original_url", tree.originalUrl());
+        audit(user.userId(), logicalKbId, tree.bindingId(), "git_markdown", "browse_tree", "allowed", "success", null);
         return body;
     }
 
@@ -154,7 +168,35 @@ public class CatalogService {
         body.put("path", preview.path());
         body.put("markdown", preview.markdown());
         body.put("original_url", preview.originalUrl());
+        audit(user.userId(), logicalKbId, preview.bindingId(), "git_markdown", "browse_preview", "allowed", "success", null);
         return body;
+    }
+
+    private void audit(
+            String userId,
+            String logicalKbId,
+            String bindingId,
+            String connector,
+            String action,
+            String authorization,
+            String status,
+            String errorCategory) {
+        auditEvents.insert(
+                new AuditEventRecord(
+                        "aud_" + SessionService.randomToken().substring(0, 16),
+                        clock.instant(),
+                        userId,
+                        logicalKbId,
+                        bindingId,
+                        connector,
+                        action,
+                        authorization,
+                        null,
+                        null,
+                        null,
+                        status,
+                        errorCategory,
+                        null));
     }
 
     private BindingRecord requireAuthorizedGit(AtlasUserRecord user, String logicalKbId) {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.atlas.knowledgebase.adapters.CancellationSource;
 import com.atlas.knowledgebase.adapters.Retriever;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,57 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 class ProviderExecutionTest {
+
+    @Test
+    void telemetryTracksOperationOutcomeAndLatency() throws Exception {
+        RetrievalProperties properties = properties(Set.of("dify"), Duration.ofSeconds(1), 1, 10);
+        RetrieverRegistry registry = new RetrieverRegistry(List.of(retriever(Set.of("dify"))));
+        ConnectorTelemetry telemetry = new ConnectorTelemetry();
+
+        try (ProviderExecution execution = new ProviderExecution(properties, registry, telemetry)) {
+            String result =
+                    execution.await(
+                            execution.<String>submit(
+                                    "dify", "authorize", timeout -> "authorized"));
+            assertThat(result).isEqualTo("authorized");
+
+            ConnectorTelemetry.ConnectorSnapshot snapshot = telemetry.snapshot("dify");
+            assertThat(snapshot.requests()).isEqualTo(1);
+            assertThat(snapshot.successes()).isEqualTo(1);
+            assertThat(snapshot.inFlight()).isZero();
+            assertThat(snapshot.totalLatencyMs()).isGreaterThanOrEqualTo(0);
+            assertThat(telemetry.analyticsSnapshots())
+                    .containsKey("connector.authorize:success");
+        }
+    }
+
+    @Test
+    void resilienceStateDoesNotDoubleCountOperationFailuresOrCloseActiveBackoff()
+            throws Exception {
+        RetrievalProperties properties = properties(Set.of("dify"), Duration.ofSeconds(1), 1, 10);
+        properties.setProviderBackoffs(Map.of("dify", Duration.ofMillis(150)));
+        properties.setProviderCircuitFailureThresholds(Map.of("dify", 3));
+        properties.setProviderCircuitOpenDurations(Map.of("dify", Duration.ofSeconds(1)));
+        RetrieverRegistry registry = new RetrieverRegistry(List.of(retriever(Set.of("dify"))));
+        ConnectorTelemetry telemetry = new ConnectorTelemetry();
+
+        try (ProviderExecution execution = new ProviderExecution(properties, registry, telemetry)) {
+            execution.recordFailure(
+                    "dify", ProviderExecution.UnavailabilityCause.RETRIEVAL, null);
+            assertThat(telemetry.snapshot("dify").failures()).isZero();
+
+            ConnectorTelemetry.Operation operation = telemetry.start("dify", "retrieve");
+            operation.failure();
+            execution.recordSuccess("dify");
+
+            assertThat(telemetry.snapshot("dify").failures()).isEqualTo(1);
+            assertThat(telemetry.snapshot("dify").backoffActive()).isTrue();
+
+            Thread.sleep(180);
+            execution.recordSuccess("dify");
+            assertThat(telemetry.snapshot("dify").backoffActive()).isFalse();
+        }
+    }
 
     @Test
     void timeoutInterruptsWorkAndRestoresProviderCapacity() throws Exception {

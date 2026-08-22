@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Repository
 public class AuditEventRepository {
@@ -37,6 +38,16 @@ public class AuditEventRepository {
 
     @Transactional
     public void insert(AuditEventRecord event) {
+        insertRow(event);
+    }
+
+    /** Writes a denial/security event independently of a business transaction that will roll back. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void insertIndependent(AuditEventRecord event) {
+        insertRow(event);
+    }
+
+    private void insertRow(AuditEventRecord event) {
         jdbcTemplate.update(
                 """
                 INSERT INTO audit_event (

@@ -2,6 +2,7 @@ package com.atlas.knowledgebase.providers;
 
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import com.atlas.knowledgebase.secrets.SecretStore;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.SessionService;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +45,7 @@ public class ProviderConnectionService {
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ConnectorTelemetry telemetry;
 
     public ProviderConnectionService(
             ProviderConnectionRepository repository,
@@ -54,6 +57,31 @@ public class ProviderConnectionService {
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(
+                repository,
+                properties,
+                authorizationClient,
+                secretStore,
+                sessionProperties,
+                sessionService,
+                auditEvents,
+                objectMapper,
+                clock,
+                new ConnectorTelemetry());
+    }
+
+    @Autowired
+    public ProviderConnectionService(
+            ProviderConnectionRepository repository,
+            ProviderProperties properties,
+            ProviderAuthorizationClient authorizationClient,
+            SecretStore secretStore,
+            com.atlas.knowledgebase.session.SessionProperties sessionProperties,
+            SessionService sessionService,
+            AuditEventRepository auditEvents,
+            ObjectMapper objectMapper,
+            Clock clock,
+            ConnectorTelemetry telemetry) {
         this.repository = repository;
         this.properties = properties;
         this.authorizationClient = authorizationClient;
@@ -63,28 +91,50 @@ public class ProviderConnectionService {
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.telemetry = telemetry;
     }
 
     @Transactional
     public StartConnectResult startConnect(AtlasUserRecord user, String rawProvider) {
         String provider = normalizeProvider(rawProvider);
-        repository
-                .findByUserAndProvider(user.userId(), provider)
-                .ifPresent(
-                        existing -> {
-                            if (isLiveConnected(existing)) {
-                                throw new AlreadyConnectingException(provider);
-                            }
-                        });
-        return beginAuthorization(user, provider);
+        ConnectorTelemetry.Operation operation = telemetry.start(provider, "connect");
+        try {
+            repository
+                    .findByUserAndProvider(user.userId(), provider)
+                    .ifPresent(
+                            existing -> {
+                                if (isLiveConnected(existing)) {
+                                    throw new AlreadyConnectingException(provider);
+                                }
+                            });
+            StartConnectResult started = beginAuthorization(user, provider);
+            writeAudit(
+                    user.userId(),
+                    provider,
+                    "connect",
+                    contentFreeProviderDetails(provider),
+                    "started");
+            operation.success();
+            return started;
+        } catch (RuntimeException failure) {
+            operation.failure();
+            throw failure;
+        }
     }
 
     @Transactional
     public StartConnectResult startReconnect(AtlasUserRecord user, String rawProvider) {
         String provider = normalizeProvider(rawProvider);
-        StartConnectResult started = beginAuthorization(user, provider);
-        writeAudit(user.userId(), provider, "reconnect", contentFreeProviderDetails(provider));
-        return started;
+        ConnectorTelemetry.Operation operation = telemetry.start(provider, "reconnect");
+        try {
+            StartConnectResult started = beginAuthorization(user, provider);
+            writeAudit(user.userId(), provider, "reconnect", contentFreeProviderDetails(provider));
+            operation.success();
+            return started;
+        } catch (RuntimeException failure) {
+            operation.failure();
+            throw failure;
+        }
     }
 
     @Transactional
@@ -199,37 +249,52 @@ public class ProviderConnectionService {
     public void completeCallback(
             AtlasUserRecord user, String rawProvider, String code, String presentedScopeParam) {
         String provider = normalizeProvider(rawProvider);
-        List<String> requested = properties.requestedScopes(provider);
-        ProviderConnectionRecord existing =
-                repository
-                        .findByUserAndProvider(user.userId(), provider)
-                        .orElseThrow(() -> new AlreadyConnectingException(provider));
-        if (!PENDING_SECRET_REF.equals(existing.secretRef())) {
-            throw new AlreadyConnectingException(provider);
-        }
-
-        char[] token = authorizationClient.redeemAccessToken(provider, code);
-        String secretRef;
+        ConnectorTelemetry.Operation operation = telemetry.start(provider, "connect_callback");
         try {
-            secretRef = secretStore.store(provider + "-" + user.userId(), token);
-        } finally {
-            Arrays.fill(token, '\0');
-        }
+            List<String> requested = properties.requestedScopes(provider);
+            ProviderConnectionRecord existing =
+                    repository
+                            .findByUserAndProvider(user.userId(), provider)
+                            .orElseThrow(() -> new AlreadyConnectingException(provider));
+            if (!PENDING_SECRET_REF.equals(existing.secretRef())) {
+                throw new AlreadyConnectingException(provider);
+            }
 
-        List<String> granted = intersectScopes(requested, presentedScopeParam);
-        Instant now = clock.instant();
-        String status = properties.isStubCompletesAsConnected() ? "connected" : "reconnect_required";
-        repository.update(
-                new ProviderConnectionRecord(
-                        existing.connectionId(),
-                        existing.userId(),
-                        provider,
-                        status,
-                        toJson(granted),
-                        null,
-                        now,
-                        secretRef,
-                        now));
+            char[] token = authorizationClient.redeemAccessToken(provider, code);
+            String secretRef;
+            try {
+                secretRef = secretStore.store(provider + "-" + user.userId(), token);
+            } finally {
+                Arrays.fill(token, '\0');
+            }
+
+            List<String> granted = intersectScopes(requested, presentedScopeParam);
+            Instant now = clock.instant();
+            String status =
+                    properties.isStubCompletesAsConnected()
+                            ? "connected"
+                            : "reconnect_required";
+            repository.update(
+                    new ProviderConnectionRecord(
+                            existing.connectionId(),
+                            existing.userId(),
+                            provider,
+                            status,
+                            toJson(granted),
+                            null,
+                            now,
+                            secretRef,
+                            now));
+            writeAudit(
+                    user.userId(),
+                    provider,
+                    "connect_complete",
+                    contentFreeProviderDetails(provider));
+            operation.success();
+        } catch (RuntimeException failure) {
+            operation.failure();
+            throw failure;
+        }
     }
 
     public void requireMatchingState(String expected, String actual) {
@@ -394,6 +459,11 @@ public class ProviderConnectionService {
     }
 
     private void writeAudit(String userId, String provider, String action, String detailsJson) {
+        writeAudit(userId, provider, action, detailsJson, "success");
+    }
+
+    private void writeAudit(
+            String userId, String provider, String action, String detailsJson, String status) {
         auditEvents.insert(
                 new AuditEventRecord(
                         "aud_" + SessionService.randomToken().substring(0, 16),
@@ -407,7 +477,7 @@ public class ProviderConnectionService {
                         null,
                         null,
                         null,
-                        "success",
+                        status,
                         null,
                         detailsJson));
     }

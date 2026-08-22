@@ -3,6 +3,7 @@ package com.atlas.knowledgebase.chat;
 import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.CancellationSource;
 import com.atlas.knowledgebase.adapters.Retriever;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import com.atlas.knowledgebase.providers.ProviderConnectionRecord;
 import com.atlas.knowledgebase.providers.ProviderConnectionRepository;
 import com.atlas.knowledgebase.registry.BindingRecord;
@@ -199,6 +200,7 @@ final class ChatHistoryAuthorizationService {
             ProviderExecution.TimedCall<Retriever.AuthorizationResult> call =
                     providerExecution.submit(
                             binding.providerProfile(),
+                            "authorize",
                             cancellation,
                             timeout ->
                                     retriever.authorize(
@@ -212,6 +214,19 @@ final class ChatHistoryAuthorizationService {
                                                     timeout,
                                                     cancellation)));
             Retriever.AuthorizationResult result = providerExecution.await(call);
+            if (result != null) {
+                call.reclassify(
+                        result.outcome() == Retriever.AuthorizationOutcome.AUTHORIZED
+                                ? ConnectorTelemetry.Outcome.SUCCESS
+                                : switch (result.outcome()) {
+                                    case QUOTA -> ConnectorTelemetry.Outcome.QUOTA;
+                                    case TIMEOUT -> ConnectorTelemetry.Outcome.TIMEOUT;
+                                    case ACCESS_DENIED, FAILED, SECURITY, UNKNOWN ->
+                                            ConnectorTelemetry.Outcome.FAILURE;
+                                    case AUTHORIZED -> ConnectorTelemetry.Outcome.SUCCESS;
+                                },
+                        result.retryAfter());
+            }
             return result != null
                     && result.outcome() == Retriever.AuthorizationOutcome.AUTHORIZED;
         } catch (InterruptedException interrupted) {

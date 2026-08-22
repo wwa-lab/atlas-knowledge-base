@@ -7,6 +7,7 @@ import com.atlas.knowledgebase.adapters.Retriever;
 import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.audit.ConnectorTelemetry;
 import com.atlas.knowledgebase.chat.ChatClassificationPolicy;
 import com.atlas.knowledgebase.chat.ChatValidationException;
 import com.atlas.knowledgebase.registry.BindingRecord;
@@ -217,6 +218,7 @@ public class RetrievalOrchestrator {
                             item,
                             providerExecution.submit(
                                     item.binding().providerProfile(),
+                                    "authorize",
                                     cancellation,
                                     timeout ->
                                             authorizeOne(
@@ -235,7 +237,18 @@ public class RetrievalOrchestrator {
             captureRetryAfter(retryAfter, bindingId, authorization.result().retryAfter());
             switch (authorization.result().outcome()) {
                 case AUTHORIZED -> {
+                    providerExecution.recordSuccess(item.binding().providerProfile());
                     retrievalWork.add(item);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "allow",
+                            "ok",
+                            pending.call().latencyMs(),
+                            null);
                 }
                 case ACCESS_DENIED -> {
                     failed.add(bindingId);
@@ -245,6 +258,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.BINDING_ACCESS,
                             logicalKbId,
                             bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "deny",
+                            "denied",
+                            pending.call().latencyMs(),
+                            "authorization");
                 }
                 case QUOTA -> {
                     recordFailure(
@@ -259,6 +282,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.QUOTA,
                             logicalKbId,
                             bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "unknown",
+                            "quota",
+                            pending.call().latencyMs(),
+                            "quota");
                 }
                 case TIMEOUT -> {
                     recordFailure(
@@ -273,6 +306,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.BINDING_UNAVAILABLE,
                             logicalKbId,
                             bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "unknown",
+                            "timeout",
+                            pending.call().latencyMs(),
+                            "timeout");
                 }
                 case FAILED -> {
                     recordFailure(
@@ -287,6 +330,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.BINDING_UNAVAILABLE,
                             logicalKbId,
                             bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "unknown",
+                            "failed",
+                            pending.call().latencyMs(),
+                            "retrieval");
                 }
                 case SECURITY -> {
                     failed.add(bindingId);
@@ -297,7 +350,16 @@ public class RetrievalOrchestrator {
                             logicalKbId,
                             bindingId);
                     knowledgeBases.suspend(logicalKbId);
-                    audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "fail_closed");
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "deny",
+                            "fail_closed",
+                            pending.call().latencyMs(),
+                            "security");
                 }
                 case UNKNOWN -> {
                     recordFailure(
@@ -312,7 +374,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.UNKNOWN,
                             logicalKbId,
                             bindingId);
-                    audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "unknown");
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            item.binding().providerProfile(),
+                            "authorize",
+                            "unknown",
+                            "unknown",
+                            pending.call().latencyMs(),
+                            "unknown");
                 }
             }
         }
@@ -334,6 +405,7 @@ public class RetrievalOrchestrator {
                             item,
                             providerExecution.submit(
                                     item.binding().providerProfile(),
+                                    "retrieve",
                                     cancellation,
                                     timeout ->
                                             retrieveOne(
@@ -364,6 +436,16 @@ public class RetrievalOrchestrator {
                             RetrievalTurn.Block.QUOTA,
                             logicalKbId,
                             bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            outcome.binding().providerProfile(),
+                            "retrieve",
+                            "unknown",
+                            "quota",
+                            pending.call().latencyMs(),
+                            "quota");
                 }
                 case TIMEOUT -> {
                     recordFailure(
@@ -372,6 +454,16 @@ public class RetrievalOrchestrator {
                             outcome.result().retryAfter(),
                             outcome.providerRejected());
                     timedOut.add(bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            outcome.binding().providerProfile(),
+                            "retrieve",
+                            "unknown",
+                            "timeout",
+                            pending.call().latencyMs(),
+                            "timeout");
                 }
                 case FAILED -> {
                     recordFailure(
@@ -380,6 +472,16 @@ public class RetrievalOrchestrator {
                             outcome.result().retryAfter(),
                             outcome.providerRejected());
                     failed.add(bindingId);
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            outcome.binding().providerProfile(),
+                            "retrieve",
+                            "unknown",
+                            "failed",
+                            pending.call().latencyMs(),
+                            "retrieval");
                 }
                 case SECURITY -> {
                     failed.add(bindingId);
@@ -394,9 +496,12 @@ public class RetrievalOrchestrator {
                             user.userId(),
                             logicalKbId,
                             bindingId,
+                            outcome.binding().providerProfile(),
                             "retrieve",
                             "deny",
-                            "fail_closed");
+                            "fail_closed",
+                            pending.call().latencyMs(),
+                            "security");
                 }
                 case UNKNOWN -> {
                     recordFailure(
@@ -415,8 +520,11 @@ public class RetrievalOrchestrator {
                             user.userId(),
                             logicalKbId,
                             bindingId,
+                            outcome.binding().providerProfile(),
                             "retrieve",
-                            "deny",
+                            "unknown",
+                            "unknown",
+                            pending.call().latencyMs(),
                             "unknown");
                 }
                 case SUCCESS -> {
@@ -435,9 +543,12 @@ public class RetrievalOrchestrator {
                             user.userId(),
                             logicalKbId,
                             bindingId,
+                            outcome.binding().providerProfile(),
                             "retrieve",
                             "allow",
-                            "ok");
+                            "ok",
+                            pending.call().latencyMs(),
+                            null);
                 }
             }
         }
@@ -559,7 +670,12 @@ public class RetrievalOrchestrator {
 
     private BindingAuthorization awaitAuthorization(PendingAuthorization pending) {
         try {
-            return providerExecution.await(pending.call());
+            BindingAuthorization authorization = providerExecution.await(pending.call());
+            pending.call()
+                    .reclassify(
+                            telemetryOutcome(authorization.result().outcome()),
+                            authorization.result().retryAfter());
+            return authorization;
         } catch (TimeoutException e) {
             return new BindingAuthorization(
                     pending.item(), Retriever.AuthorizationResult.timeout(), false);
@@ -579,7 +695,12 @@ public class RetrievalOrchestrator {
 
     private BindingOutcome awaitRetrieval(PendingRetrieval pending) {
         try {
-            return providerExecution.await(pending.call());
+            BindingOutcome outcome = providerExecution.await(pending.call());
+            pending.call()
+                    .reclassify(
+                            telemetryOutcome(outcome.result().outcome()),
+                            outcome.result().retryAfter());
+            return outcome;
         } catch (TimeoutException e) {
             return new BindingOutcome(
                     pending.item().kb().logicalKbId(),
@@ -622,6 +743,24 @@ public class RetrievalOrchestrator {
             };
         }
         return Retriever.AuthorizationResult.unknown();
+    }
+
+    private ConnectorTelemetry.Outcome telemetryOutcome(Retriever.AuthorizationOutcome outcome) {
+        return switch (outcome) {
+            case AUTHORIZED -> ConnectorTelemetry.Outcome.SUCCESS;
+            case QUOTA -> ConnectorTelemetry.Outcome.QUOTA;
+            case TIMEOUT -> ConnectorTelemetry.Outcome.TIMEOUT;
+            case ACCESS_DENIED, FAILED, SECURITY, UNKNOWN -> ConnectorTelemetry.Outcome.FAILURE;
+        };
+    }
+
+    private ConnectorTelemetry.Outcome telemetryOutcome(Retriever.Outcome outcome) {
+        return switch (outcome) {
+            case SUCCESS -> ConnectorTelemetry.Outcome.SUCCESS;
+            case QUOTA -> ConnectorTelemetry.Outcome.QUOTA;
+            case TIMEOUT -> ConnectorTelemetry.Outcome.TIMEOUT;
+            case FAILED, SECURITY, UNKNOWN -> ConnectorTelemetry.Outcome.FAILURE;
+        };
     }
 
     private Retriever.Result classifyFailure(Throwable error) {
@@ -748,9 +887,12 @@ public class RetrievalOrchestrator {
             String userId,
             String logicalKbId,
             String bindingId,
+            String connector,
             String action,
             String authorization,
-            String status) {
+            String status,
+            long latencyMs,
+            String errorCategory) {
         try {
             auditEvents.insert(
                     new AuditEventRecord(
@@ -759,14 +901,14 @@ public class RetrievalOrchestrator {
                             userId,
                             logicalKbId,
                             bindingId,
-                            null,
+                            connector,
                             action,
                             authorization,
                             null,
                             null,
-                            null,
+                            latencyMs > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) latencyMs,
                             status,
-                            null,
+                            errorCategory,
                             objectMapper.writeValueAsString(Map.of("action", action))));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Unable to serialize content-free audit details", e);
