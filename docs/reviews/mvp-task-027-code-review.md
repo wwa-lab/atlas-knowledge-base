@@ -33,3 +33,7 @@ Review comment:
 
 - [P2] Freeze completed call latency before auditing — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ProviderExecution.java:461-463
   When provider calls are dispatched in parallel but awaited sequentially, a call can finish early and then sit in `PendingAuthorization`/`PendingRetrieval` while earlier calls are still being awaited. `latencyMs()` keeps measuring wall-clock time from submission instead of returning the recorded completion latency, so the new audit `latency_ms` for those completed calls can be inflated by unrelated work and no longer represents connector latency. Expose the operation's recorded finish latency after completion instead of recomputing elapsed time at audit time.
+
+## Gate A — final rerun after Gate B fix
+
+The diff adds content-free audit and connector telemetry plumbing without any clear correctness, security, or maintainability regressions. The telemetry failure-counting and latency issues noted in the included review evidence appear to have been addressed in the current code.
