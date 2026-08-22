@@ -383,7 +383,12 @@ class ChatApiTest {
                                         .content("{\"question\":\"What is the runbook?\"}"))
                         .andExpect(request().asyncStarted())
                         .andReturn();
-        mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk());
+        String completedBody =
+                mockMvc.perform(asyncDispatch(ask))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String assistantId =
                 jdbcTemplate.queryForObject(
                         """
@@ -392,6 +397,24 @@ class ChatApiTest {
                         """,
                         String.class,
                         threadId);
+        Integer citationCount =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM citation WHERE message_id = ?",
+                        Integer.class,
+                        assistantId);
+        assertThat(citationCount).isEqualTo(2);
+        String firstCitationId =
+                jdbcTemplate.queryForObject(
+                        "SELECT MIN(citation_id) FROM citation WHERE message_id = ?",
+                        String.class,
+                        assistantId);
+        assertThat(completedBody).contains(firstCitationId).contains("\"title\"");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT binding_set FROM chat_message WHERE message_id = ?",
+                                String.class,
+                                assistantId))
+                .contains("\"binding_role\":\"canonical\"");
         MvcResult retry =
                 mockMvc.perform(
                                 post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
@@ -400,7 +423,13 @@ class ChatApiTest {
                                         .accept(MediaType.TEXT_EVENT_STREAM))
                         .andExpect(request().asyncStarted())
                         .andReturn();
-        mockMvc.perform(asyncDispatch(retry)).andExpect(status().isOk());
+        String replayBody =
+                mockMvc.perform(asyncDispatch(retry))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(replayBody).contains(firstCitationId).contains("\"citations\"");
         Integer completed =
                 jdbcTemplate.queryForObject(
                         """
@@ -410,6 +439,167 @@ class ChatApiTest {
                         Integer.class,
                         threadId);
         assertThat(completed).isEqualTo(1);
+    }
+
+    @Test
+    void evidenceDrawerReauthorizesAndOpensOnlyThePersistedFixtureVersion() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Evidence Drawer",
+                        """
+                        {
+                          "dataset_id": "ds_1",
+                          "original_version_mapping": {"doc_1": "v1"},
+                          "atlas_fixture": true,
+                          "evidence_authorization_fixture": "authorized",
+                          "evidence_resolution_fixture": "ok"
+                        }
+                        """);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        MvcResult ask =
+                mockMvc.perform(
+                                post("/api/v1/chats/" + threadId + "/messages")
+                                        .cookie(owner.session())
+                                        .header(SessionService.CSRF_HEADER, owner.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .accept(MediaType.TEXT_EVENT_STREAM)
+                                        .content("{\"question\":\"Show the exact source.\"}"))
+                        .andExpect(request().asyncStarted())
+                        .andReturn();
+        mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk());
+        String citationId =
+                jdbcTemplate.queryForObject(
+                        "SELECT MIN(citation_id) FROM citation c JOIN chat_message m ON m.message_id = c.message_id WHERE m.thread_id = ?",
+                        String.class,
+                        threadId);
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM citation WHERE citation_id = ?",
+                        String.class,
+                        citationId);
+
+        mockMvc.perform(get("/api/v1/citations/" + citationId).cookie(owner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.citation_id").value(citationId))
+                .andExpect(jsonPath("$.logical_kb_name").value("Evidence Drawer"))
+                .andExpect(jsonPath("$.binding_role").value("canonical"))
+                .andExpect(jsonPath("$.verification_mode").value("fixture"))
+                .andExpect(jsonPath("$.provider_verified").value(false))
+                .andExpect(jsonPath("$.open_original_action.path")
+                        .value("/api/v1/citations/" + citationId + "/open-original"));
+
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resolve_status").value("ok"))
+                .andExpect(jsonPath("$.verification_mode").value("fixture"))
+                .andExpect(jsonPath("$.provider_verified").value(false))
+                .andExpect(jsonPath("$.navigation_url")
+                        .value(org.hamcrest.Matchers.startsWith("https://evidence-fixture.invalid/")));
+
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"navigation_url\":\"https://attacker.invalid\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("EVIDENCE_OPEN_BODY_INVALID"));
+
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, "invalid-csrf"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("CSRF_MISMATCH"));
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{"))
+                .andExpect(status().isBadRequest());
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open'",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(4);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open' AND error_category = 'authorization' AND evidence_locator_ids IS NULL",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(1);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'evidence_open' AND error_category = 'validation' AND evidence_locator_ids IS NULL",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(2);
+
+        jdbcTemplate.update(
+                "INSERT INTO atlas_user (user_id, sso_subject, display_name, email, roles, model_entitled, created_at, updated_at) VALUES ('usr_other_evidence', 'other-evidence', 'Other', 'other@localhost', '[\"end_user\"]', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        jdbcTemplate.update(
+                "UPDATE chat_thread SET user_id = 'usr_other_evidence' WHERE thread_id = ?", threadId);
+        mockMvc.perform(get("/api/v1/citations/" + citationId).cookie(owner.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("EVIDENCE_NOT_FOUND"));
+        jdbcTemplate.update(
+                "UPDATE chat_thread SET user_id = ? WHERE thread_id = ?", owner.userId(), threadId);
+
+        jdbcTemplate.update(
+                "UPDATE binding SET source_identity = ? WHERE binding_id = ?",
+                """
+                {"dataset_id":"ds_1","atlas_fixture":true,
+                 "evidence_authorization_fixture":"authorized",
+                 "evidence_resolution_fixture":"unavailable"}
+                """,
+                bindingId);
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("EVIDENCE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.error.details.verification_mode").value("fixture"));
+
+        jdbcTemplate.update(
+                "UPDATE binding SET source_identity = ? WHERE binding_id = ?",
+                """
+                {"dataset_id":"ds_1","atlas_fixture":true,
+                 "evidence_authorization_fixture":"denied",
+                 "evidence_resolution_fixture":"ok"}
+                """,
+                bindingId);
+        mockMvc.perform(
+                        post("/api/v1/citations/" + citationId + "/open-original")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("EVIDENCE_ACCESS_DENIED"));
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM audit_event WHERE user_id = ? AND action = 'authorization_denied' AND details IS NULL",
+                                Integer.class,
+                                owner.userId()))
+                .isEqualTo(1);
     }
 
     @Test

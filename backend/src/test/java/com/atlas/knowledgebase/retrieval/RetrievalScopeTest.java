@@ -44,6 +44,11 @@ class RetrievalScopeTest {
 
         assertThat(scope.logicalKbIds()).containsExactly("lkb_snapshot");
         assertThat(scope.bindingIds()).containsExactly("bnd_snapshot");
+        assertThat(scope.bindingSnapshots())
+                .containsExactly(
+                        Map.of(
+                                "binding_id", "bnd_snapshot",
+                                "binding_role", "canonical"));
         @SuppressWarnings("unchecked")
         Map<String, Integer> kbVersions =
                 (Map<String, Integer>) scope.configVersions().get("logical_kbs");

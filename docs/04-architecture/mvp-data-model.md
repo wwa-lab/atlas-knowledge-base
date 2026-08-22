@@ -236,7 +236,7 @@ on this row.
 | question_text | String | Yes | User question (assistant rows null) |
 | answer_text | String | Yes | Completed answer only |
 | logical_kb_scope | String[] | No | Exact KB scope used |
-| binding_set | String[] | No | Exact binding set used |
+| binding_set | JSON object[] | No | Exact answer-time snapshot of `{binding_id, binding_role}` entries (ADR-0008) |
 | config_versions | JSON | No | KB/binding config versions used |
 | coverage | JSON | Yes | Success/fail/timeout map |
 | conflict_section | JSON | Yes | Canonical disagreement payload |
