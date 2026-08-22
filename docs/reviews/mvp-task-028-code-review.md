@@ -17,3 +17,7 @@ Review comment:
 
 - [P2] Cap raw field size before normalizing untrusted text — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:51-52`
   When a provider returns a very large excerpt or metadata field, this normalizes and copies the entire untrusted string before enforcing `MAX_FIELD_CHARS`, so the new containment limit does not actually bound CPU or memory work and a malicious/buggy source can cause excessive allocation before being rejected. Check the raw field length first, or otherwise cap/stream normalization while treating over-limit input as contained.
+
+## Gate A — final review
+
+No discrete correctness, security, or maintainability issues were identified in the diff. The changes add containment before fusion and avoid copying suspicious source text into coverage/audit details.
