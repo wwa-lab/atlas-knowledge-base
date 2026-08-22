@@ -876,6 +876,184 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 ---
 
+# Gate A — Post-Final-Gate-B Remediation Review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Revision reviewed:** `bb2d0418f790624d6116dc8d13876622654f1d13`
+- **Diff:** `origin/main...HEAD` (`origin/main` = `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`)
+- **Design reviewed:** accepted MVP requirements, US-004/US-006, specification, architecture/data flow/data model, detailed design, API guide, traceability, ADR-0002/0004/0005/0006/0007
+- **Task reviewed:** TASK-015
+- **Code inspected:** Chat service/repository/error paths, classification policy, retrieval orchestrator/scope/turn, provider execution and configuration, retriever/model ports and stubs, RRF, changed tests and runtime profiles
+- **Excluded as evidence:** `docs/reviews/mvp-task-015-code-review.md`, PR narrative
+- **Review objective:** Assess TASK-015 fidelity, with particular scrutiny on classification inheritance and retry/cancellation concurrency.
+
+## Overall Assessment
+
+- **Alignment rating:** 72%
+- **Verdict:** Partially aligned
+- **Rationale:** The implementation provides a credible stub-first orchestrator, immutable per-turn snapshots, parallel authorization/retrieval, truthful coverage, fail-closed security outcomes, and provenance-preserving RRF. The remediation also correctly places a persisted retry CAS and one local in-flight registration before retry retrieval. Three blocking gaps remain at accepted security and reliability boundaries.
+
+## Findings by Severity
+
+### Critical
+
+None identified.
+
+### Major
+
+#### 1. Unknown classification values still pass the model-send boundary
+
+- **Design / task expected:** FR-56 and REQ-AUTH-007 require uncertain classification to fail closed. The remediation constraint explicitly requires mixed and unknown classifications to deny Chat until an approved taxonomy exists.
+- **Code currently does:** `ChatClassificationPolicy.resolve()` rejects only null, blank, or unequal strings. Any identical arbitrary value—including `"unknown"` or an unapproved value—is treated as known and persisted as the answer classification. The registry likewise validates classification as merely nonblank, and activation has no classification-policy approval check.
+- **Evidence:** `ChatClassificationPolicy.java:14-27`; `RegistryService.java:169-180`.
+- **Why it matters:** The system can label and generate from a scope whose classification semantics and approval status are indeterminate, contradicting the fail-closed boundary. The tests cover `internal` versus `restricted`, but not unknown/unapproved classifications.
+- **Recommended fix:** Introduce an approved classification-policy/configuration boundary that can answer “known and approved” independently of dominance ordering. Until configured, reject unknown values; continue requiring exact equality for multi-KB Chat. Cover create, ask, and retry drift with unknown/unapproved values.
+
+#### 2. User cancellation does not cancel in-flight provider retrieval
+
+- **Design / task expected:** REQ-CHAT-008 requires cancellation to stop cancellable backend work. The accepted orchestration design includes cancellation across the in-flight Chat operation.
+- **Code currently does:** Initial `ask()` performs all authorization and retrieval before creating the assistant message or registering an `InFlight`, so no cancellation target exists during provider work. Retry registers the flight first, but `RetrievalOrchestrator.retrieve()` and the `Retriever` requests receive no cancellation signal or cancellable handle. Cancel only flips the Chat flight flag and persisted status; provider work continues until it returns or its timeout expires.
+- **Evidence:** `ChatService.java:168-212`, `ChatService.java:276-303`, `Retriever.java:19-30`, `Retriever.java:67-75`. The concurrency test cancels during blocked retrieval but must manually release the retrieval latch; it verifies only that generation does not start.
+- **Why it matters:** Expensive or sensitive provider work continues after the user receives `incomplete_cancelled`, consuming concurrency/quota and violating the promised cancellation boundary.
+- **Recommended fix:** Create/reserve the operation before retrieval for asks as well as retries, propagate a cancellation token or cancellable operation through the orchestrator and retriever port, and cancel all submitted provider futures on user cancel. Preserve the terminal CAS behavior so late results cannot overwrite cancellation.
+
+#### 3. The accepted connector resilience contract is only partially implemented
+
+- **Design / task expected:** FR-38, REQ-FAIL-005/006, REQ-RAG-013, and the architecture’s Retrieval Orchestrator require independent timeout, quota, concurrency, backoff, and circuit-breaker controls, including quota classification and retry-after.
+- **Code currently does:** `RetrievalProperties` and `ProviderExecution` implement timeout, concurrency, and enablement only. `Retriever.Outcome` has no quota/rate-limit result or retry-after metadata. There is no backoff or circuit-breaker state/mechanism.
+- **Evidence:** `RetrievalProperties.java:13-15`, `Retriever.java:101-133`, `ProviderExecution.java:38-85`.
+- **Why it matters:** TASK-019–021 real adapters would enter an orchestrator that cannot satisfy the already accepted quota/retry-after and circuit-breaker behavior, creating structural debt at the connector boundary.
+- **Recommended fix:** Add provider-neutral quota/rate-limit outcomes with retry-after, configurable backoff policy, and per-provider circuit-breaker state before real adapters depend on the port. Connector-specific numeric values may remain environment/pilot supplied.
+
+### Minor
+
+#### Partial-result “safe retry” has no executable backend semantics
+
+- A partially covered answer is stored as `completed`. Calling the documented retry endpoint immediately replays it rather than retrying failed/timed-out bindings (`ChatService.java:266-267`, `313-320`).
+- FR-46/REQ-COV-002 require a safe retry action, while the API guide defines the retry endpoint specifically for incomplete requests, leaving an artifact-level ambiguity.
+- Clarify the contract before TASK-024: either define a safe new-turn action for partial answers or permit an idempotent partial retry with explicit operation identity.
+
+## Areas of Good Alignment
+
+- Per-turn scope snapshots preserve exact logical KB IDs, binding IDs, and KB/binding configuration versions.
+- Retry now uses a persisted compare-and-set reservation before provider retrieval.
+- Concurrent retries cannot both pass the retryable-state CAS, and `putIfAbsent` prevents replacement of the cancellable local flight.
+- Cancellation and retrieval-failure races preserve `incomplete_cancelled` or `failed`; terminal writes use status-guarded updates.
+- Mixed classification strings fail closed rather than using lexical ranking.
+- Browse-only, model-ineligible, disabled, killed, unavailable, and freshness-unprovable scopes do not reach retrieval/model generation.
+- Authorization is performed before retrieval for every snapshot binding.
+- Security failures suspend the affected logical KB and discard its results.
+- Unknown adapter exceptions block generation without incorrectly converting them to ordinary partial success.
+- All-failure/no-evidence paths avoid model generation and return non-leaking actionable errors.
+- Ordinary timeout/failure can produce truthful partial coverage when other grounded evidence succeeds.
+- Item-level omission remains distinct from complete-binding denial.
+- RRF uses retriever rank, deterministic ordering, the accepted composite dedup identity, and retains every provenance path.
+- No real provider calls, evidence cache, Evidence Drawer implementation, or real gateway protocol was introduced.
+
+## Coverage Check
+
+| Design area | Status |
+|---|---|
+| Immutable per-turn scope/config snapshot | Implemented |
+| 1–5 logical-KB counting | Implemented |
+| Per-KB and binding re-authorization | Implemented for stub boundary |
+| Parallel authorization/retrieval | Implemented |
+| Timeout and concurrency budgets | Implemented |
+| Quota/backoff/circuit breaker/retry-after | Missing |
+| Coverage success/fail/timeout | Implemented |
+| Complete-binding denial vs item omission | Implemented |
+| Security/unknown fail-closed behavior | Implemented |
+| Unknown classification fail-closed | Partial |
+| Classification drift across create/ask/retry | Partial |
+| RRF/dedup/provenance | Implemented |
+| No-grounded-evidence refusal | Implemented |
+| Retry CAS/idempotent concurrency | Implemented |
+| Provider cancellation on user cancel | Missing |
+| Non-leaking API errors | Implemented |
+| Content-free audit hooks | Partial; fuller telemetry is TASK-027 |
+
+**Task coverage:**
+
+- Clearly implemented: core TASK-015 stub adapters, fan-out, coverage, security/ordinary failure branching, RRF, immutable retrieval snapshot, retry concurrency remediation.
+- Partially implemented: classification inheritance, provider budgets, end-to-end cancellation.
+- Not TASK-015 violations: citation resolution/Evidence Drawer (TASK-016), governance endpoints (TASK-017), real adapters (TASK-019–021), live model gateway (TASK-022), reconciliation (TASK-023), UI (TASK-024), full telemetry (TASK-027), untrusted-content containment (TASK-028).
+- Acceptable explicit deferral: tuned RRF internals/storage ADR. TASK-015 explicitly authorizes a simple in-process RRF while leaving later internals ADR-gated.
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified in package placement.
+- **Misplaced responsibilities:** Provider-neutral quota/backoff/circuit behavior is absent from the orchestrator boundary.
+- **Coupling issues:** Chat cancellation is local to `ChatService` and cannot control provider execution.
+- **Hidden shortcuts:** Nonblank text is treated as proof of a known classification.
+
+## Behavior and State Check
+
+- **Workflow/state handling:** Retry reservation and terminal CAS handling are aligned.
+- **Validation behavior:** Scope and mixed-classification validation are aligned; unknown classification validation is incomplete.
+- **Retry/failure handling:** Concurrent retry and retrieval failure state are aligned; provider cancellation and partial-result retry are incomplete.
+- **User-visible behavior:** Coverage and actionable errors are aligned; safe retry of partial coverage is underspecified.
+
+## Integration Check
+
+- **Adapter boundaries:** Provider-neutral retriever registry is well placed.
+- **External handling:** Stub-only scope is respected.
+- **Secret safety:** No credentials or provider bodies are introduced.
+- **Logging/audit:** Changed audit payloads are content-free; comprehensive telemetry is correctly attributable to TASK-027.
+- **Error propagation:** Typed security, authorization, retrieval, timeout, and unknown paths are generally aligned; quota/retry-after is absent.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 70%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] Unknown/unapproved classification values can cross the Chat classification boundary — `ChatClassificationPolicy.java:14-27` — access-control and fail-closed principle.
+- [ ] Chat cancellation cannot propagate into provider authorization/retrieval — `ChatService.java:168-212`, `Retriever.java:19-30` — resilience and cancellation boundary.
+- [ ] Orchestrator lacks quota/backoff/circuit-breaker/retry-after abstractions required before real adapters — `RetrievalProperties.java:13-15`, `Retriever.java:101-133` — configuration externalization and adapter decoupling.
+
+### P1 (Fix Next Touch)
+
+- [ ] Define backend semantics for the partial-coverage safe-retry action before TASK-024 binds UI behavior — `ChatService.java:266-267`.
+
+### P2 (Track)
+
+None identified.
+
+## Good Practices Confirmed
+
+- Feature-based backend packages and provider-neutral ports.
+- Immutable records and copied collections at boundaries.
+- Deterministic retriever registry with duplicate-handler startup failure.
+- Environment-specific timeout/concurrency/feature configuration.
+- Status-guarded persistence prevents cancellation/completion overwrite.
+- RRF and provider adapters remain isolated from Chat controller concerns.
+
+## Recommendation
+
+Fix the three P0 boundaries before TASK-019–022 depend on these contracts. The existing CAS/snapshot/RRF work is a solid base and should be retained.
+
+## Verification Evidence
+
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — passed, no output.
+- `./mvnw -q test` — passed, exit code 0.
+- Worktree remained unchanged (`git status --short` produced no output).
+- Exact head after verification: `bb2d0418f790624d6116dc8d13876622654f1d13`.
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blocking corrections:** Unknown-classification fail-closed policy, provider cancellation propagation, and the missing provider resilience contract.
+- **Acceptable deviations/deferrals:** Real adapters, live gateway, evidence resolution, UI, reconciliation, full telemetry, untrusted-content containment, and later RRF internals ADR.
+
+# Gate A Merge Gate: Fail
+
+---
+
 # Gate B — Final Independent Re-review
 
 # Code vs Design Review Report
