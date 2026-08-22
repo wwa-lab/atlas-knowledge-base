@@ -42,6 +42,16 @@ class EvidenceSourceContinuityTest {
     }
 
     @Test
+    void failsClosedForTrailingTextAndAdditionalJsonValues() {
+        String valid = "{\"repo\":\"org/repo\"}";
+
+        assertThat(continuity.check(git(false), valid + " trailing").failureReason())
+                .isEqualTo("source_identity_invalid");
+        assertThat(continuity.check(git(false), valid + "{}").failureReason())
+                .isEqualTo("source_identity_invalid");
+    }
+
+    @Test
     void requiresMatchingLiteralFixtureMarkers() {
         assertThat(continuity.check(git(true), "{\"repo\":\"org/repo\",\"atlas_fixture\":true}"))
                 .isEqualTo(EvidenceSourceContinuity.Check.continuous(true));

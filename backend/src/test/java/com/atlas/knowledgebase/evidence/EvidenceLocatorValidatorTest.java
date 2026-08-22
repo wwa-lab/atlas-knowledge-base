@@ -96,6 +96,15 @@ class EvidenceLocatorValidatorTest {
     }
 
     @Test
+    void rejectsTrailingTextAndAdditionalJsonValues() {
+        String valid = "{\"repository\":\"org/repo\",\"commit_sha\":\"abc1234\","
+                + "\"path\":\"a.md\",\"line_range\":[1,2]}";
+
+        assertInvalid("git_markdown", valid + " trailing");
+        assertInvalid("git_markdown", valid + "{}");
+    }
+
+    @Test
     void rejectsInvalidGitIdentityPathRangeAndMoveMapping() {
         assertInvalid("git_markdown", git("../repo", "abc1234", "a.md", "[1,2]"));
         assertInvalid("git_markdown", git("org/repo", "not-sha", "a.md", "[1,2]"));

@@ -3,6 +3,7 @@ package com.atlas.knowledgebase.evidence;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
@@ -18,6 +19,7 @@ public final class EvidenceSourceContinuity {
 
     public EvidenceSourceContinuity(ObjectMapper objectMapper) {
         this.strictMapper = objectMapper.copy();
+        this.strictMapper.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.strictMapper.getFactory().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
         this.strictMapper
                 .getFactory()
