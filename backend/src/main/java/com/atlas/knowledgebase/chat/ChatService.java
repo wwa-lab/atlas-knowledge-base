@@ -393,7 +393,7 @@ public class ChatService {
                                 inFlight.remove(assistant.messageId(), flight);
                             } catch (RuntimeException failure) {
                                 messages.failIfInFlight(assistant.messageId(), clock.instant());
-                                sendStreamError(flight, failure);
+                                sendStreamError(flight, assistant.requestId(), failure);
                                 inFlight.remove(assistant.messageId(), flight);
                             }
                         });
@@ -414,7 +414,7 @@ public class ChatService {
         return true;
     }
 
-    private void sendStreamError(InFlight flight, RuntimeException failure) {
+    private void sendStreamError(InFlight flight, String requestId, RuntimeException failure) {
         Map<String, Object> payload;
         if (failure instanceof ChatRetrievalException retrievalFailure) {
             payload =
@@ -422,6 +422,7 @@ public class ChatService {
                             retrievalFailure.category(),
                             retrievalFailure.code(),
                             retrievalFailure.getMessage(),
+                            requestId,
                             retrievalFailure.nextStep(),
                             retrievalFailure.details());
         } else if (failure instanceof ChatForbiddenException forbidden) {
@@ -430,6 +431,7 @@ public class ChatService {
                             "authorization",
                             forbidden.code(),
                             forbidden.getMessage(),
+                            requestId,
                             forbidden.nextStep(),
                             forbidden.details());
         } else {
@@ -438,7 +440,9 @@ public class ChatService {
                             "unknown",
                             "CHAT_OPERATION_FAILED",
                             "The Chat operation could not be completed safely.",
-                            "retry_or_contact_support");
+                            requestId,
+                            "retry_or_contact_support",
+                            Map.of());
         }
         try {
             flight.emitter.send(SseEmitter.event().name("error").data(payload));

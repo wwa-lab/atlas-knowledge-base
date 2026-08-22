@@ -874,6 +874,194 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 # Gate A Merge Gate: Fail
 
+---
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Revision reviewed:** `2e3b7daf953dbdb97ebb8aded40870507625d54a`
+- **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- **Diff:** `git diff origin/main...2e3b7daf953dbdb97ebb8aded40870507625d54a`
+- **Task:** TASK-015 — Retrieval orchestrator, stubs first
+- **Design reviewed:** MVP requirements, US-004/US-006, accepted specification, architecture, data flow/model, detailed design, API guide, traceability, ADR-0002, ADR-0004, and ADR-0007
+- **Code inspected:** All 40 backend source, configuration, and test files in the published diff
+- **Excluded from evidence:** `docs/reviews/mvp-task-015-code-review.md` and PR narrative
+- **Review objective:** Verify TASK-015 fidelity, correctness, security, concurrency, cancellation, independent budgets, typed resilience semantics, provider isolation, and test coverage.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 88%
+- **Verdict:** Partially aligned
+- **Rationale:** The retrieval fan-out, independent deadlines, cancellation, configured quotas and concurrency, coverage accounting, provider isolation, fail-closed security behavior, fixture adapters, and provenance-preserving RRF are substantially aligned. One resilience-contract gap prevents merge: non-quota provider retry timing is reported but not applied to the provider backoff/circuit state.
+
+---
+
+## Areas of Good Alignment
+
+- Every binding is represented in an immutable per-turn scope snapshot with configuration versions.
+- Authorization fan-out completes before retrieval dispatch, and provider operations use independent deadlines.
+- Cancellation propagates from Chat through `CancellationSource` into every submitted provider operation.
+- Quota windows, concurrency semaphores, backoff state, and circuit state are isolated by provider profile.
+- Provider-unavailable rejections retain typed causes instead of being collapsed into quota failures.
+- Security failures suspend the affected logical knowledge base and remove its evidence.
+- Ordinary timeout, quota, and retrieval failures remain distinct in coverage and permit unrelated safe evidence.
+- Runtime-disabled, killed, unavailable, Browse-only, model-ineligible, and freshness-indeterminate paths prevent retrieval.
+- RRF uses the required composite deduplication identity and preserves every provenance path.
+- Stub evidence stays synthetic; only evidence identifiers, not fixture excerpts, enter the mock model request.
+- Terminal database updates prevent cancelled or failed work from later winning as completed output.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Provider retry timing is discarded for timeout, failed, and unknown outcomes
+
+- **Design / task expected:** REQ-FAIL-006, REQ-PERF-005, the accepted resilience design, and the `ProviderExecution.recordFailure` contract require connector backoff/circuit controls to enforce and report provider retry timing.
+- **Code currently does:** `Retriever.AuthorizationResult` and `Retriever.Result` support positive `retryAfter` values for `TIMEOUT`, `FAILED`, and `UNKNOWN`, and the orchestrator publishes those values in coverage. However, the corresponding `recordFailure` calls pass `null` at `RetrievalOrchestrator.java:167-185`, `203-208`, `262-275`, and `294-299`. Only quota outcomes forward their retry timing. `ProviderExecution.recordFailure` therefore uses only the shorter configured backoff at `ProviderExecution.java:127-140`.
+- **Why it matters:** A provider can direct Atlas to wait longer after a timeout or availability failure, while Atlas advertises that longer retry time to the client but resumes dispatch after only its configured backoff. This makes the public failure semantics disagree with actual enforcement and can repeatedly hit a recovering provider before its declared retry window.
+- **Recommended fix:** Forward the result’s `retryAfter()` for every outcome that records provider unavailability, and add tests where timeout/failed/unknown results return a duration longer than configured backoff. Verify the affected provider remains rejected for that duration while an unrelated provider continues.
+
+### Minor
+
+#### Streamed retrieval errors lose the turn’s correlation identifier
+
+- **Design / task expected:** The API error envelope’s `request_id` identifies the affected operation for actionable diagnostics and content-free telemetry.
+- **Code currently does:** The processing event exposes `assistant.requestId()`, but `sendStreamError` calls `ApiErrorResponses.body`, which generates a fresh UUID at `ApiErrorResponses.java:26-35`. The resulting error event therefore has a different request identifier from the turn.
+- **Why it matters:** Client support correlation and audit lookup become unreliable specifically on retrieval failure paths.
+- **Recommended fix:** Pass the assistant/turn request ID into the streamed error envelope instead of generating a new identifier.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn logical-KB and binding authorization | Implemented |
+| Parallel stub retrieval | Implemented |
+| Independent provider deadlines | Implemented |
+| Configured provider concurrency | Implemented |
+| Configured fixed-window quota enforcement | Implemented |
+| Backoff and circuit breaker | Partial — non-quota retry timing not enforced |
+| Typed provider failure semantics | Partial |
+| Provider isolation | Implemented |
+| Cancellation and interruption | Implemented |
+| Full, partial, fail-closed, and item-omit branching | Implemented |
+| Coverage map and retry-after projection | Implemented |
+| Browse-only/model-ineligible exclusion | Implemented |
+| RRF and provenance-preserving deduplication | Implemented |
+| Immutable scope/configuration snapshot | Implemented |
+| Stub-only model boundary | Implemented |
+| Citation projection and historical evidence resolution | Intentionally deferred to TASK-016 |
+| Real provider adapters | Intentionally deferred to TASK-019–021 |
+| Real model gateway | Intentionally deferred to TASK-022 |
+
+**Task coverage:**
+
+- Clearly implemented: TASK-015 fan-out, stubs, re-authorization, RRF, coverage, ordinary partial failure, fail-closed security, item omission, cancellation, and resilience budgets.
+- Partially implemented: enforceable typed retry/backoff semantics.
+- Not yet reflected by design intent: None beyond explicitly deferred tasks.
+- Code changes not mapped to TASK-015: None material.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- Fixed-window quota accounting is an acceptable in-process implementation choice for the stub-first task; deployed numeric values remain environment-owned.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None blocking. Provider protocol behavior remains behind `Retriever`; orchestration consumes the port.
+- **Misplaced responsibilities:** `ChatService` has grown to 833 lines and now combines thread management, scope resolution, retrieval lifecycle, SSE lifecycle, generation, persistence, serialization, and audit.
+- **Coupling issues:** No P0 coupling. `ChatService` directly coordinates several boundaries, but this remains inside the accepted modular monolith.
+- **Hidden shortcuts:** Non-quota retry timing is projected but not enforced.
+
+### Architecture Review Overlay
+
+- **Architecture score:** 91%
+- **P0:** None identified.
+- **P1:** Split `ChatService` on the next touch; it now exceeds the repository’s 800-line maximum and concentrates multiple lifecycle responsibilities at `ChatService.java:35-833`.
+- **P2:** Preserve the original turn request ID in streamed error responses.
+
+The retrieval package, adapter port, immutable DTO records, configuration properties, and provider-local resilience state otherwise follow the accepted modular-monolith and replaceable-adapter architecture.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned, except for non-quota retry-window enforcement.
+- **Validation behavior:** Scope, authorization, Chat readiness, model eligibility, classification, feature flags, runtime controls, and required freshness fail safely.
+- **Retry / skip / resume / failure handling:** Safe terminal-write races and idempotent retry reservation are covered; provider retry timing is partial.
+- **User-visible behavior:** Coverage and actionable error categories are exposed; streamed error correlation IDs are inconsistent.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Stub-only as TASK-015 requires.
+- **Secret / credential safety:** Aligned; no credentials or real internal excerpts were introduced.
+- **Logging / audit hooks:** Content-free retrieval/security audit hooks are present.
+- **Error propagation at integration boundaries:** Typed causes are preserved, but non-quota retry timing is not enforced.
+
+---
+
+## Verification Evidence
+
+Executed against `HEAD = 2e3b7daf953dbdb97ebb8aded40870507625d54a`:
+
+- `git diff --check origin/main...2e3b7daf953dbdb97ebb8aded40870507625d54a -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — Passed.
+- `./mvnw -q test` — Passed, exit code 0.
+- Final revision check — `HEAD` remained `2e3b7daf953dbdb97ebb8aded40870507625d54a`; `origin/main` remained `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`.
+- Working tree remained clean.
+- Non-failing warnings observed: Flyway’s H2-version recommendation and Mockito’s future dynamic-agent warning.
+
+No frontend, Oracle migration, or SDD-skill verification command was applicable to this diff.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blocker:** Non-quota provider retry timing is not applied to actual backoff/circuit enforcement.
+- **Acceptable deviations:** Stub adapters, in-process RRF, synthetic evidence, and deferred citation/real-provider/model-gateway work match TASK-015 sequencing.
+- **Required correction:** Forward provider retry timing for timeout/failed/unknown outcomes and cover the behavior with provider-isolation tests.
+
+---
+
+## Recommended Fixes
+
+1. At `RetrievalOrchestrator.java:167-208` and `262-299`, pass each outcome’s `retryAfter()` to `recordFailure` instead of `null`.
+2. Add tests proving a provider-advertised non-quota retry window overrides a shorter configured backoff without affecting another provider.
+3. Preserve `assistant.requestId()` in streamed error envelopes.
+4. Split `ChatService` during its next feature touch.
+
+## Minimal Fix Path
+
+- Change only the six non-quota `recordFailure` call sites.
+- Add focused authorization and retrieval tests for timeout/failed retry timing plus unrelated-provider isolation.
+- Re-run `git diff --check` and `./mvnw -q test`.
+- Launch a new fresh-context Gate A review.
+
+---
+
+## Open Risks / Questions
+
+- Deployed budget values remain pilot-owned and intentionally unresolved.
+- Real adapters must honor interruption and the supplied cancellation token when TASK-019–021 land.
+- Real gateway cancellation remains TASK-022 and ADR-0007 spike-gated.
+- RRF tuning, cache/storage choices, and real-source evaluation remain later ADR/evaluation concerns.
+
+# Gate A Merge Gate: Fail
+
 # Code vs Design Review Report
 
 ## Review Scope

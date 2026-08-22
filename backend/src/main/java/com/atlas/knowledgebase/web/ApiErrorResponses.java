@@ -23,11 +23,21 @@ public final class ApiErrorResponses {
             String message,
             String nextStep,
             Map<String, Object> details) {
+        return body(category, code, message, UUID.randomUUID().toString(), nextStep, details);
+    }
+
+    public static Map<String, Object> body(
+            String category,
+            String code,
+            String message,
+            String requestId,
+            String nextStep,
+            Map<String, Object> details) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("category", category);
         error.put("code", code);
         error.put("message", message);
-        error.put("request_id", UUID.randomUUID().toString());
+        error.put("request_id", requestId);
         error.put("next_step", nextStep);
         if (details != null && !details.isEmpty()) {
             error.put("details", Map.copyOf(details));

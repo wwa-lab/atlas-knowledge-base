@@ -168,7 +168,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             item.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.TIMEOUT,
-                            null,
+                            authorization.result().retryAfter(),
                             authorization.providerRejected());
                     timedOut.add(bindingId);
                     unavailableKbs.add(logicalKbId);
@@ -181,7 +181,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             item.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.RETRIEVAL,
-                            null,
+                            authorization.result().retryAfter(),
                             authorization.providerRejected());
                     failed.add(bindingId);
                     unavailableKbs.add(logicalKbId);
@@ -204,7 +204,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             item.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.UNKNOWN,
-                            null,
+                            authorization.result().retryAfter(),
                             authorization.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
@@ -218,6 +218,7 @@ public class RetrievalOrchestrator {
         }
 
         Set<String> preRetrievalBlocked = new LinkedHashSet<>(accessDeniedKbs);
+        preRetrievalBlocked.addAll(quotaKbs);
         preRetrievalBlocked.addAll(unavailableKbs);
         preRetrievalBlocked.addAll(securityKbs);
         preRetrievalBlocked.addAll(unknownKbs);
@@ -263,7 +264,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             outcome.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.TIMEOUT,
-                            null,
+                            outcome.result().retryAfter(),
                             outcome.providerRejected());
                     timedOut.add(bindingId);
                 }
@@ -271,7 +272,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             outcome.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.RETRIEVAL,
-                            null,
+                            outcome.result().retryAfter(),
                             outcome.providerRejected());
                     failed.add(bindingId);
                 }
@@ -295,7 +296,7 @@ public class RetrievalOrchestrator {
                     recordFailure(
                             outcome.binding().providerProfile(),
                             ProviderExecution.UnavailabilityCause.UNKNOWN,
-                            null,
+                            outcome.result().retryAfter(),
                             outcome.providerRejected());
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);

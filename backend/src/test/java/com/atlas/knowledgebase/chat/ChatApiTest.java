@@ -574,6 +574,34 @@ class ChatApiTest {
     }
 
     @Test
+    void streamedRetrievalErrorUsesProcessingRequestId() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Correlated Timeout",
+                        "{\"dataset_id\":\"ds_correlated_timeout\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"timeout\"}");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        String stream = askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+
+        assertThat(requestIdForEvent(stream, "error"))
+                .isEqualTo(requestIdForEvent(stream, "processing"));
+    }
+
+    @Test
     void securityRetrievalSuspendsTheKnowledgeBase() throws Exception {
         LoggedIn owner = loginOwner();
         String kbId =
@@ -741,6 +769,22 @@ class ChatApiTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+    }
+
+    private static String requestIdForEvent(String stream, String eventName) {
+        int eventStart = stream.indexOf("event:" + eventName);
+        if (eventStart < 0) {
+            throw new AssertionError("Missing SSE event: " + eventName);
+        }
+        int dataStart = stream.indexOf("data:", eventStart);
+        if (dataStart < 0) {
+            throw new AssertionError("Missing SSE data for event: " + eventName);
+        }
+        int dataEnd = stream.indexOf('\n', dataStart);
+        String data =
+                stream.substring(
+                        dataStart + "data:".length(), dataEnd < 0 ? stream.length() : dataEnd);
+        return jsonString(data, "request_id");
     }
 
     private String activateDify(LoggedIn owner, String name) throws Exception {
