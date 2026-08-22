@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -37,6 +38,8 @@ class RetrievalOrchestratorRetryAfterTest {
     private ControlledRetriever retriever;
     private ProviderExecution providerExecution;
     private RetrievalOrchestrator orchestrator;
+    private final Map<String, LogicalKnowledgeBaseRecord> currentKnowledgeBases =
+            new ConcurrentHashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -46,6 +49,12 @@ class RetrievalOrchestratorRetryAfterTest {
         providerExecution = new ProviderExecution(properties, registry);
         LogicalKnowledgeBaseRepository knowledgeBases =
                 mock(LogicalKnowledgeBaseRepository.class);
+        currentKnowledgeBases.clear();
+        when(knowledgeBases.findById(any()))
+                .thenAnswer(
+                        invocation ->
+                                Optional.ofNullable(
+                                        currentKnowledgeBases.get(invocation.getArgument(0))));
         KbAccessService access = mock(KbAccessService.class);
         when(access.authorized(any(), any())).thenReturn(true);
         when(access.chatEligible(any(), any())).thenReturn(true);
@@ -223,7 +232,7 @@ class RetrievalOrchestratorRetryAfterTest {
     }
 
     private LogicalKnowledgeBaseRecord knowledgeBase(String logicalKbId) {
-        return new LogicalKnowledgeBaseRecord(
+        LogicalKnowledgeBaseRecord knowledgeBase = new LogicalKnowledgeBaseRecord(
                 logicalKbId,
                 "Chat KB",
                 "desc",
@@ -242,6 +251,8 @@ class RetrievalOrchestratorRetryAfterTest {
                 NOW,
                 NOW,
                 NOW);
+        currentKnowledgeBases.put(logicalKbId, knowledgeBase);
+        return knowledgeBase;
     }
 
     private BindingRecord binding(String bindingId, String logicalKbId, String provider) {

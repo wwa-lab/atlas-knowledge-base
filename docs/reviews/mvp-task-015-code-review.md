@@ -880,6 +880,202 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 ## Review Scope
 
+- **Revision:** `d5e787d16546a7ce67398bb343cb8aa89bc41950`
+- **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- **Diff reviewed:** `git diff origin/main...d5e787d16546a7ce67398bb343cb8aa89bc41950`
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, specification, architecture/data flow/data model, detailed design/API guide, TASK-015, traceability, ADR-0002/0004/0006/0007
+- **Code inspected:** All changed backend production code, configuration, and tests
+- **Excluded from evidence:** `docs/reviews/mvp-task-015-code-review.md` and PR narrative
+- **Review objective:** Determine whether TASK-015 implements per-turn authorized retrieval, resilience isolation, truthful coverage, fail-closed behavior, cancellation, and RRF in accordance with the accepted design.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 82%
+- **Verdict:** Partially aligned
+- **Rationale:** Parallel retrieval, provider isolation, cancellation, RRF, ordinary partial coverage, retry-after enforcement, and security-result suspension are implemented substantially as designed. A blocking per-turn authorization/coverage path nevertheless allows a selected logical KB to disappear silently when its KB-level access or Chat eligibility check fails, so another selected KB can produce an apparently complete answer without disclosing or blocking the invalid part of the selected scope.
+
+---
+
+## Areas of Good Alignment
+
+- `ProviderExecution` provides provider-specific semaphores, fixed-window quotas, independent absolute deadlines, configured backoff, circuit state, and provider-advertised retry timing.
+- Authorization calls for the supplied eligible snapshot are completed before retrieval dispatch begins.
+- Cancellation propagates from Chat through retrieval calls; terminal message writes use conditional updates to prevent cancelled work becoming completed.
+- Security retrieval failures suspend the logical KB and remove that KB’s successful candidates before fusion.
+- Ordinary timeout/quota/retrieval failures retain binding-level coverage and allow unrelated safe evidence where the authorization boundary remains valid.
+- Provider rejection preserves its original cause (`quota`, `timeout`, `retrieval`, or `unknown`) and retry timing instead of reclassifying everything as quota.
+- RRF uses the required composite identity and preserves all provenance paths.
+- Item-level omission keeps the binding/KB successful while excluding the restricted item.
+- SSE processing and error events use the same Chat request ID; final events retain that request ID.
+- External budgets and classification allow-lists are environment configuration rather than committed production constants.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Selected KBs that fail the per-turn KB-level gate disappear from scope instead of failing closed
+
+- **Design / task expected:** Every selected KB and binding must be re-authorized before retrieval; missing or indeterminate access must fail closed; unavailable bindings must remain visible in coverage. See `REQ-AUTH-004`, `REQ-AUTH-007`, `REQ-AUTH-014`, `REQ-RAG-011/012`, `REQ-COV-001`, FR-31, FR-47, FR-56, and TASK-015.
+- **Code currently does:** In [`RetrievalOrchestrator.java:90`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:90), a snapshot for which `access.authorized(...)` or `access.chatEligible(...)` is false simply executes `continue` at line 95. It does not add the KB’s bindings to `failed`, record an access/unavailability block, or preserve the selected KB in coverage. The final block decision at line 364 therefore remains `NONE` whenever another selected KB returns evidence.
+- **Why it matters:** A multi-KB turn can generate from the remaining KBs while the now-invalid selected KB is absent from both coverage and the error path. That implies complete-scope coverage after an authorization/eligibility failure and defeats the purpose of the per-turn gate. The immutable snapshots created in [`ChatService.java:693`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:693) also mean governance changes between scope resolution and asynchronous dispatch require an explicit current-state gate rather than silent omission.
+- **Recommended fix:** Treat an authorization failure as `BINDING_ACCESS` and other Chat-eligibility failures as `BINDING_UNAVAILABLE`, mark every binding of that logical KB failed, and prevent a successful model path from representing the turn as complete. Revalidate authoritative runtime lifecycle/access/disable state at dispatch where necessary, while retaining the immutable configuration snapshot used for answer provenance. Add a multi-KB test where one selected KB fails this gate and another succeeds.
+- **Evidence gap in tests:** Retrieval tests cover binding authorization denial, disabled bindings, security failures, ordinary partial failures, and retry timing, but no test makes `KbAccessService.authorized` or `chatEligible` return false at the orchestrator boundary.
+
+### Minor
+
+None identified.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Current per-turn KB and binding authorization | Partial |
+| Authorization-stage all-binding barrier | Implemented for eligible supplied snapshots |
+| Parallel stub retrieval | Implemented |
+| Independent provider timeout/deadline | Implemented |
+| Provider quota and concurrency isolation | Implemented |
+| Backoff/circuit behavior and provider retry timing | Implemented |
+| Security/unknown fail-closed behavior | Implemented |
+| Ordinary partial failure and truthful binding coverage | Implemented except for the Major gate path |
+| Item-level omission | Implemented |
+| Cancellation and terminal-write race protection | Implemented |
+| RRF and provenance-preserving deduplication | Implemented |
+| SSE request-ID correlation | Implemented |
+| Model-send exclusion for unavailable evidence | Implemented |
+| Citations and conflict assembly | Intentionally deferred to later accepted tasks |
+
+**Task coverage:**
+
+- Clearly implemented: parallel stub adapters, RRF, binding coverage, ordinary partial behavior, item omission, provider resilience, cancellation.
+- Partially implemented: per-turn reauthorization/fail-closed behavior.
+- Not yet reflected by design intent: none beyond later-task citation/conflict work.
+- Code changes not clearly mapped to TASK-015: none material; classification policy supports the model-send security boundary.
+
+**Behaviors implemented but not clearly supported by design:** None identified.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None blocking; retriever ports and provider execution remain separate from Chat persistence and SSE.
+- **Misplaced responsibilities:** `ChatService` now spans 837 lines and owns thread operations, scope/classification, async retrieval dispatch, SSE formatting, model callbacks, cancellation, persistence transitions, and audit.
+- **Coupling issues:** Non-blocking P1 maintainability concern in `ChatService`; retrieval/provider abstractions are otherwise decoupled.
+- **Hidden shortcuts:** Silent `continue` at the KB-level gate is a blocking shortcut.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Partial; the selected-scope invalidation path is incorrect.
+- **Validation behavior:** Scope cardinality, classification, capability, binding runtime flags, and evidence identity validation are present.
+- **Retry / skip / resume / failure handling:** Provider retries are bounded through backoff/circuit windows; Chat retry is serialized and terminal writes are conditional.
+- **User-visible behavior:** Partial/timeout/quota/security errors are actionable, but the Major path can hide an invalid selected KB.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Stub-only as TASK-015 permits; real adapters remain spike-gated.
+- **Secret / credential safety:** Aligned; no credentials introduced.
+- **Logging / audit hooks:** Content-free retrieval authorization/result events are present.
+- **Error propagation at integration boundaries:** Generally aligned, except the KB-level gate path.
+
+---
+
+## Architecture Review: TASK-015
+
+### Score: 86%
+
+### Violations Found
+
+#### P0 (Must Fix)
+
+None identified.
+
+#### P1 (Fix Next Touch)
+
+- `ChatService` exceeds the repository’s 800-line limit and combines multiple changing responsibilities — [`ChatService.java:35`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:35). Separate stream lifecycle/model callback handling from thread/scope application operations before TASK-016–018 add further responsibilities.
+
+#### P2 (Track)
+
+None identified.
+
+### Good Practices Confirmed
+
+- Feature-oriented `retrieval` and `adapters` packages.
+- Provider-neutral retriever port and deterministic registry.
+- Immutable records and copied collections at boundaries.
+- Externalized environment-specific resilience configuration.
+- Dedicated cancellation and provider-execution abstractions.
+- No new deployment boundary contrary to ADR-0002.
+
+### Recommendation
+
+Correct the per-turn gate and its regression coverage before merge. The `ChatService` split can be handled at its next touch unless it complicates that correction.
+
+---
+
+## Verification Evidence
+
+- `./mvnw -q test` — **Passed**, 148 tests, 0 failures, 0 errors, 0 skipped.
+- Prescribed `git diff --check` with repository exclusions and the review artifact excluded — **Passed**, no output.
+- No frontend verification was run because the published diff contains no frontend files.
+- Skills/lock verification was not applicable because `.agents/skills/` and `docs/00-context/sdd-skills.lock` are unchanged.
+- Final revision check:
+  - `HEAD`: `d5e787d16546a7ce67398bb343cb8aa89bc41950`
+  - `origin/main`: `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- Worktree remained clean; no files were edited.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Blockers before proceeding:** Correct the Major per-turn authorization/coverage gap and add regression coverage.
+- **Acceptable deviations:** Stub-only provider/model behavior; deferred citation/conflict work belonging to later tasks.
+- **Required corrections:** Preserve every selected logical KB in the authorization/block/coverage decision and fail closed or disclose it according to the accepted failure class.
+
+---
+
+## Recommended Fixes
+
+1. Replace the silent KB-level `continue` with explicit `BINDING_ACCESS` or `BINDING_UNAVAILABLE` handling for the whole logical KB.
+2. Add a mixed-scope regression test proving one invalid selected KB cannot disappear while another KB generates.
+3. At the next Chat touch, extract SSE/model-flight coordination from `ChatService`.
+
+## Minimal Fix Path
+
+- Update the initial scope loop to classify failed access and failed Chat eligibility separately, populate whole-KB failed coverage, and set block identifiers.
+- Ensure the block decision prevents an undisclosed successful generation path.
+- Add focused orchestrator and API coverage for one invalid plus one successful selected KB.
+- Re-run the prescribed Maven test suite and diff check.
+
+---
+
+## Open Risks / Questions
+
+- Real adapters must honor the supplied timeout/cancellation contract; TASK-019–022 should test adapters that block or ignore interruption.
+- TASK-017 should ensure authoritative disable/kill-switch changes are checked at the dispatch boundary without losing the immutable answer provenance snapshot.
+
+# Gate A Merge Gate: Fail
+
+---
+
+# Code vs Design Review Report
+
+## Review Scope
+
 - **Revision reviewed:** `2e3b7daf953dbdb97ebb8aded40870507625d54a`
 - **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
 - **Diff:** `git diff origin/main...2e3b7daf953dbdb97ebb8aded40870507625d54a`

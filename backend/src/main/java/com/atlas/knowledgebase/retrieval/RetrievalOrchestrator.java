@@ -89,13 +89,37 @@ public class RetrievalOrchestrator {
         List<BindingWork> authorizationWork = new ArrayList<>();
         for (RetrievalScope.KnowledgeBaseSnapshot snapshot : scope.knowledgeBases()) {
             cancellation.throwIfCancelled();
-            LogicalKnowledgeBaseRecord kb = snapshot.knowledgeBase();
-            String logicalKbId = kb.logicalKbId();
-            if (!access.authorized(user, kb) || !access.chatEligible(user, kb)) {
-                continue;
-            }
+            String logicalKbId = snapshot.knowledgeBase().logicalKbId();
             List<BindingRecord> current = snapshot.bindings();
             currentBindings.put(logicalKbId, current);
+            LogicalKnowledgeBaseRecord kb = knowledgeBases.findById(logicalKbId).orElse(null);
+            if (kb == null) {
+                unavailableKbs.add(logicalKbId);
+                markWholeKbFailed(current, failed, timedOut);
+                if (blockKb == null) {
+                    blockKb = logicalKbId;
+                    blockBinding = firstBindingId(current);
+                }
+                continue;
+            }
+            if (!access.authorized(user, kb)) {
+                accessDeniedKbs.add(logicalKbId);
+                markWholeKbFailed(current, failed, timedOut);
+                if (blockKb == null) {
+                    blockKb = logicalKbId;
+                    blockBinding = firstBindingId(current);
+                }
+                continue;
+            }
+            if (!access.chatEligible(user, kb)) {
+                unavailableKbs.add(logicalKbId);
+                markWholeKbFailed(current, failed, timedOut);
+                if (blockKb == null) {
+                    blockKb = logicalKbId;
+                    blockBinding = firstBindingId(current);
+                }
+                continue;
+            }
             boolean runtimeUnavailable = false;
             for (BindingRecord binding : current) {
                 if (!runtimeEligible(kb, binding)) {
@@ -583,6 +607,10 @@ public class RetrievalOrchestrator {
                 .map(BindingRecord::bindingId)
                 .filter(bindingId -> !timedOut.contains(bindingId))
                 .forEach(failed::add);
+    }
+
+    private String firstBindingId(List<BindingRecord> bindings) {
+        return bindings.isEmpty() ? null : bindings.getFirst().bindingId();
     }
 
     private void audit(

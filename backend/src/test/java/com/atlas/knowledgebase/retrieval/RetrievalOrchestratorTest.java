@@ -481,6 +481,148 @@ class RetrievalOrchestratorTest {
     }
 
     @Test
+    void unauthorizedKnowledgeBaseRemainsAnActionableBlockAlongsideSafeEvidence() {
+        Instant now = Instant.parse("2026-08-22T03:03:15Z");
+        AtlasUserRecord user = owner("usr_ret_scope_access", now);
+        AtlasUserRecord otherOwner = owner("usr_ret_scope_access_other", now);
+        LogicalKnowledgeBaseRecord safe =
+                chatReadyKb("lkb_ret_scope_access_safe", user.userId(), now);
+        LogicalKnowledgeBaseRecord denied =
+                chatReadyKb("lkb_ret_scope_access_denied", otherOwner.userId(), now);
+        BindingRecord safeBinding =
+                binding("bnd_ret_scope_access_safe", safe.logicalKbId(), "dify", "{}", now);
+        BindingRecord deniedBinding =
+                binding(
+                        "bnd_ret_scope_access_denied",
+                        denied.logicalKbId(),
+                        "git_markdown",
+                        "{}",
+                        now);
+        BindingRecord deniedSibling =
+                binding(
+                        "bnd_ret_scope_access_denied_sibling",
+                        denied.logicalKbId(),
+                        "confluence",
+                        "{}",
+                        now);
+
+        RetrievalTurn turn =
+                retrieve(user, "question", List.of(denied.logicalKbId(), safe.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_ACCESS);
+        assertThat(turn.blockLogicalKbId()).isEqualTo(denied.logicalKbId());
+        assertThat(turn.blockBindingId()).isEqualTo(deniedBinding.bindingId());
+        assertThat(strings(turn, "failed"))
+                .contains(deniedBinding.bindingId(), deniedSibling.bindingId());
+        assertThat(strings(turn, "successful")).contains(safeBinding.bindingId());
+        assertThat(turn.fused()).isNotEmpty();
+    }
+
+    @Test
+    void chatIneligibleKnowledgeBaseRemainsAnActionableBlockAlongsideSafeEvidence() {
+        Instant now = Instant.parse("2026-08-22T03:03:30Z");
+        AtlasUserRecord user = owner("usr_ret_scope_eligibility", now);
+        LogicalKnowledgeBaseRecord safe =
+                chatReadyKb("lkb_ret_scope_eligibility_safe", user.userId(), now);
+        LogicalKnowledgeBaseRecord browseOnly =
+                knowledgeBases.insert(
+                        new LogicalKnowledgeBaseRecord(
+                                "lkb_ret_scope_eligibility_invalid",
+                                "Browse-only KB",
+                                "desc",
+                                user.userId(),
+                                "private",
+                                "support",
+                                "internal",
+                                true,
+                                "browse_only",
+                                "active",
+                                "healthy",
+                                1,
+                                null,
+                                false,
+                                null,
+                                now,
+                                now,
+                                now));
+        BindingRecord safeBinding =
+                binding(
+                        "bnd_ret_scope_eligibility_safe",
+                        safe.logicalKbId(),
+                        "dify",
+                        "{}",
+                        now);
+        BindingRecord invalidBinding =
+                binding(
+                        "bnd_ret_scope_eligibility_invalid",
+                        browseOnly.logicalKbId(),
+                        "git_markdown",
+                        "{}",
+                        now);
+        BindingRecord invalidSibling =
+                binding(
+                        "bnd_ret_scope_eligibility_invalid_sibling",
+                        browseOnly.logicalKbId(),
+                        "confluence",
+                        "{}",
+                        now);
+
+        RetrievalTurn turn =
+                retrieve(
+                        user,
+                        "question",
+                        List.of(browseOnly.logicalKbId(), safe.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        assertThat(turn.blockLogicalKbId()).isEqualTo(browseOnly.logicalKbId());
+        assertThat(turn.blockBindingId()).isEqualTo(invalidBinding.bindingId());
+        assertThat(strings(turn, "failed"))
+                .contains(invalidBinding.bindingId(), invalidSibling.bindingId());
+        assertThat(strings(turn, "successful")).contains(safeBinding.bindingId());
+        assertThat(turn.fused()).isNotEmpty();
+    }
+
+    @Test
+    void lifecycleDriftIsRevalidatedWithoutMutatingTheProvenanceSnapshot() {
+        Instant now = Instant.parse("2026-08-22T03:03:45Z");
+        AtlasUserRecord user = owner("usr_ret_scope_drift", now);
+        LogicalKnowledgeBaseRecord drifting =
+                chatReadyKb("lkb_ret_scope_drift_invalid", user.userId(), now);
+        LogicalKnowledgeBaseRecord safe =
+                chatReadyKb("lkb_ret_scope_drift_safe", user.userId(), now);
+        BindingRecord driftingBinding =
+                binding(
+                        "bnd_ret_scope_drift_invalid",
+                        drifting.logicalKbId(),
+                        "git_markdown",
+                        "{}",
+                        now);
+        BindingRecord safeBinding =
+                binding("bnd_ret_scope_drift_safe", safe.logicalKbId(), "dify", "{}", now);
+        RetrievalScope scope =
+                new RetrievalScope(
+                        List.of(
+                                new RetrievalScope.KnowledgeBaseSnapshot(
+                                        drifting,
+                                        bindings.findByLogicalKbId(drifting.logicalKbId())),
+                                new RetrievalScope.KnowledgeBaseSnapshot(
+                                        safe, bindings.findByLogicalKbId(safe.logicalKbId()))));
+        knowledgeBases.suspend(drifting.logicalKbId());
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", scope);
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        assertThat(turn.blockLogicalKbId()).isEqualTo(drifting.logicalKbId());
+        assertThat(turn.blockBindingId()).isEqualTo(driftingBinding.bindingId());
+        assertThat(strings(turn, "failed")).contains(driftingBinding.bindingId());
+        assertThat(strings(turn, "successful")).contains(safeBinding.bindingId());
+        assertThat(turn.fused()).isNotEmpty();
+        assertThat(turn.scope()).isSameAs(scope);
+        assertThat(turn.scope().knowledgeBases().getFirst().knowledgeBase().lifecycle())
+                .isEqualTo("active");
+    }
+
+    @Test
     void browseOnlyIsNotRetrieved() {
         Instant now = Instant.parse("2026-08-22T03:04:00Z");
         AtlasUserRecord user = owner("usr_ret_browse", now);
@@ -519,6 +661,11 @@ class RetrievalOrchestratorTest {
         return users.insert(
                 new AtlasUserRecord(
                         userId, "sso-" + userId, "Owner", null, "[\"end_user\",\"kb_owner\"]", true, now, now));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> strings(RetrievalTurn turn, String key) {
+        return (List<String>) turn.coverage().get(key);
     }
 
     private void assertTimeoutCoverage(RetrievalTurn turn, BindingRecord binding) {
