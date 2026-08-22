@@ -47,3 +47,12 @@ Review comment:
 
 - [P2] Do not fall back from requested Chat KB — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/ChatView.vue:313-315
   When `/chat?logical_kb_id=...` contains a KB that is no longer selectable (for example access was revoked after opening the detail page, the KB became browse-only/unhealthy, or the URL was shared manually), `chooseInitialScope([requestedId])` falls back to the first selectable KB. That can start a new chat scoped to an unrelated knowledge base instead of failing or showing that the requested KB is unavailable, which is especially risky because the user arrived via a specific “Start Chat” intent.
+
+## Gate A — fresh rerun after invalid deep-link fix (verbatim)
+
+The patch has a user-visible race in the new catalog UI where stale asynchronous responses can corrupt filtered results and pagination state. This should be fixed before considering the change correct.
+
+Review comment:
+
+- [P2] Ignore stale catalog filter responses — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:130-132
+  When two reset catalog loads overlap, the older response can still merge into `items` and replace `nextCursor` after a newer filter/search request has already applied. For example, a user can submit filter A, quickly submit filter B, and if A resolves last the list becomes mixed or cursor-paginated for the wrong query; capture the query/request id and only apply the response if it still matches the current applied filters.

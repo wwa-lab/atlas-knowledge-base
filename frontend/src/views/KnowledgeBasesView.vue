@@ -100,6 +100,7 @@ const preview = ref<BrowsePreview | null>(null)
 const browseLoading = ref(false)
 const previewLoading = ref(false)
 const selectedPath = ref('')
+let catalogRequestId = 0
 
 const selectedId = computed(() => {
   const value = route.params.logicalKbId
@@ -118,28 +119,34 @@ function resetBrowse(): void {
 
 async function loadCatalog(reset = true): Promise<void> {
   if (!reset && filtersDirty.value) return
+  const requestId = ++catalogRequestId
   if (reset) {
     appliedFilters.value = { ...filters }
     items.value = []
     nextCursor.value = null
     error.value = ''
+    loadingMore.value = false
   }
   if (reset) loading.value = true
   else loadingMore.value = true
   try {
     const query = catalogQuery(appliedFilters.value, reset ? undefined : nextCursor.value)
     const page = await request<CatalogPage>(`/api/v1/knowledge-bases?${query}`)
+    if (requestId !== catalogRequestId) return
     items.value = mergeCatalogPage(items.value, page)
     nextCursor.value = typeof page.next_cursor === 'string' && page.next_cursor.trim()
       ? page.next_cursor
       : null
   } catch (cause) {
+    if (requestId !== catalogRequestId) return
     error.value = cause instanceof CatalogApiError || cause instanceof Error
       ? cause.message
       : 'The knowledge-base catalog could not be loaded safely.'
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    if (requestId === catalogRequestId) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 
