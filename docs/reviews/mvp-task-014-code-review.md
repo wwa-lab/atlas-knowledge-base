@@ -11,7 +11,9 @@ Gate A (first pass): **Fail**. Major: cancelled generation can still be persiste
 
 Gate A (re-review after terminal-write fix, `f3c756e`): **Pass**. No Critical or Major findings remain. Architecture P0: none. Minor / P1–P2 items may be tracked without blocking merge.
 
-The first Gate A report follows, then the re-review. Neither verdict was authored by the implementer.
+Gate B (elevated `/api/v1` contracts): **Pass**. No Critical or Major. Architecture P0: none.
+
+The first Gate A report follows, then the re-review, then Gate B. Neither verdict was authored by the implementer.
 
 ---
 
