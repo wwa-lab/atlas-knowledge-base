@@ -35,4 +35,16 @@ public class RegistryExceptionHandler {
                 ex.getMessage(),
                 "reload_wizard");
     }
+
+    @ExceptionHandler(HardGateException.class)
+    public ResponseEntity<Map<String, Object>> hardGate(HardGateException ex) {
+        Map<String, Object> error = new java.util.LinkedHashMap<>();
+        error.put("category", "conflict");
+        error.put("code", ex.code());
+        error.put("message", ex.getMessage());
+        error.put("request_id", java.util.UUID.randomUUID().toString());
+        error.put("next_step", "fix_gates_and_keep_draft");
+        error.put("details", ex.details());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", error));
+    }
 }
