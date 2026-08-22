@@ -192,6 +192,33 @@ on this row.
 - **FK:** `logical_kb_id → logical_knowledge_base.logical_kb_id`
 - **Indexes:** (`logical_kb_id`), (`provider_profile`, `enabled`)
 
+### binding_config_history
+
+An append-only snapshot of the complete binding configuration captured before a runtime
+governance/configuration update. It is the rollback source of truth; restoring a snapshot always
+creates a new monotonic live `config_version` rather than rewriting history. The table contains the
+binding identity, source locator rules, authorization/runtime flags, health, ownership, region
+constraints, the prior `config_version`, and `captured_at`. It stores no source content or tokens.
+
+### governance_preview_claim
+
+An atomic, append-only claim for a content-free impact preview. The preview event remains the
+durable audit record; this table's primary key makes a confirmation one-time across concurrent
+requests and across application instances. A claim is inserted in the same transaction as the
+governed mutation, so a failed stale-state or source-validation check rolls it back.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| impact_preview_id | String | No | Opaque `audit_event.event_id` preview identifier (logical reference) |
+| operation | Enum | No | `disable` \| `kill_switch` \| `rollback` \| `retire` |
+| binding_id | String | No | Binding being changed |
+| user_id | String | No | Atlas Admin claiming the preview |
+| claimed_at | Timestamp | No | Claim time |
+
+- **PK:** `impact_preview_id`
+- **Index:** (`binding_id`, `operation`)
+- No source content, credentials, prompts, or provider payloads are stored
+
 ### content_audit_result
 
 | Column | Type | Nullable | Description |
@@ -341,7 +368,8 @@ enabled=true ──Admin disable/kill switch──▶ enabled=false / kill_switc
 disabled ──restore+revalidation──▶ enabled=true
 ```
 
-Disable is not a fifth KB lifecycle state.
+Disable is not a fifth KB lifecycle state. Governance impact previews are persisted as content-free
+`audit_event` rows and bind confirmation to the live binding id, runtime flags, and config version.
 
 ### chat_message.status
 

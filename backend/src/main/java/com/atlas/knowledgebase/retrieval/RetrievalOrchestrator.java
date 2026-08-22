@@ -517,6 +517,22 @@ public class RetrievalOrchestrator {
         cancellation.throwIfCancelled();
         BindingRecord binding = item.binding();
         LogicalKnowledgeBaseRecord kb = item.kb();
+        // Governance controls are authoritative at the adapter dispatch boundary as well as
+        // during the earlier authorization read. A disable/kill-switch/config mutation that
+        // lands while authorization is in flight must not start a new provider retrieval.
+        BindingRecord authoritativeBinding = authoritativeBinding(binding);
+        LogicalKnowledgeBaseRecord authoritativeKb =
+                knowledgeBases.findById(kb.logicalKbId()).orElse(null);
+        if (authoritativeBinding == null
+                || authoritativeKb == null
+                || authoritativeKb.configVersion() != kb.configVersion()
+                || !RetrievalDispatchGuard.sameBindings(
+                        List.of(binding), List.of(authoritativeBinding))
+                || !access.chatEligible(user, authoritativeKb)
+                || !runtimeEligible(authoritativeKb, authoritativeBinding)) {
+            return new BindingOutcome(
+                    kb.logicalKbId(), binding, Retriever.Result.failed(), false);
+        }
         if (!"chat_ready".equals(kb.capability()) || !kb.modelEligible()) {
             return new BindingOutcome(
                     kb.logicalKbId(), binding, Retriever.Result.failed(), false);
@@ -669,13 +685,18 @@ public class RetrievalOrchestrator {
     }
 
     private boolean runtimeEligible(LogicalKnowledgeBaseRecord kb, BindingRecord binding) {
-        return binding.enabled()
-                && !binding.killSwitch()
-                && binding.featureFlag()
-                && properties.enabled(binding.providerProfile())
-                && binding.health() != null
-                && !"unavailable".equals(binding.health())
-                && !kb.freshnessRequired();
+        return RetrievalEligibility.isEligible(kb, binding, properties);
+    }
+
+    private BindingRecord authoritativeBinding(BindingRecord snapshot) {
+        java.util.Optional<BindingRecord> byId = bindings.findById(snapshot.bindingId());
+        if (byId != null && byId.isPresent()) {
+            return byId.get();
+        }
+        return bindings.findByLogicalKbId(snapshot.logicalKbId()).stream()
+                .filter(binding -> snapshot.bindingId().equals(binding.bindingId()))
+                .findFirst()
+                .orElse(null);
     }
 
     private void markWholeKbFailed(

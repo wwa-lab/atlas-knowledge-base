@@ -64,21 +64,6 @@ public class ActivationController {
         return activationProjection(activated);
     }
 
-    @PostMapping("/admin/knowledge-bases/{logicalKbId}/suspend-ownerless")
-    public Map<String, Object> suspendOwnerless(
-            HttpServletRequest request,
-            @PathVariable String logicalKbId,
-            @RequestBody(required = false) ConfirmRequest body) {
-        AtlasUserRecord user = CurrentRequestAuth.requireUser(request);
-        LogicalKnowledgeBaseRecord suspended =
-                activation.suspendOwnerless(
-                        user, logicalKbId, body != null && Boolean.TRUE.equals(body.confirm()));
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("logical_kb_id", suspended.logicalKbId());
-        response.put("lifecycle", suspended.lifecycle());
-        return response;
-    }
-
     private static Map<String, Object> activationProjection(LogicalKnowledgeBaseRecord kb) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("logical_kb_id", kb.logicalKbId());

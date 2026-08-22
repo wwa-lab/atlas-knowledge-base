@@ -270,31 +270,6 @@ public class ActivationService {
         return activated;
     }
 
-    @Transactional
-    public LogicalKnowledgeBaseRecord suspendOwnerless(AtlasUserRecord user, String logicalKbId, boolean confirm) {
-        requireAdmin(user);
-        if (!confirm) {
-            throw new DraftValidationException("CONFIRM_REQUIRED", "Owner-less suspend requires confirm=true.");
-        }
-        LogicalKnowledgeBaseRecord kb = requireDraft(logicalKbId);
-        if (!isOwnerless(kb)) {
-            throw new DraftValidationException(
-                    "NOT_OWNERLESS",
-                    "This knowledge base still has an accountable Owner; transfer ownership instead.");
-        }
-        if ("suspended".equals(kb.lifecycle())) {
-            return kb;
-        }
-        if (!"active".equals(kb.lifecycle())) {
-            throw new DraftValidationException(
-                    "NOT_ACTIVE",
-                    "Owner-less Suspend applies to Active knowledge bases. Drafts without an Owner remain Draft.");
-        }
-        LogicalKnowledgeBaseRecord suspended = knowledgeBases.suspend(logicalKbId);
-        audit(user.userId(), logicalKbId, null, "suspend_ownerless", "allowed", "success");
-        return suspended;
-    }
-
     private boolean isOwnerless(LogicalKnowledgeBaseRecord kb) {
         if (kb.ownerUserId() == null || kb.ownerUserId().isBlank()) {
             return true;

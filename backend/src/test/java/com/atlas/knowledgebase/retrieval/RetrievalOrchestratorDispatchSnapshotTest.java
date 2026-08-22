@@ -58,11 +58,13 @@ class RetrievalOrchestratorDispatchSnapshotTest {
         when(retriever.authorize(any()))
                 .thenAnswer(
                         invocation ->
-                                authorization(
-                                        failureKinds.get(
-                                                ((Retriever.AuthorizationRequest)
-                                                                invocation.getArgument(0))
-                                                        .bindingId())));
+                                invocation.getArgument(0) == null
+                                        ? Retriever.AuthorizationResult.authorized()
+                                        : authorization(
+                                                failureKinds.get(
+                                                        ((Retriever.AuthorizationRequest)
+                                                                        invocation.getArgument(0))
+                                                                .bindingId())));
         when(retriever.retrieve(any()))
                 .thenAnswer(
                         invocation -> {
@@ -178,6 +180,28 @@ class RetrievalOrchestratorDispatchSnapshotTest {
         assertThat(turn.scope().configVersions()).isEqualTo(scope.configVersions());
         verify(retriever).authorize(any());
         verify(retriever).retrieve(any());
+    }
+
+    @Test
+    void runtimeDisableAfterAuthorizationStopsAdapterDispatch() {
+        LogicalKnowledgeBaseRecord kb = knowledgeBase("lkb_dispatch_runtime_race");
+        BindingRecord binding = binding("bnd_dispatch_runtime_race", kb.logicalKbId());
+        RetrievalScope scope = scope(kb, List.of(binding));
+        currentKnowledgeBases.put(kb.logicalKbId(), kb);
+        currentBindings.put(kb.logicalKbId(), List.of(binding));
+        when(retriever.authorize(any()))
+                .thenAnswer(
+                        invocation -> {
+                            currentBindings.put(
+                                    kb.logicalKbId(), List.of(withEnabled(binding, false)));
+                            return Retriever.AuthorizationResult.authorized();
+                        });
+
+        RetrievalTurn turn = orchestrator.retrieve(user(), "question", scope);
+
+        assertThat(turn.fused()).isEmpty();
+        assertThat(strings(turn, "failed")).contains(binding.bindingId());
+        verify(retriever, never()).retrieve(any());
     }
 
     @ParameterizedTest
@@ -380,6 +404,27 @@ class RetrievalOrchestratorDispatchSnapshotTest {
                 binding.configVersion(),
                 binding.createdAt(),
                 updatedAt);
+    }
+
+    private static BindingRecord withEnabled(BindingRecord binding, boolean enabled) {
+        return new BindingRecord(
+                binding.bindingId(),
+                binding.logicalKbId(),
+                binding.providerProfile(),
+                binding.sourceIdentityJson(),
+                binding.bindingRole(),
+                binding.authMethod(),
+                binding.health(),
+                enabled,
+                binding.killSwitch(),
+                binding.featureFlag(),
+                binding.freshnessPolicyJson(),
+                binding.locatorRulesJson(),
+                binding.credentialOwner(),
+                binding.regionConstraintsJson(),
+                binding.configVersion(),
+                binding.createdAt(),
+                binding.updatedAt());
     }
 
     private static LogicalKnowledgeBaseRecord withUpdatedAt(
