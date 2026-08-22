@@ -84,12 +84,17 @@ class SettingsAndCompromiseTest {
         LoggedIn user = login();
         connectProvider(user, "github");
 
-        mockMvc.perform(get("/api/v1/settings").cookie(user.session()))
+        String body =
+                mockMvc.perform(get("/api/v1/settings").cookie(user.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.providers[0].provider").value("github"))
                 .andExpect(jsonPath("$.providers[0].status").value("connected"))
                 .andExpect(jsonPath("$.providers[0].granted_scopes[0]").value("repo:read"))
-                .andExpect(jsonPath("$.providers[1].status").value("reconnect_required"));
+                .andExpect(jsonPath("$.providers[1].status").value("reconnect_required"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(body.toLowerCase()).doesNotContain("access_token", "bearer ", "pending:oauth", "file:");
     }
 
     @Test
