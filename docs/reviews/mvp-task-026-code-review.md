@@ -61,3 +61,12 @@ Review comment:
 ## Gate A — fresh review after unsent-binding fix (verbatim)
 
 No discrete introduced correctness, security, or maintainability issues were found in the reviewed diff. The changes appear consistent with the existing API contracts and gate behavior.
+
+## Gate B — fresh review after final Gate A fix (verbatim)
+
+The frontend can send a post-audit metadata-only update that changes server-side model eligibility independently of the locked source bindings. This is a user-visible correctness issue for registration/activation state.
+
+Review comment:
+
+- [P2] Do not re-enable chat eligibility after audited source locks — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:223-224
+  When a draft has any source with `model_eligible: false`, the backend downgrades the KB to browse-only only while `bindings` are included in the PATCH. After Content Audit, this branch intentionally omits unchanged bindings, but the request still sends the draft-level `model_eligible` from the UI; if the owner edits metadata after audit, that PATCH can promote the draft back to `chat_ready` even though the locked binding set is not model-eligible. Preserve the backend-derived eligibility or recompute it from the locked bindings when saving metadata without bindings.

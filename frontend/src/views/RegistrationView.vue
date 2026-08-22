@@ -220,10 +220,12 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
         discoverability: discoverability.value,
         purpose: purpose.value.trim(),
         classification: classification.value.trim(),
-        model_eligible: modelEligible.value,
+        ...(!auditCompleted.value ? { model_eligible: modelEligible.value } : {}),
         ...(sendBindings ? { bindings: parsed } : {}),
       }),
     })
+    if (draft.value.capability === 'browse_only') modelEligible.value = false
+    if (draft.value.capability === 'chat_ready') modelEligible.value = true
     lastSavedFingerprint.value = draftFingerprint()
     if (sendBindings) lastSavedBindingFingerprint.value = currentBindingFingerprint()
     connection.value = null
@@ -350,7 +352,7 @@ onMounted(loadRole)
         <label><span>Purpose</span><input v-model="purpose" required placeholder="support, engineering, policy…" /></label>
         <label><span>Security classification</span><input v-model="classification" required /></label>
         <label><span>Discoverability</span><select v-model="discoverability"><option value="catalog">Catalog</option><option value="private">Private</option></select></label>
-        <label class="checkbox-row"><input v-model="modelEligible" type="checkbox" /> <span>Request Chat eligibility (all sources must pass the later gates)</span></label>
+        <label class="checkbox-row"><input v-model="modelEligible" type="checkbox" :disabled="auditCompleted || loading" /> <span>Request Chat eligibility (all sources must pass the later gates)</span></label>
       </fieldset>
 
       <fieldset v-else-if="step === 1" class="wizard-fieldset">
