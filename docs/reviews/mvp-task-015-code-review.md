@@ -1037,6 +1037,190 @@ None identified.
 
 ## Review Scope
 
+- **Revision reviewed:** `0e9a05cf867d021a8e0eab3f86064b4d6d760a24`
+- **Base:** `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
+- **Diff reviewed:** `git diff origin/main...0e9a05cf867d021a8e0eab3f86064b4d6d760a24`
+- **Task:** TASK-015, Retrieval orchestrator with stub adapters
+- **Design reviewed:** accepted MVP requirements; US-004/US-006; specification; architecture, data flow, and data model; detailed design and API guide; traceability; ADR-0002/0004/0005/0006/0007
+- **Code inspected:** all changed production, test, and profile configuration files. The changed prior-review artifact was deliberately excluded as evidence.
+- **Review objective:** Fresh-context Gate B correctness, security, regression, design-alignment, and architecture review.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 97%
+- **Verdict:** Aligned with minor architectural debt
+- **Merge-blocking findings:** None
+- **Rationale:** TASK-015 implements the required per-turn authorization, authoritative dispatch-time state reload, semantic-drift fail-closed behavior, parallel provider execution, truthful coverage, item omission, RRF with complete provenance, cancellation, and safe incomplete retry behavior. Targeted tests directly cover the elevated access-control and dispatch-authority cases. No Critical, Major, or architecture P0 issue was identified.
+
+---
+
+## Areas of Good Alignment
+
+- Dispatch reloads each selected KB and binding set from the authoritative repositories before provider authorization or retrieval (`RetrievalOrchestrator.java:102-123`).
+- Binding semantic comparison covers provider profile, source identity, role, auth method, health, enable/kill/feature controls, freshness and locator rules, credential owner, region constraints, configuration version, and binding membership (`RetrievalDispatchGuard.java:14-56`).
+- Classification drift is independently security-blocking, and classification policy is rerun over authoritative KB records before dispatch (`RetrievalOrchestrator.java:125-135,192-210`).
+- Complete-binding authorization is enforced: any binding authorization failure blocks retrieval for the complete logical KB and removes all of its binding work (`RetrievalOrchestrator.java:212-328`).
+- Runtime disable, kill switch, profile feature flag, unavailable binding health, provider flag, and unprovable required freshness produce zero retrieval calls for the affected KB (`RetrievalOrchestrator.java:171-189,671-679`).
+- Timestamp-only drift is permitted while the immutable persisted semantic snapshot remains unchanged; semantic fields must compare equal before provider work proceeds.
+- Authorization and retrieval fan-out use independent provider deadlines, concurrency semaphores, fixed-window quotas, backoff, circuit state, retry-after propagation, and cooperative interruption (`ProviderExecution.java:65-177,119-159,225-263,300-407`).
+- Shared cancellation interrupts all submitted provider operations and prevents a cancelled answer from winning the terminal database update (`CancellationSource.java:13-40`; `ChatService.java:325-415,455-553`).
+- Coverage is assembled from actual outcomes into successful, failed, timed-out, quota-limited, and retry-after sets; ordinary partial failure can continue only when fused grounded evidence remains (`RetrievalOrchestrator.java:330-482`).
+- Security and unknown failures remove all evidence belonging to affected KBs; security failures suspend the KB (`RetrievalOrchestrator.java:384-460`).
+- Failure precedence is deterministic and block metadata is selected from the same winning failure class, independent of encounter order (`RetrievalOrchestrator.java:693-724`).
+- RRF uses the documented `k=60`, respects retriever rank, deduplicates by the accepted four-part evidence identity, and preserves every provenance path (`ReciprocalRankFusion.java:24-71,74-97,111-121`).
+- Ask and retry persist immutable KB scope, binding set, KB/binding configuration versions, and classification; retry refreshes these together before new dispatch (`ChatService.java:173-212,266-308`; `ChatMessageRepository.java:135-153`).
+- SSE processing, final, and error events preserve the same request ID; token events remain correlated by their individual SSE stream (`ChatService.java:345-360,417-452,517-520,749-760`).
+- Stub evidence stays synthetic, and only evidence identifiers—not fixture excerpts—cross the model-channel port (`StubRetriever.java:91-126`; `ChatService.java:473-479`).
+- Deployed retrieval budgets and approved classification values are environment-supplied; local numeric values are explicitly fixture-only. No credential or secret was committed.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+None identified within TASK-015 behavior.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB and complete-binding authorization | Implemented |
+| Authoritative dispatch-time registry reload | Implemented |
+| Semantic drift versus timestamp-only drift | Implemented |
+| Disable / kill switch / feature / source identity / add-remove drift | Implemented |
+| Classification re-evaluation and fail-closed behavior | Implemented |
+| Parallel stub retrieval | Implemented |
+| Independent provider deadlines and concurrency | Implemented |
+| Quota, backoff, circuit breaker, retry timing | Implemented |
+| Cancellation propagation and terminal-write safety | Implemented |
+| Full / partial / fail-closed / item-omit behavior | Implemented |
+| Truthful binding-level coverage | Implemented |
+| RRF and immutable provenance | Implemented |
+| Persisted scope/config/binding/classification snapshot | Implemented |
+| SSE request correlation | Implemented |
+| Real Dify/Git/Confluence adapters | Intentionally deferred to TASK-019–021 |
+| Real local-gateway model adapter | Intentionally deferred to TASK-022 |
+| Citation projection / Evidence Drawer | Intentionally deferred to TASK-016 |
+| Governance endpoints and reconciliation | Intentionally deferred to TASK-017/TASK-023 |
+| Full audit/telemetry hardening | Intentionally deferred to TASK-027 |
+
+**Task coverage:**
+
+- TASK-015 objective and stated scope are implemented.
+- No changed production behavior was identified without a TASK-015 or prerequisite Chat integration mapping.
+- The review-record Markdown change was not used as evidence, as required.
+
+**Behaviors implemented but not clearly supported by design:** None identified.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None blocking; provider protocols remain behind retriever/model ports.
+- **Coupling issues:** No P0 issue. Provider runtime policy is externalized and adapter registration is deterministic.
+- **Hidden shortcuts:** No real provider calls, internal excerpts, or production model credentials were introduced.
+
+### Architecture Review Score: 94%
+
+#### P0
+
+None identified.
+
+#### P1
+
+- `ChatService` has reached 837 lines and combines thread CRUD, scope resolution, SSE lifecycle, retrieval/model coordination, projections, and audit helpers (`ChatService.java:35-837`). This does not invalidate TASK-015, but the next Chat backend change should extract stream execution and/or projection responsibilities behind package-local collaborators.
+- Synchronous model-channel exceptions are converted to failed persistence but still end the stream without an actionable model error event (`ChatService.java:545-550`). This is inherited model-channel debt and is appropriately deferred to TASK-022, but TASK-022 should add an explicit model failure callback/error projection.
+
+#### P2
+
+None identified.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned.
+- **Validation behavior:** Aligned and fail-closed.
+- **Retry / failure handling:** Aligned for TASK-015; no infinite retry.
+- **Cancellation:** Aligned; submitted provider work is interrupted and cancelled output cannot become completed.
+- **User-visible behavior:** Partial and blocked retrieval paths emit correlated, actionable SSE errors or final coverage.
+- **Provenance:** The persisted immutable scope reflects the semantic state queried. Timestamp-only changes are intentionally not treated as provenance drift.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Stub-only as TASK-015 requires; real provider activation remains spike-gated.
+- **Secret / credential safety:** Aligned; no provider/model credentials were added.
+- **Logging / audit hooks:** Content-free success/security/unknown retrieval audit exists; full telemetry remains TASK-027.
+- **Error propagation:** Retrieval and authorization classes preserve their categories through the SSE error envelope.
+- **Provider isolation:** Provider-specific quota, timeout, concurrency, backoff, and circuit state do not affect unrelated provider profiles.
+- **SSE correlation:** Processing, final, and error request IDs agree; the open stream itself scopes token events.
+
+---
+
+## Verification
+
+- `./mvnw -q test` — **Passed**
+  - 180 tests
+  - 0 failures
+  - 0 errors
+  - 0 skipped
+- `git diff --check origin/main...0e9a05cf867d021a8e0eab3f86064b4d6d760a24 -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — **Passed**
+- Frontend verification was not run because the revision contains no frontend changes.
+- Oracle migration verification was not run because the revision contains no Flyway/schema change.
+- Initial and final `HEAD` — `0e9a05cf867d021a8e0eab3f86064b4d6d760a24`
+- Initial and final worktree — clean, including untracked files.
+- Non-blocking test warnings: Flyway reported the existing H2 version as newer than its tested support range; Mockito reported future JDK self-attach deprecation.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Synthetic fixture evidence and empty citation projection pending TASK-016; real adapters/model channel remain explicitly deferred.
+- **Required corrections:** None for TASK-015.
+- **Follow-up:** Address the two P1 architecture items when the Chat/model area is next touched.
+
+---
+
+## Minimal Fix Path
+
+No merge-blocking fix is required.
+
+---
+
+## Open Risks / Questions
+
+- Provider-specific pilot budgets, Top-K, and normal-load thresholds remain intentionally unapproved and environment-owned.
+- RRF tuning and broader orchestration internals remain eligible for a later ADR; the accepted task explicitly permits the current documented in-process implementation.
+- Real-content and model-channel safety remain gated by TASK-019–023 and company approval.
+- TASK-022 should make model-channel failures explicit on the SSE contract rather than silently ending a failed stream.
+
+# Gate B Merge Gate: Pass
+
+---
+
+# Code vs Design Review Report
+
+## Review Scope
+
 - Revision reviewed: `607384f490a9b5b69b5f2f07c682319e76c71823`
 - Base: `origin/main` at `b2c4ddbd4d7c6a33a48ecac021f99c2d7ee3bb83`
 - Diff: `git diff origin/main...607384f490a9b5b69b5f2f07c682319e76c71823`
