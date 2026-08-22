@@ -8,6 +8,8 @@ import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
+import com.atlas.knowledgebase.retrieval.RetrievalOrchestrator;
+import com.atlas.knowledgebase.retrieval.RetrievalTurn;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.SessionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -38,6 +40,7 @@ public class ChatService {
     private final LogicalKnowledgeBaseRepository knowledgeBases;
     private final BindingRepository bindings;
     private final KbAccessService access;
+    private final RetrievalOrchestrator retrieval;
     private final ModelChannel modelChannel;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
@@ -50,6 +53,7 @@ public class ChatService {
             LogicalKnowledgeBaseRepository knowledgeBases,
             BindingRepository bindings,
             KbAccessService access,
+            RetrievalOrchestrator retrieval,
             ModelChannel modelChannel,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
@@ -59,6 +63,7 @@ public class ChatService {
         this.knowledgeBases = knowledgeBases;
         this.bindings = bindings;
         this.access = access;
+        this.retrieval = retrieval;
         this.modelChannel = modelChannel;
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
@@ -161,6 +166,7 @@ public class ChatService {
         }
         ChatThreadRecord thread = requireOwnThread(user, threadId);
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
+        RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
         Instant now = clock.instant();
         String requestId = "req_" + SessionService.randomToken().substring(0, 16);
         ChatMessageRecord userMessage =
@@ -201,7 +207,7 @@ public class ChatService {
                                 null));
         threads.touch(threadId, now);
         audit(user.userId(), resolved.logicalKbIds().getFirst(), "chat_ask", "allow", "ok");
-        return startGeneration(user, assistant, question, resolved, false);
+        return startGeneration(user, assistant, question, resolved, turn, false);
     }
 
     public Map<String, Object> cancel(AtlasUserRecord user, String threadId, String messageId) {
@@ -263,14 +269,17 @@ public class ChatService {
         }
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
         String question = latestUserQuestion(threadId, message);
-        return startGeneration(user, message, question, resolved, true);
+        RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
+        return startGeneration(user, message, question, resolved, turn, true);
     }
 
     private SseEmitter replayCompleted(ChatMessageRecord message) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         try {
             emitter.send(
-                    SseEmitter.event().name("final").data(finalPayload(message, message.answerText())));
+                    SseEmitter.event()
+                            .name("final")
+                            .data(finalPayload(message, message.answerText(), null)));
             emitter.complete();
         } catch (IOException e) {
             emitter.completeWithError(e);
@@ -283,6 +292,7 @@ public class ChatService {
             ChatMessageRecord assistant,
             String question,
             ResolvedScope resolved,
+            RetrievalTurn turn,
             boolean retry) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         InFlight flight = new InFlight(emitter, new AtomicBoolean(false));
@@ -302,7 +312,7 @@ public class ChatService {
                 .start(
                         () ->
                                 runGeneration(
-                                        user, assistant, question, resolved, retry, flight));
+                                        user, assistant, question, resolved, turn, retry, flight));
         return emitter;
     }
 
@@ -311,6 +321,7 @@ public class ChatService {
             ChatMessageRecord assistant,
             String question,
             ResolvedScope resolved,
+            RetrievalTurn turn,
             boolean retry,
             InFlight flight) {
         try {
@@ -325,7 +336,11 @@ public class ChatService {
             }
             StringBuilder answer = new StringBuilder();
             modelChannel.generate(
-                    new ModelChannel.Request(assistant.requestId(), question, user.userId()),
+                    new ModelChannel.Request(
+                            assistant.requestId(),
+                            question,
+                            user.userId(),
+                            turn.fused().stream().map(hit -> hit.hit().fingerprint()).toList()),
                     new ModelChannel.Listener() {
                         @Override
                         public void onToken(String delta) {
@@ -352,7 +367,7 @@ public class ChatService {
                                 return;
                             }
                             Instant done = clock.instant();
-                            String coverage = writeJson(coverage(resolved.bindingIds()));
+                            String coverage = writeJson(turn.coverage());
                             int completed =
                                     messages.completeIfInFlight(
                                             assistant.messageId(), completeAnswer, coverage, done);
@@ -364,7 +379,9 @@ public class ChatService {
                                     messages.findById(assistant.messageId()).orElseThrow();
                             try {
                                 flight.emitter.send(
-                                        SseEmitter.event().name("final").data(finalPayload(stored, completeAnswer)));
+                                        SseEmitter.event()
+                                                .name("final")
+                                                .data(finalPayload(stored, completeAnswer, turn)));
                                 flight.emitter.complete();
                             } catch (IOException e) {
                                 completeQuietly(flight.emitter);
@@ -408,6 +425,24 @@ public class ChatService {
             return;
         }
         messages.cancelIfInFlight(messageId, clock.instant());
+    }
+
+    private RetrievalTurn retrieveOrThrow(
+            AtlasUserRecord user, String question, ResolvedScope resolved) {
+        RetrievalTurn turn = retrieval.retrieve(user, question, resolved.logicalKbIds());
+        if (turn.block() == RetrievalTurn.Block.BINDING_ACCESS) {
+            throw new ChatForbiddenException(
+                    "KB_BINDING_ACCESS_MISSING",
+                    "One complete source of the selected knowledge base is unavailable for this turn.",
+                    "reconnect_or_request_access");
+        }
+        if (turn.block() == RetrievalTurn.Block.SECURITY) {
+            throw new ChatForbiddenException(
+                    "KB_SECURITY_FAILURE",
+                    "Permission or security-boundary failure closed this knowledge base.",
+                    "contact_owner");
+        }
+        return turn;
     }
 
     private String latestUserQuestion(String threadId, ChatMessageRecord assistant) {
@@ -541,25 +576,35 @@ public class ChatService {
         return body;
     }
 
-    private Map<String, Object> finalPayload(ChatMessageRecord message, String answer) {
+    private Map<String, Object> finalPayload(
+            ChatMessageRecord message, String answer, RetrievalTurn turn) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("message_id", message.messageId());
         body.put("status", "completed");
         body.put("answer", answer);
-        body.put("citations", List.of());
-        body.put("coverage", coverage(readIds(message.bindingSetJson())));
-        body.put("conflict", null);
+        body.put("citations", turn == null ? List.of() : turn.citations());
+        body.put("coverage", turn == null ? storedCoverage(message) : turn.coverage());
+        body.put("conflict", turn == null ? null : turn.conflict());
         body.put("classification", message.classification());
         body.put("request_id", message.requestId());
         return body;
     }
 
-    private Map<String, Object> coverage(List<String> bindingIds) {
-        Map<String, Object> coverage = new LinkedHashMap<>();
-        coverage.put("successful", bindingIds);
-        coverage.put("failed", List.of());
-        coverage.put("timed_out", List.of());
-        return coverage;
+    private Map<String, Object> storedCoverage(ChatMessageRecord message) {
+        if (message.coverageJson() == null || message.coverageJson().isBlank()) {
+            Map<String, Object> coverage = new LinkedHashMap<>();
+            coverage.put("successful", List.of());
+            coverage.put("failed", List.of());
+            coverage.put("timed_out", List.of());
+            return coverage;
+        }
+        try {
+            Map<String, Object> coverage =
+                    objectMapper.readValue(message.coverageJson(), new TypeReference<Map<String, Object>>() {});
+            return coverage == null ? Map.of() : coverage;
+        } catch (JsonProcessingException e) {
+            return Map.of();
+        }
     }
 
     private List<String> readIds(String json) {

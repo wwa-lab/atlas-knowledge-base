@@ -244,7 +244,109 @@ class ChatApiTest {
         assertThat(completed).isEqualTo(1);
     }
 
+    @Test
+    void ordinaryTimeoutIsDisclosedPartialCoverage() throws Exception {
+        LoggedIn owner = loginOwner();
+        String okKb = activateDify(owner, "Partial Ok");
+        String slowKb =
+                activateDify(
+                        owner,
+                        "Partial Slow",
+                        """
+                        {"dataset_id":"ds_slow","original_version_mapping":{"doc_1":"v1"},"retrieval_fixture":"timeout"}
+                        """);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"logical_kb_ids\":[\""
+                                                                + okKb
+                                                                + "\",\""
+                                                                + slowKb
+                                                                + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        MvcResult ask =
+                mockMvc.perform(
+                                post("/api/v1/chats/" + threadId + "/messages")
+                                        .cookie(owner.session())
+                                        .header(SessionService.CSRF_HEADER, owner.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .accept(MediaType.TEXT_EVENT_STREAM)
+                                        .content("{\"question\":\"How do we rotate the gateway cert?\"}"))
+                        .andExpect(request().asyncStarted())
+                        .andReturn();
+        String body =
+                mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk()).andReturn().getResponse()
+                        .getContentAsString();
+        assertThat(body).contains("timed_out");
+        assertThat(body).contains("successful");
+        assertThat(body).doesNotContain("Local retrieval fixture");
+        assertThat(body.toLowerCase()).doesNotContain("secret");
+        String slowBinding =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, slowKb);
+        assertThat(body).contains(slowBinding);
+    }
+
+    @Test
+    void securityRetrievalSuspendsTheKnowledgeBase() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Security Fail KB",
+                        "{\"dataset_id\":\"ds_sec\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"security\"}");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
+                                .content("{\"question\":\"How do we rotate the gateway cert?\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("KB_SECURITY_FAILURE"));
+        String lifecycle =
+                jdbcTemplate.queryForObject(
+                        "SELECT lifecycle FROM logical_knowledge_base WHERE logical_kb_id = ?",
+                        String.class,
+                        kbId);
+        assertThat(lifecycle).isEqualTo("suspended");
+    }
+
     private String activateDify(LoggedIn owner, String name) throws Exception {
+        return activateDify(
+                owner,
+                name,
+                """
+                {
+                  "dataset_id": "ds_1",
+                  "original_version_mapping": {"doc_1": "v1"}
+                }
+                """);
+    }
+
+    private String activateDify(LoggedIn owner, String name, String sourceIdentityJson) throws Exception {
         String logicalKbId = createDraft(owner, name, "private");
         mockMvc.perform(
                         patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
@@ -258,13 +360,11 @@ class ChatApiTest {
                                           "bindings": [{
                                             "provider_profile": "dify",
                                             "role": "canonical",
-                                            "source_identity": {
-                                              "dataset_id": "ds_1",
-                                              "original_version_mapping": {"doc_1": "v1"}
-                                            }
+                                            "source_identity": %s
                                           }]
                                         }
-                                        """))
+                                        """
+                                                .formatted(sourceIdentityJson.trim())))
                 .andExpect(status().isOk());
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/drafts/" + logicalKbId + "/content-audit")
