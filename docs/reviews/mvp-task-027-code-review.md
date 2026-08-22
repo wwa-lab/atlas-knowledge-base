@@ -20,3 +20,7 @@ Review comment:
 
 - [P2] Classify returned provider failures before marking success — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ProviderExecution.java:401-402
   When an adapter returns a domain failure result such as `Retriever.Result.quota()`, `timeout()`, or `failed()` (and the analogous authorization results), the worker completes normally, so this line records the connector operation as a telemetry success before `RetrievalOrchestrator` classifies the result and calls `recordFailure(...)`. Because `recordFailure` now updates only resilience state, snapshots for these common provider outcomes show `successes=1` and `quotaLimited/timeouts/failures=0`, which makes the new connector health counters misleading. The operation outcome needs to be recorded after the returned result is classified, or `ProviderExecution` needs a way to map these result values to telemetry outcomes.
+
+## Gate A — final rerun
+
+No discrete correctness, security, or maintainability regressions were identified in the diff. The backend compiles and the Maven test suite passes.
