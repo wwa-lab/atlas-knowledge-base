@@ -57,3 +57,7 @@ Review comment:
 
 - [P2] Don't skip saving bindings that were never sent — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:192-194
   If an owner creates a draft, goes back to Basics, and saves metadata before the Sources step, `saveDraft(false)` records the full draft fingerprint even though the PATCH omits `bindings`. Later `saveDraft(true)` can hit this early return while `lastSavedBindingFingerprint` is still null, so the binding set is never sent and the connection test/audit runs against a draft with no sources. Keep the draft dirty for binding saves until the binding fingerprint has actually been persisted.
+
+## Gate A — fresh review after unsent-binding fix (verbatim)
+
+No discrete introduced correctness, security, or maintainability issues were found in the reviewed diff. The changes appear consistent with the existing API contracts and gate behavior.
