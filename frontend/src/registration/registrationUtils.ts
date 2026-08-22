@@ -98,6 +98,30 @@ export function validateSourceIdentity(
   return undefined
 }
 
+/**
+ * Identifies the persisted binding configuration without including draft-level metadata.
+ * The wizard uses this to avoid sending an unchanged binding set after Content Audit.
+ */
+export function bindingFingerprint(bindings: Array<BindingDraft & {
+  sourceIdentityText?: string
+  freshnessText?: string
+  locatorText?: string
+  regionText?: string
+}>): string {
+  return JSON.stringify(bindings.map((binding) => ({
+    binding_id: binding.binding_id || '',
+    provider_profile: binding.provider_profile,
+    sourceIdentityText: binding.sourceIdentityText ?? JSON.stringify(binding.source_identity || {}),
+    role: binding.role,
+    auth_method: binding.auth_method,
+    credential_owner: binding.credential_owner || '',
+    freshnessText: binding.freshnessText ?? JSON.stringify(binding.freshness_policy || {}),
+    locatorText: binding.locatorText ?? JSON.stringify(binding.locator_rules || {}),
+    regionText: binding.regionText ?? JSON.stringify(binding.region_constraints || {}),
+    model_eligible: binding.model_eligible,
+  })))
+}
+
 export function validateBasics(input: {
   name: string
   purpose: string

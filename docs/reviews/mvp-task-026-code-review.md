@@ -39,3 +39,12 @@ Full review comments:
 
 - [P2] Require HTTPS for evidence original links — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/evidence/EvidenceDrawer.vue:86-88
   If the evidence resolver or adapter configuration returns an `http://` `navigation_url`, this uses the catalog helper that accepts both HTTP and HTTPS and then renders a navigable Continue link. The evidence contract restricts original navigation to trusted HTTPS origins (or the reserved HTTPS fixture origin), so the drawer should use a stricter validator here instead of accepting cleartext URLs.
+
+## Gate A — fresh review after Gate B fixes (verbatim)
+
+The new wizard can hit a backend constraint in a normal Content Audit/edit/resubmit flow, making the handoff path fail after audited bindings exist. Type checking with vue-tsc --noEmit passed; Vitest/build could not run in the read-only sandbox because Vite/TypeScript attempted to write temp files.
+
+Review comment:
+
+- [P2] Avoid replacing bindings after Content Audit — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/RegistrationView.vue:205-205
+  When an owner has already run Content Audit and then edits anything before final handoff, `saveDraft(true)` sends the full `bindings` array again. The backend PATCH replaces bindings by deleting/reinserting them, but audited bindings are referenced by `content_audit_result`, so this normal post-audit edit path can fail instead of allowing a fresh audit or safe handoff. Track that an audit has run and either avoid sending unchanged bindings, lock binding edits after audit, or use a backend path that can update audited bindings safely.

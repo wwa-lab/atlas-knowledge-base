@@ -5,6 +5,7 @@ import { RouterLink } from 'vue-router'
 import { AtlasApiError, request } from '../api/atlasApi'
 import {
   formatCount,
+  bindingFingerprint,
   newBinding,
   parseJsonObject,
   validateBasics,
@@ -51,6 +52,8 @@ const error = ref('')
 const notice = ref('')
 const roleAllowed = ref<boolean | null>(null)
 const lastSavedFingerprint = ref<string | null>(null)
+const lastSavedBindingFingerprint = ref<string | null>(null)
+const auditCompleted = ref(false)
 
 const stepLabel = computed(() => WIZARD_STEPS[step.value])
 const canGoBack = computed(() => step.value > 0 && !loading.value)
@@ -77,6 +80,10 @@ function draftFingerprint(): string {
       model_eligible: binding.model_eligible,
     })),
   })
+}
+
+function currentBindingFingerprint(): string {
+  return bindingFingerprint(bindings.value)
 }
 
 const isDraftDirty = computed(() => Boolean(draft.value) && (lastSavedFingerprint.value === null || draftFingerprint() !== lastSavedFingerprint.value))
@@ -186,8 +193,15 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
     notice.value = 'Draft is already saved; no changes were sent.'
     return true
   }
-  const parsed = includeBindings ? parsedBindings() : undefined
-  if (includeBindings && !parsed) return false
+  const bindingStateChanged = lastSavedBindingFingerprint.value === null
+    || currentBindingFingerprint() !== lastSavedBindingFingerprint.value
+  if (includeBindings && auditCompleted.value && bindingStateChanged) {
+    error.value = 'Source bindings cannot be changed after Content Audit. Start a new Draft for a different source configuration.'
+    return false
+  }
+  const sendBindings = includeBindings && (!auditCompleted.value || bindingStateChanged)
+  const parsed = sendBindings ? parsedBindings() : undefined
+  if (sendBindings && !parsed) return false
   loading.value = true
   error.value = ''
   notice.value = ''
@@ -202,10 +216,11 @@ async function saveDraft(includeBindings = true): Promise<boolean> {
         purpose: purpose.value.trim(),
         classification: classification.value.trim(),
         model_eligible: modelEligible.value,
-        ...(includeBindings ? { bindings: parsed } : {}),
+        ...(sendBindings ? { bindings: parsed } : {}),
       }),
     })
-    if (includeBindings) lastSavedFingerprint.value = draftFingerprint()
+    lastSavedFingerprint.value = draftFingerprint()
+    if (sendBindings) lastSavedBindingFingerprint.value = currentBindingFingerprint()
     connection.value = null
     audit.value = null
     notice.value = 'Draft saved. Changes are versioned and ready for the next gate.'
@@ -246,6 +261,7 @@ async function runContentAudit(): Promise<void> {
   error.value = ''
   try {
     audit.value = await request<AuditResult>(`/api/v1/knowledge-bases/drafts/${encodeURIComponent(draft.value.logical_kb_id)}/content-audit`, { method: 'POST' })
+    auditCompleted.value = true
     notice.value = 'Content Audit completed. Review exclusions before handoff.'
   } catch (cause) {
     showError(cause, 'Content Audit could not be completed safely.')
@@ -335,28 +351,30 @@ onMounted(loadRole)
       <fieldset v-else-if="step === 1" class="wizard-fieldset">
         <legend>Sources</legend>
         <p class="panel-help">Each source declares its own identity and role. Exactly one source must be canonical.</p>
+        <p v-if="auditCompleted" class="panel-help">Sources are locked after Content Audit because audit rows reference stable binding IDs. Start a new Draft to change the source set.</p>
         <article v-for="(binding, index) in bindings" :key="binding.binding_id || index" class="binding-editor">
-          <div class="panel-heading"><h2>Source {{ index + 1 }}</h2><button v-if="bindings.length > 1" class="button button-danger" type="button" @click="removeBinding(index)">Remove</button></div>
+          <div class="panel-heading"><h2>Source {{ index + 1 }}</h2><button v-if="bindings.length > 1" class="button button-danger" type="button" :disabled="auditCompleted || loading" @click="removeBinding(index)">Remove</button></div>
           <div class="form-grid-two">
-            <label><span>Provider profile</span><select v-model="binding.provider_profile"><option value="git_markdown">Git Markdown</option><option value="dify">Dify</option><option value="confluence">Confluence</option></select></label>
-            <label><span>Binding role</span><select v-model="binding.role"><option value="canonical">Canonical</option><option value="mirror">Mirror</option><option value="supplemental">Supplemental</option></select></label>
-            <label><span>Authorization method</span><select v-model="binding.auth_method"><option value="delegated_user">Delegated user</option><option value="sso_group_mapping">SSO group mapping</option></select></label>
-            <label><span>Credential Owner</span><input v-model="binding.credential_owner" autocomplete="off" /></label>
+            <label><span>Provider profile</span><select v-model="binding.provider_profile" :disabled="auditCompleted || loading"><option value="git_markdown">Git Markdown</option><option value="dify">Dify</option><option value="confluence">Confluence</option></select></label>
+            <label><span>Binding role</span><select v-model="binding.role" :disabled="auditCompleted || loading"><option value="canonical">Canonical</option><option value="mirror">Mirror</option><option value="supplemental">Supplemental</option></select></label>
+            <label><span>Authorization method</span><select v-model="binding.auth_method" :disabled="auditCompleted || loading"><option value="delegated_user">Delegated user</option><option value="sso_group_mapping">SSO group mapping</option></select></label>
+            <label><span>Credential Owner</span><input v-model="binding.credential_owner" autocomplete="off" :disabled="auditCompleted || loading" /></label>
           </div>
-          <label><span>Source identity JSON</span><textarea v-model="binding.sourceIdentityText" rows="5" spellcheck="false" /></label>
-          <label class="checkbox-row"><input v-model="binding.model_eligible" type="checkbox" /> <span>Source is model-eligible</span></label>
+          <label><span>Source identity JSON</span><textarea v-model="binding.sourceIdentityText" rows="5" spellcheck="false" :disabled="auditCompleted || loading" /></label>
+          <label class="checkbox-row"><input v-model="binding.model_eligible" type="checkbox" :disabled="auditCompleted || loading" /> <span>Source is model-eligible</span></label>
         </article>
-        <button class="button button-secondary" type="button" @click="addBinding">Add source</button>
+        <button class="button button-secondary" type="button" :disabled="auditCompleted || loading" @click="addBinding">Add source</button>
       </fieldset>
 
       <fieldset v-else-if="step === 2" class="wizard-fieldset">
         <legend>Access &amp; Classification</legend>
         <p class="panel-help">These JSON objects are policy boundaries, not provider tokens. Keep region, retention, and egress constraints aligned across sources.</p>
+        <p v-if="auditCompleted" class="panel-help">Source policy fields are locked after Content Audit because audit rows reference the audited binding configuration. Start a new Draft to change them.</p>
         <article v-for="(binding, index) in bindings" :key="binding.binding_id || index" class="binding-editor">
           <h2>Source {{ index + 1 }} policy</h2>
-          <label><span>Freshness policy JSON</span><textarea v-model="binding.freshnessText" rows="3" spellcheck="false" /></label>
-          <label><span>Evidence locator rules JSON</span><textarea v-model="binding.locatorText" rows="3" spellcheck="false" /></label>
-          <label><span>Region / retention / egress JSON</span><textarea v-model="binding.regionText" rows="3" spellcheck="false" /></label>
+          <label><span>Freshness policy JSON</span><textarea v-model="binding.freshnessText" rows="3" spellcheck="false" :disabled="auditCompleted || loading" /></label>
+          <label><span>Evidence locator rules JSON</span><textarea v-model="binding.locatorText" rows="3" spellcheck="false" :disabled="auditCompleted || loading" /></label>
+          <label><span>Region / retention / egress JSON</span><textarea v-model="binding.regionText" rows="3" spellcheck="false" :disabled="auditCompleted || loading" /></label>
         </article>
       </fieldset>
 

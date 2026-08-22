@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatCount, newBinding, parseJsonObject, validateBasics, validateSourceIdentity, WIZARD_STEPS } from './registrationUtils'
+import { bindingFingerprint, formatCount, newBinding, parseJsonObject, validateBasics, validateSourceIdentity, WIZARD_STEPS } from './registrationUtils'
 
 describe('registration utilities', () => {
   it('keeps the accepted wizard sequence and safe defaults', () => {
@@ -20,5 +20,12 @@ describe('registration utilities', () => {
   it('formats optional audit counts without inventing values', () => {
     expect(formatCount(1200)).toBe('1,200')
     expect(formatCount(undefined)).toBe('Not reported')
+  })
+
+  it('changes the binding fingerprint when a persisted source setting changes', () => {
+    const binding = newBinding()
+    const original = bindingFingerprint([binding])
+    const changed = bindingFingerprint([{ ...binding, credential_owner: 'owner-2' }])
+    expect(changed).not.toBe(original)
   })
 })
