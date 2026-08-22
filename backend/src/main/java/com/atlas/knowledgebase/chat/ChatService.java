@@ -436,6 +436,14 @@ public class ChatService {
                     "One complete source of the selected knowledge base is unavailable for this turn.",
                     "reconnect_or_request_access");
         }
+        if (turn.block() == RetrievalTurn.Block.BINDING_UNAVAILABLE) {
+            throw new ChatRetrievalException(
+                    "retrieval",
+                    "KB_BINDING_UNAVAILABLE",
+                    "One configured source is disabled, unavailable, or cannot prove required freshness for this turn.",
+                    "contact_owner_or_change_scope",
+                    Map.of("coverage", turn.coverage()));
+        }
         if (turn.block() == RetrievalTurn.Block.SECURITY) {
             throw new ChatForbiddenException(
                     "KB_SECURITY_FAILURE",
@@ -558,9 +566,7 @@ public class ChatService {
                 classification = kb.classification();
             }
             for (BindingRecord binding : bindings.findByLogicalKbId(logicalKbId)) {
-                if (binding.enabled() && !binding.killSwitch()) {
-                    bindingIds.add(binding.bindingId());
-                }
+                bindingIds.add(binding.bindingId());
             }
         }
         return new ResolvedScope(

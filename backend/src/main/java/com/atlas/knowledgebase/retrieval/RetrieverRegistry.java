@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /** Deterministic provider-to-retriever registry; duplicate active handlers fail at startup. */
@@ -32,5 +33,9 @@ public final class RetrieverRegistry {
 
     public Optional<Retriever> find(String providerProfile) {
         return Optional.ofNullable(byProvider.get(providerProfile));
+    }
+
+    public Set<String> providers() {
+        return byProvider.keySet();
     }
 }

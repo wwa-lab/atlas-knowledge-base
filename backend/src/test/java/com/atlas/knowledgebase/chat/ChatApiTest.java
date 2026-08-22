@@ -378,6 +378,46 @@ class ChatApiTest {
         assertThat(lifecycle).isEqualTo("suspended");
     }
 
+    @Test
+    void featureDisabledBindingFailsClosedWithTruthfulCoverage() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Feature Disabled KB");
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        jdbcTemplate.update("UPDATE binding SET feature_flag = 0 WHERE binding_id = ?", bindingId);
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
+                                .content("{\"question\":\"What is the runbook?\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.category").value("retrieval"))
+                .andExpect(jsonPath("$.error.code").value("KB_BINDING_UNAVAILABLE"))
+                .andExpect(jsonPath("$.error.details.coverage.failed[0]").value(bindingId));
+
+        Integer messages =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM chat_message WHERE thread_id = ?", Integer.class, threadId);
+        assertThat(messages).isZero();
+    }
+
     private String activateDify(LoggedIn owner, String name) throws Exception {
         return activateDify(
                 owner,

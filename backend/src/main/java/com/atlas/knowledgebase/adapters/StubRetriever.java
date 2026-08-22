@@ -11,9 +11,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Fixture retriever for Dify, Git Markdown, and Confluence. Does not call providers. Controlled by
- * {@code source_identity.retrieval_fixture}: {@code timeout}, {@code failed}, {@code security},
- * {@code item_omit}, typed {@code throw_failed}/{@code throw_security}, unknown
- * {@code throw_unknown}, or success (default).
+ * {@code source_identity.retrieval_fixture}: {@code binding_denied}, {@code timeout}, {@code
+ * failed}, {@code security}, {@code item_omit}, typed {@code throw_failed}/{@code
+ * throw_security}, unknown {@code throw_unknown}, or success (default).
  */
 @Component
 @Profile({"local", "non-prod"})
@@ -34,6 +34,19 @@ public class StubRetriever implements Retriever {
     @Override
     public Set<String> providerProfiles() {
         return Set.of("dify", "git_markdown", "confluence");
+    }
+
+    @Override
+    public AuthorizationResult authorize(AuthorizationRequest request) {
+        String fixture = fixture(request.sourceIdentityJson());
+        return switch (fixture) {
+            case "binding_denied" -> AuthorizationResult.accessDenied();
+            case "authorization_timeout" -> AuthorizationResult.timeout();
+            case "authorization_failed" -> AuthorizationResult.failed();
+            case "authorization_security" -> AuthorizationResult.security();
+            case "authorization_unknown" -> AuthorizationResult.unknown();
+            default -> AuthorizationResult.authorized();
+        };
     }
 
     @Override

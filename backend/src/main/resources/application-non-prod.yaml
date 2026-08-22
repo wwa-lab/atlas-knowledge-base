@@ -5,3 +5,15 @@ spring:
     username: ${ATLAS_DATASOURCE_USERNAME}
     password: ${ATLAS_DATASOURCE_PASSWORD}
     driver-class-name: oracle.jdbc.OracleDriver
+
+atlas:
+  retrieval:
+    # No deployed defaults: Connector Owners provide pilot-approved budgets.
+    provider-timeouts:
+      dify: ${ATLAS_RETRIEVAL_DIFY_TIMEOUT}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_TIMEOUT}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_TIMEOUT}
+    provider-concurrency:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CONCURRENCY}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CONCURRENCY}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CONCURRENCY}

@@ -22,6 +22,7 @@ public record RetrievalTurn(
     public enum Block {
         NONE,
         BINDING_ACCESS,
+        BINDING_UNAVAILABLE,
         SECURITY,
         NO_EVIDENCE,
         UNKNOWN

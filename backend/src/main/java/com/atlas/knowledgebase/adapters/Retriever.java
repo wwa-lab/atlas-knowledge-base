@@ -16,7 +16,53 @@ public interface Retriever {
         return providerProfiles().contains(providerProfile);
     }
 
+    AuthorizationResult authorize(AuthorizationRequest request);
+
     Result retrieve(Request request);
+
+    record AuthorizationRequest(
+            String requestId,
+            String userId,
+            String logicalKbId,
+            String bindingId,
+            String providerProfile,
+            String sourceIdentityJson,
+            Duration timeout) {}
+
+    enum AuthorizationOutcome {
+        AUTHORIZED,
+        ACCESS_DENIED,
+        TIMEOUT,
+        FAILED,
+        SECURITY,
+        UNKNOWN
+    }
+
+    record AuthorizationResult(AuthorizationOutcome outcome) {
+        public static AuthorizationResult authorized() {
+            return new AuthorizationResult(AuthorizationOutcome.AUTHORIZED);
+        }
+
+        public static AuthorizationResult accessDenied() {
+            return new AuthorizationResult(AuthorizationOutcome.ACCESS_DENIED);
+        }
+
+        public static AuthorizationResult timeout() {
+            return new AuthorizationResult(AuthorizationOutcome.TIMEOUT);
+        }
+
+        public static AuthorizationResult failed() {
+            return new AuthorizationResult(AuthorizationOutcome.FAILED);
+        }
+
+        public static AuthorizationResult security() {
+            return new AuthorizationResult(AuthorizationOutcome.SECURITY);
+        }
+
+        public static AuthorizationResult unknown() {
+            return new AuthorizationResult(AuthorizationOutcome.UNKNOWN);
+        }
+    }
 
     record Request(
             String requestId,

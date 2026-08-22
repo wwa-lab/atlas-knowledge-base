@@ -11,7 +11,11 @@ public interface ModelChannel {
 
     void generate(Request request, Listener listener);
 
-    record Request(String requestId, String question, String userId, List<String> evidenceIds) {}
+    record Request(String requestId, String question, String userId, List<String> evidenceIds) {
+        public Request {
+            evidenceIds = evidenceIds == null ? List.of() : List.copyOf(evidenceIds);
+        }
+    }
 
     interface Listener {
         void onToken(String delta);

@@ -38,6 +38,11 @@ class RetrieverRegistryTest {
             }
 
             @Override
+            public AuthorizationResult authorize(AuthorizationRequest request) {
+                return AuthorizationResult.authorized();
+            }
+
+            @Override
             public Result retrieve(Request request) {
                 return Result.success(java.util.List.of(), java.util.List.of());
             }

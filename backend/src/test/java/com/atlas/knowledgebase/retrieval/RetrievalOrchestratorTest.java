@@ -99,6 +99,114 @@ class RetrievalOrchestratorTest {
     }
 
     @Test
+    void featureFlagOffStopsDispatchAndRemainsVisibleInCoverage() {
+        Instant now = Instant.parse("2026-08-22T03:01:15Z");
+        AtlasUserRecord user = owner("usr_ret_flag_off", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_flag_off", user.userId(), now);
+        binding("bnd_ret_flag_on", kb.logicalKbId(), "dify", "{}", now);
+        binding(
+                "bnd_ret_flag_off",
+                kb.logicalKbId(),
+                "git_markdown",
+                "{}",
+                "healthy",
+                true,
+                false,
+                false,
+                now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed).contains("bnd_ret_flag_off");
+    }
+
+    @Test
+    void disabledKilledAndUnavailableBindingsCannotDisappearFromCoverage() {
+        Instant now = Instant.parse("2026-08-22T03:01:30Z");
+        AtlasUserRecord user = owner("usr_ret_controls", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_controls", user.userId(), now);
+        binding("bnd_ret_controls_ok", kb.logicalKbId(), "dify", "{}", now);
+        binding(
+                "bnd_ret_disabled",
+                kb.logicalKbId(),
+                "git_markdown",
+                "{}",
+                "healthy",
+                false,
+                false,
+                true,
+                now);
+        binding(
+                "bnd_ret_killed",
+                kb.logicalKbId(),
+                "confluence",
+                "{}",
+                "healthy",
+                true,
+                true,
+                true,
+                now);
+        binding(
+                "bnd_ret_unavailable",
+                kb.logicalKbId(),
+                "git_markdown",
+                "{}",
+                "unavailable",
+                true,
+                false,
+                true,
+                now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed)
+                .contains("bnd_ret_disabled", "bnd_ret_killed", "bnd_ret_unavailable");
+    }
+
+    @Test
+    void requiredFreshnessFailsClosedWhenCurrentEvidenceCannotBeProven() {
+        Instant now = Instant.parse("2026-08-22T03:01:45Z");
+        AtlasUserRecord user = owner("usr_ret_freshness", now);
+        LogicalKnowledgeBaseRecord kb =
+                knowledgeBases.insert(
+                        new LogicalKnowledgeBaseRecord(
+                                "lkb_ret_freshness",
+                                "Fresh KB",
+                                "desc",
+                                user.userId(),
+                                "private",
+                                "support",
+                                "internal",
+                                true,
+                                "chat_ready",
+                                "active",
+                                "healthy",
+                                1,
+                                "PT1H",
+                                true,
+                                null,
+                                now,
+                                now,
+                                now));
+        binding("bnd_ret_freshness", kb.logicalKbId(), "dify", "{}", now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.BINDING_UNAVAILABLE);
+        @SuppressWarnings("unchecked")
+        List<String> failed = (List<String>) turn.coverage().get("failed");
+        assertThat(failed).containsExactly("bnd_ret_freshness");
+    }
+
+    @Test
     void securityFailureSuspendsTheKnowledgeBase() {
         Instant now = Instant.parse("2026-08-22T03:02:00Z");
         AtlasUserRecord user = owner("usr_ret_sec", now);
@@ -274,6 +382,28 @@ class RetrievalOrchestratorTest {
 
     private BindingRecord binding(
             String bindingId, String logicalKbId, String provider, String identity, Instant now) {
+        return binding(
+                bindingId,
+                logicalKbId,
+                provider,
+                identity,
+                "healthy",
+                true,
+                false,
+                true,
+                now);
+    }
+
+    private BindingRecord binding(
+            String bindingId,
+            String logicalKbId,
+            String provider,
+            String identity,
+            String health,
+            boolean enabled,
+            boolean killSwitch,
+            boolean featureFlag,
+            Instant now) {
         return bindings.insert(
                 new BindingRecord(
                         bindingId,
@@ -282,10 +412,10 @@ class RetrievalOrchestratorTest {
                         identity,
                         "canonical",
                         "delegated_user",
-                        "healthy",
-                        true,
-                        false,
-                        false,
+                        health,
+                        enabled,
+                        killSwitch,
+                        featureFlag,
                         null,
                         "{}",
                         "owner@example.com",
