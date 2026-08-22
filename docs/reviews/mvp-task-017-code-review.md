@@ -286,6 +286,132 @@ None identified.
 - Final HEAD: `e62b8e6a9b8d29d671062865787bb399a5e1c26d`
 - Final worktree: clean.
 
+## Gate B — Fresh elevated review (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+- **Design reviewed:** `docs/03-spec/mvp-spec.md` (FR-17/50/52/53/69), `docs/04-architecture/mvp-architecture.md`, `docs/04-architecture/mvp-data-model.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`, `docs/06-tasks/mvp-tasks.md` (`TASK-017`), `docs/architecture/decisions/ADR-0009-governance-preview-and-rollback.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md`
+- **Code / files inspected:** `backend/src/main/java/com/atlas/knowledgebase/governance/*`, `backend/src/main/java/com/atlas/knowledgebase/registry/BindingRepository.java`, `backend/src/main/java/com/atlas/knowledgebase/registry/LogicalKnowledgeBaseRepository.java`, `backend/src/main/java/com/atlas/knowledgebase/registry/RegistryService.java`, `backend/src/main/java/com/atlas/knowledgebase/registry/ActivationService.java`, `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalEligibility.java`, `backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java`, `backend/src/main/resources/db/migration/V3__governance_controls.sql`, focused tests
+- **Review objective:** Verify TASK-017 fidelity on elevated surfaces: admin auth/CSRF, Flyway V3/data model portability, preview claim atomicity and rollback, retire semantics, owner-less suspend, dispatch fail-closed behavior, and the KB-row then binding-row lock ordering / TOCTOU closure.
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 95%
+- **Verdict:** Aligned
+- **Rationale:** The implementation matches ADR-0009’s core invariants. Preview confirmation is transactionally claimed before mutable-state validation, rollback restores an immutable historical binding snapshot with revalidation and monotonic live versioning, and retrieval re-reads authoritative KB/binding state at dispatch time to fail closed. I did not find a Critical or Major design gap in the reviewed scope.
+
+---
+
+## Areas of Good Alignment
+- `GovernanceService.requirePreview(...)` enforces preview id, operation, binding match, single-use claim, stale-version rejection, and retire-specific sibling fingerprint revalidation in one transactional flow.
+- `BindingRepository.snapshot/updateRuntime/restore` implements append-only `binding_config_history` plus optimistic live updates, which matches the immutable rollback design.
+- `GovernanceService.retire(...)` correctly distinguishes terminal retirement from “stay suspended because another sibling can resume after remediation”.
+- `RetrievalEligibility` centralizes the runtime-eligibility predicate, and governance reuses it for preview/runtime-binding calculations.
+- `RetrievalOrchestrator.retrieveOne(...)` re-reads current KB and binding immediately before provider dispatch, closing the authorization-to-dispatch race that ADR-0009 called out.
+- `GovernanceApiTest` covers admin-only access, CSRF, stale preview replay, rollback revalidation, suspended-retire semantics, and content-free audit behavior.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+None identified.
+
+### Major
+None identified.
+
+### Minor
+None identified.
+
+---
+
+## Coverage Check
+| Design Area | Status |
+|---|---|
+| Admin-only governance APIs under `/api/v1/admin` | Implemented |
+| Impact preview with durable content-free preview id | Implemented |
+| Single-use preview claim / replay protection | Implemented |
+| Disable and kill switch as runtime controls, not lifecycle states | Implemented |
+| Immutable binding history and rollback with revalidation | Implemented |
+| Retire path with sibling eligibility check | Implemented |
+| Suspended KB special-case retire semantics | Implemented |
+| Owner-less suspend owned by governance module | Implemented |
+| Retrieval dispatch fail-closed on post-snapshot governance drift | Implemented |
+| Flyway schema additions for history and preview claims | Implemented |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: impact preview, disable, kill switch, rollback, retire path, owner-less suspend, retrieval stop-at-dispatch, audit trail, migration, focused tests.
+- Tasks partially implemented: none identified in TASK-017 scope.
+- Tasks not yet reflected in code: none identified in TASK-017 scope.
+- Code changes not clearly mapped to any task: none identified.
+
+**Behaviors implemented but not clearly supported by design:**
+- None identified.
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified. Owner-less suspend moved from `registry` into `governance`, which corrects the earlier placement debt.
+- **Misplaced responsibilities:** None identified in the reviewed diff.
+- **Coupling issues:** Governance still depends directly on `SourceProbe` for rollback revalidation, but ADR-0009 explicitly requires provider-specific revalidation before restoration, so this is aligned.
+- **Hidden shortcuts:** None identified in the reviewed scope.
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** Aligned.
+- **Validation behavior:** Aligned. Confirmation requires `confirm=true`, a valid `impact_preview_id`, matching operation/binding, and fresh runtime/config state.
+- **Retry / skip / resume / failure handling:** Aligned for the governed flows; failed revalidation and stale previews fail closed without consuming a valid preview permanently.
+- **User-visible behavior:** Aligned with the accepted contract for disable, rollback, retire, and owner-less suspend.
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned. Retrieval authority is rechecked before provider dispatch rather than trusting the earlier snapshot.
+- **External system handling:** Aligned for current stub/probe-based scope.
+- **Secret / credential safety:** Aligned. Reviewed governance audit writes remain content-free and do not persist source bodies or credentials.
+- **Logging / audit hooks:** Aligned. Preview, mutation, and suspend-ownerless paths emit audit events.
+- **Error propagation at integration boundaries:** Aligned. Governance-specific conflicts/validation failures map to structured API errors.
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge — Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** None
+- **Required corrections:** None
+
+---
+
+## Recommended Fixes
+1. None required for TASK-017 merge readiness.
+
+## Minimal Fix Path
+- No code changes are required from this Gate B review.
+
+---
+
+## Open Risks / Questions
+- The KB-row then binding-row lock order is correctly used for the retire confirmation path via `GovernanceService.lockRetireState()` calling `findByIdForUpdate()` before `findByLogicalKbIdForUpdate()`. I also checked the production write paths that can affect retire eligibility:
+  - governance retire/disable/kill-switch/rollback operate through `GovernanceService` and `BindingRepository`
+  - lifecycle suspension/retirement uses `LogicalKnowledgeBaseRepository`
+  - active binding-set replacement remains in `RegistryService.replaceBindings(...)`, but that path is draft-only and is not a production writer for active/suspended KBs
+  - activation is draft-only as well
+  Within current product scope, I did not find an active/suspended production write path that bypasses the intended retire serialization boundary.
+- `backend/target/surefire-reports` still contains an older unrelated failure for `AtlasKnowledgeBaseApplicationTests`; I did not treat that as a TASK-017 finding because my focused run for `GovernanceApiTest` and `RetrievalOrchestratorDispatchSnapshotTest` passed cleanly.
+
+## Verification
+- `git diff origin/main...HEAD` on reviewed files
+- `git diff --check origin/main...HEAD -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md' ':(exclude)docs/reviews/mvp-task-017-code-review.md'` — passed
+- `./mvnw -q -pl backend -Dtest=GovernanceApiTest,RetrievalOrchestratorDispatchSnapshotTest test` — passed
+  - `GovernanceApiTest`: 10 tests, 0 failures
+  - `RetrievalOrchestratorDispatchSnapshotTest`: 30 tests, 0 failures
+
+Gate B result: Pass.
+
 ## Gate A — Fresh lock-boundary rerun (verbatim)
 
 # Code vs Design Review Report
