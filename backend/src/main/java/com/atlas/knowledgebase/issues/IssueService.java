@@ -75,7 +75,7 @@ public class IssueService {
                     "ISSUE_CONTEXT_REQUIRED", "Provide the assistant message_id or citation_id that has the issue.");
         }
         IssueCategory category = IssueCategory.parse(command.category());
-        String note = normalizeNote(command.note());
+        validateNote(command.note());
 
         ChatMessageRecord message =
                 messageId == null
@@ -120,7 +120,7 @@ public class IssueService {
         Context context = context(message, citation, user);
         String routeTarget = routeTarget(category, context.provider());
         String issueId = "iss_" + SessionService.randomToken().substring(0, 16);
-        Map<String, Object> diagnostics = diagnostics(issueId, message, citation, context, note);
+        Map<String, Object> diagnostics = diagnostics(issueId, message, citation, context);
         reports.insert(
                 new IssueReportRecord(
                         issueId,
@@ -170,8 +170,7 @@ public class IssueService {
             String issueId,
             ChatMessageRecord message,
             CitationRecord citation,
-            Context context,
-            String note) {
+            Context context) {
         Map<String, Object> diagnostics = new LinkedHashMap<>();
         diagnostics.put("request_id", context.requestId());
         if (message != null) {
@@ -191,9 +190,6 @@ public class IssueService {
         }
         diagnostics.put("status", context.status());
         diagnostics.put("authorization_result", context.authorizationResult());
-        if (note != null) {
-            diagnostics.put("note", note);
-        }
         diagnostics.put("issue_id", issueId);
         return Map.copyOf(diagnostics);
     }
@@ -252,16 +248,15 @@ public class IssueService {
         return normalized;
     }
 
-    private String normalizeNote(String value) {
+    private void validateNote(String value) {
         if (value == null || value.isBlank()) {
-            return null;
+            return;
         }
         String normalized = value.trim();
         if (normalized.length() > MAX_NOTE_LENGTH) {
             throw IssueException.validation(
                     "NOTE_TOO_LONG", "note must be at most " + MAX_NOTE_LENGTH + " characters.");
         }
-        return normalized;
     }
 
     private String firstString(String json) {

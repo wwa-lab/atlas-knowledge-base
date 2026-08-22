@@ -55,7 +55,8 @@ class IssueApiTest {
         LoggedIn owner = login("kb_owner");
         Fixture fixture = fixture(owner, "git_markdown");
 
-        mockMvc.perform(
+        MvcResult issueResponse =
+                mockMvc.perform(
                         post("/api/v1/issues")
                                 .cookie(owner.session())
                                 .header(SessionService.CSRF_HEADER, owner.csrf())
@@ -75,14 +76,16 @@ class IssueApiTest {
                 .andExpect(jsonPath("$.diagnostics.request_id").value(fixture.requestId()))
                 .andExpect(jsonPath("$.diagnostics.logical_kb_id").value(fixture.logicalKbId()))
                 .andExpect(jsonPath("$.diagnostics.binding_id").value(fixture.bindingId()))
-                .andExpect(jsonPath("$.diagnostics.authorization_result").value("allow"));
+                .andExpect(jsonPath("$.diagnostics.authorization_result").value("allow"))
+                .andReturn();
+        assertThat(issueResponse.getResponse().getContentAsString()).doesNotContain("Line range looks wrong");
 
         IssueReportRecord report =
                 reports.findById(latestIssueId(owner.userId())).orElseThrow();
         assertThat(report.category()).isEqualTo("citation");
         assertThat(report.routeTarget()).isEqualTo("kb_correct_flow");
         assertThat(report.diagnosticsJson())
-                .contains("Line range looks wrong")
+                .doesNotContain("Line range looks wrong")
                 .doesNotContain("secret prompt body")
                 .doesNotContain("secret answer body")
                 .doesNotContain("secret source excerpt");
