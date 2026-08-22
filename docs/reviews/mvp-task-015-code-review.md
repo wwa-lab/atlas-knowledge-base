@@ -876,6 +876,212 @@ Do not merge until the three Major/P0 correctness gaps are remediated and covere
 
 ---
 
+# Gate A — Final Snapshot Re-review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Revision:** `8783a3d865fc83dfcdaa5095975b1d0f0345862f`
+- **Diff reviewed:** Complete `origin/main...HEAD`
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, specification, architecture/data flow/data model, detailed design, API implementation guide, ADR-0002/0004/0007
+- **Tasks reviewed:** `TASK-015`, with adjacent TASK-014/016/017/019–023 boundaries
+- **Code inspected:** All changed backend production and test files. The existing review document and PR narrative were not used as evidence.
+- **Objective:** Verify TASK-015 behavior and the final immutable retrieval-snapshot remediation.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 98%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** TASK-015 now implements a coherent retrieval boundary with per-turn authorization, parallel capacity-limited stub retrieval, truthful coverage, fail-closed versus partial behavior, composite-identity RRF deduplication, and immutable snapshot persistence. The remediation correctly carries the exact dispatch snapshot through initial ask and retry, including distinct KB and binding versions and refreshed classification. No Critical or Major design-compliance findings remain.
+
+---
+
+## Areas of Good Alignment
+
+- The immutable registry snapshot is assembled once in [`ChatService.resolveScope()`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:525), passed unchanged into retrieval, and returned as part of the turn.
+- [`RetrievalScope`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalScope.java:9) defensively copies both snapshot lists and uses immutable record entities.
+- [`RetrievalScope.configVersions()`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalScope.java:29) unambiguously separates `logical_kbs` and `bindings`, preventing identifier-domain ambiguity.
+- Initial user and assistant records persist the exact scope, binding set, and versions used for dispatch at [`ChatService.java:174`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:174).
+- Retry refreshes status, scope, binding set, both version domains, classification, coverage, and completion state in one conditional SQL update at [`ChatMessageRepository.java:128`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatMessageRepository.java:128).
+- The retry final event reloads the persisted message and uses its refreshed classification at [`ChatService.java:376`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:376) and [`ChatService.java:610`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:610).
+- Binding-access failures expose only the accepted actionable identifiers at [`ChatService.java:440`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/chat/ChatService.java:440); the exception and API-envelope layers defensively copy the allow-listed details.
+- KB authorization and Chat eligibility precede binding authorization; all current configured bindings are then re-authorized before retrieval at [`RetrievalOrchestrator.java:75`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:75).
+- Binding/profile feature flags, disable, kill switch, health, and freshness-proof failure are checked before adapter dispatch at [`RetrievalOrchestrator.java:404`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:404).
+- Authorization failure for one complete binding removes the whole KB from retrieval; item-level omission preserves the KB; security failures remove already-returned hits and suspend the KB.
+- Ordinary retrieval failures remain eligible for disclosed partial completion only when other grounded evidence exists; all-failed retrieval produces no answer.
+- Adapter calls are submitted before awaiting, with per-provider deadlines and semaphore capacity at [`ProviderExecution.java:38`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ProviderExecution.java:38). Timeout cancels work and releases capacity.
+- RRF uses the retriever-provided rank and deduplicates on all four required fields—canonical identity, URL, version, and fingerprint—while preserving every provenance path at [`ReciprocalRankFusion.java:24`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/ReciprocalRankFusion.java:24).
+- Model-stub dispatch carries identifiers only, not real retrieved excerpts.
+- Cancellation and terminal writes remain conditional, preventing cancelled or superseded generation from becoming completed.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+**Unused hardcoded Top-K placeholder**
+
+- **Design / task expected:** Top-K remains evaluation-frozen and must not be presented as an accepted numeric product decision.
+- **Code currently does:** [`StubRetriever.java:26`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/adapters/StubRetriever.java:26) declares `TOP_K = 5`, but the value is unused and the stub returns two fixtures.
+- **Why it matters:** It is harmless at runtime but can mislead later adapter work into treating five as approved.
+- **Recommended fix:** Remove the unused constant or bind a future adapter limit to explicitly approved configuration.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB and binding re-authorization | Implemented |
+| Immutable dispatch snapshot | Implemented |
+| KB and binding configuration-version persistence | Implemented |
+| Parallel stub retrieval | Implemented |
+| Per-provider timeout and concurrency capacity | Implemented |
+| Profile/binding flags and runtime controls | Implemented |
+| Complete-binding fail-closed behavior | Implemented |
+| Item-level omission | Implemented |
+| Ordinary partial coverage | Implemented |
+| All-failed/no-evidence refusal | Implemented |
+| Security failure and KB suspension | Implemented |
+| In-process RRF | Implemented |
+| Composite dedup and provenance preservation | Implemented |
+| Retry snapshot/classification refresh | Implemented |
+| Retry final-event classification | Implemented |
+| Cancellation/terminal-state safety | Implemented for the TASK-015 stub path |
+| Citation projection/historical resolution | Deferred to TASK-016 |
+| Governance mutation APIs and rollback | Deferred to TASK-017 |
+| Real provider adapters and production quota/backoff/circuit behavior | Deferred to TASK-019–021 |
+| Real model gateway | Deferred to TASK-022 |
+| Reconciliation and full telemetry | Deferred to TASK-023/027 |
+
+**Task coverage:**
+
+- TASK-015 is clearly implemented.
+- No TASK-015 requirement is missing.
+- No production behavior in the diff constitutes unsupported scope expansion.
+- Fixture controls and profile-gated stubs are consistent with the explicit stubs-first boundary.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- None identified.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None identified.
+- **Coupling issues:** None blocking; Chat depends on the retrieval application service while provider protocol behavior remains behind the adapter port.
+- **Hidden shortcuts:** None. Real-provider, evidence, governance, and model-channel work remains visibly deferred.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned.
+- **Validation behavior:** Aligned; 1–5 KB scope counts logical KBs, and Browse-only/model-ineligible/unavailable scope is rejected before retrieval.
+- **Retry / failure handling:** Aligned; retry refresh is a single guarded update and cannot create a second completed assistant record.
+- **User-visible behavior:** Aligned; partial coverage is explicit, all-failed retrieval refuses generation, and binding-access errors provide actionable IDs without source content.
+- **Immutability:** Aligned; records and defensive copies prevent mutation of the dispatch snapshot.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **External system handling:** Correctly stub-only; no real provider calls were introduced.
+- **Secret / credential safety:** Aligned; no tokens or secret references enter retrieval payloads or error details.
+- **Logging / audit hooks:** Content-free retrieval/security events are present; expanded telemetry remains TASK-027.
+- **Error propagation:** Typed security failures remain fail-closed; typed ordinary connector failures remain partial-capable; unknown exceptions do not silently degrade into trusted evidence.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Conservative freshness-required refusal when current freshness cannot be proven in this stub slice; real freshness verification belongs with real adapters/reconciliation.
+- **Required corrections:** None before merge
+- **Recommended non-blocking cleanup:** Remove the unused `TOP_K` placeholder.
+
+---
+
+## Recommended Fixes
+
+1. Remove the unused `StubRetriever.TOP_K` constant.
+2. Before real-provider rollout, ensure TASK-019–023 extend the current boundary with provider quota/backoff/circuit-breaker behavior, real freshness evidence, retrieval cancellation visibility, reconciliation, and telemetry.
+3. When the project defines its classification taxonomy, replace lexical “highest classification” selection with an approved explicit ordering.
+
+## Minimal Fix Path
+
+No blocking fix is required for TASK-015. The sole current cleanup is deleting one unused constant.
+
+---
+
+## Open Risks / Questions
+
+- The accepted design does not define a formal ordering for classification labels; current selection uses lexical comparison. This is not a TASK-015 blocker, but an explicit taxonomy/order is required before multiple differently classified KBs carry real content.
+- User cancellation is fully enforced for the current generation path and provider timeouts cancel provider work. Before real adapters, the request lifecycle should expose cancellation while retrieval itself is still running.
+- Quota, backoff, circuit-breaker state, real freshness verification, citations, conflicts, and real model excerpts are intentionally not claimed complete by this PR.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 98%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+None identified.
+
+### P1 (Fix Next Touch)
+
+None identified for the current stub-only task. Real adapters must complete the accepted quota/backoff/circuit-breaker and retrieval-cancellation behavior before production content is enabled.
+
+### P2 (Track)
+
+- Remove the unused hardcoded `TOP_K = 5` placeholder — [`StubRetriever.java:26`](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/adapters/StubRetriever.java:26) — configuration externalization / no invented thresholds.
+
+## Good Practices Confirmed
+
+- Feature-based `chat`, `retrieval`, `adapters`, `registry`, `access`, and `web` packages preserve modular-monolith boundaries.
+- Provider implementations depend on a small immutable adapter contract.
+- DTO-style retrieval values are records with defensive copies.
+- Runtime configuration uses typed `@ConfigurationProperties`.
+- Deployed retrieval budgets and feature flags are environment-provided; local values are explicitly fixture-only.
+- Duplicate provider handlers fail at startup.
+- Errors are typed and handled at the HTTP boundary with the accepted envelope.
+- Persistence updates use guarded state transitions rather than mutable shared entities.
+- No schema change or JPA auto-DDL behavior was introduced.
+
+## Recommendation
+
+Merge TASK-015. Carry the documented production-only integration risks into TASK-019–023 rather than expanding this stub PR beyond its accepted scope.
+
+## Verification
+
+- `git fetch origin --prune` — completed
+- HEAD confirmed as `8783a3d865fc83dfcdaa5095975b1d0f0345862f`
+- Prescribed `git diff --check` — passed
+- `./mvnw -q test` — passed: 117 tests, 0 failures, 0 errors, 0 skipped
+- Worktree remained unchanged
+
+# Gate A Merge Gate: Pass
+
+---
+
 # Gate A — Immutable-Scope Re-review
 
 # Code vs Design Review Report
