@@ -935,9 +935,11 @@ the live `config_version` remains monotonic and audit history is append-only.
 
 Disables and kill-switches the binding. If it is the last binding eligible for actual retrieval
 (binding feature flag/provider flag/health and KB chat eligibility are included), the KB follows
-`active|suspended -> retired`; otherwise the logical KB remains
-available through its other safe bindings. Retired KBs are excluded from catalog selection and
-retrieval by the existing lifecycle gate.
+`active|suspended -> retired`; otherwise the logical KB remains available through its other safe
+bindings. For a currently Suspended KB, the lifecycle itself is not counted as a sibling failure:
+another binding whose runtime gates would pass after remediation keeps the KB Suspended rather than
+making it terminally Retired. Retired KBs are excluded from catalog selection and retrieval by the
+existing lifecycle gate.
 
 ### POST `/admin/knowledge-bases/{logical_kb_id}/suspend-ownerless`
 

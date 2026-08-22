@@ -385,12 +385,16 @@ public class GovernanceService {
 
     private boolean wouldRetireKnowledgeBase(BindingRecord binding) {
         LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(binding.logicalKbId());
+        boolean requireActiveLifecycle = !"suspended".equals(kb.lifecycle());
         return bindings.findByLogicalKbId(binding.logicalKbId()).stream()
                 .noneMatch(
                         other ->
                                 !other.bindingId().equals(binding.bindingId())
                                         && RetrievalEligibility.isEligible(
-                                                kb, other, retrievalProperties));
+                                                kb,
+                                                other,
+                                                retrievalProperties,
+                                                requireActiveLifecycle));
     }
 
     private List<String> runtimeBindingIds(String logicalKbId) {

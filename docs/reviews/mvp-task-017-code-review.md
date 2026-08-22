@@ -4,8 +4,8 @@
 
 ## TASK-017 Gate A Review
 
-**Revision:** `7c35603eefdb1c51c848c63c68055ee939289abd`  
-**Base:** `origin/main` (`edaa08efab5bcde4b0d2dabfc49b91554fc233c2`)  
+**Revision:** `7c35603eefdb1c51c848c63c68055ee939289abd`
+**Base:** `origin/main` (`edaa08efab5bcde4b0d2dabfc49b91554fc233c2`)
 **Scope:** 20 changed production, test, migration, and SDD files. Read-only review.
 
 ### Alignment assessment
@@ -16,12 +16,12 @@ However, two ADR-0009 requirements are not fully implemented.
 
 ### Major findings
 
-1. **Major — Preview consumption is not atomic, permitting concurrent replay.**  
+1. **Major — Preview consumption is not atomic, permitting concurrent replay.**
    [GovernanceService.java:280](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:280) checks consumption with a separate `SELECT COUNT(*)`; [AuditEventRepository.java:96](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/audit/AuditEventRepository.java:96) searches unconstrained JSON text, and V3 defines no unique consumption key. Two concurrent confirmations can both pass before either audit mutation commits. This is directly reproducible in principle for an already-disabled/already-killed binding because [BindingRepository.java:242](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/registry/BindingRepository.java:242) returns without a versioned write, so optimistic locking does not arbitrate the race. Both requests can succeed and record the same preview as consumed twice, violating ADR-0009 lines 18–21. Sequential replay coverage does not exercise this race.
 
    Minimum correction: make preview claiming a first-class atomic database operation with a uniqueness constraint or conditional update, performed in the mutation transaction before changing governed state.
 
-2. **Major — Retire does not identify the final retrieval-enabled binding correctly.**  
+2. **Major — Retire does not identify the final retrieval-enabled binding correctly.**
    [GovernanceService.java:364](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:364) and [GovernanceService.java:373](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:373) consider only `enabled` and `kill_switch`. They ignore at least the binding feature flag, although retrieval eligibility explicitly requires it at [RetrievalOrchestrator.java:687](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:687). If the target is the last actually retrievable binding while another enabled but feature-flag-disabled binding remains, preview reports that the KB will stay available and retire leaves it Active with no retrievable binding. This contradicts ADR-0009 lines 25–26. The tests cover only a single-binding KB.
 
    Minimum correction: share one authoritative retrieval-enabled predicate—or a governance-safe equivalent—and test feature-flag-disabled/unavailable remaining bindings plus a genuinely safe multi-binding case.
@@ -103,3 +103,32 @@ None identified.
   - **Passed**
 - Final HEAD remained `2f13165850465af285984217218160afd7f9c8d8`.
 - Worktree was clean at review start. During review, untracked `docs/reviews/mvp-task-017-code-review.md` appeared from another workspace actor; it was not opened, used as evidence, or modified.
+
+## Gate B — Initial review (verbatim)
+
+# Gate B report for `git diff origin/main...HEAD` against TASK-017 / ADR-0009:
+
+Major
+
+1. Suspended KB retirement is misclassified as “final binding” and will retire the KB even when other retrieval-capable bindings still exist. `GovernanceService.retire()` allows retiring `active` or `suspended` KBs, then delegates to `wouldRetireKnowledgeBase()` ([GovernanceService.java:183](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:183), [GovernanceService.java:198](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:198)). That helper uses `RetrievalEligibility.isEligible()`, which hard-requires `knowledgeBase.lifecycle == "active"` ([RetrievalEligibility.java:17](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalEligibility.java:17)). For a suspended KB, every sibling binding becomes ineligible by definition, so retiring any one binding will always satisfy “last eligible binding” and force `logical_knowledge_base.lifecycle -> retired`. ADR-0009/API guide say retirement should depend on actual retrieval eligibility factors like feature flag/provider flag/health/chat eligibility, not merely current suspension, and “other safe bindings keep the KB available.” There is no test covering the suspended-KB case; the current tests only cover single-binding and feature-disabled siblings ([GovernanceApiTest.java:215](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/governance/GovernanceApiTest.java:215), [GovernanceApiTest.java:243](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/governance/GovernanceApiTest.java:243)).
+
+Critical
+
+- None.
+
+Minor
+
+- `git diff --check origin/main...HEAD` reports trailing whitespace, but only in the generated review artifact `docs/reviews/mvp-task-017-code-review.md`, which was explicitly excluded from this review scope.
+
+What I verified:
+
+- Read TASK-017 and ADR-0009 plus the relevant API/data-model/architecture sections.
+- Inspected the current `origin/main...HEAD` diff in the governance, retrieval, migration, and test files.
+- Ran `./mvnw -q -pl backend -Dtest=GovernanceApiTest,RetrievalOrchestratorDispatchSnapshotTest test` successfully.
+- Ran `git diff --check origin/main...HEAD`; only the excluded review file has whitespace issues.
+
+Assessment on requested focus areas:
+
+- Preview claim atomicity / rollback: implementation matches ADR intent. The claim insert happens before mutable-state reads and is inside the same transaction, so stale validation should roll the claim back rather than burn it ([GovernanceService.java:303](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:303), [GovernancePreviewClaimRepository.java:17](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernancePreviewClaimRepository.java:17)).
+- Shared retrieval eligibility: mostly centralized correctly and applied both in governance preview/retire logic and dispatch-time rereads, but the lifecycle check is too strict for suspended-KB retirement.
+- Auth/CSRF and API/migration portability: no additional blocker found in scope; admin endpoints are covered by CSRF tests and the migration applied under the targeted test run.

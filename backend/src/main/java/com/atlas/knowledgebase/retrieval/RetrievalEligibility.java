@@ -12,9 +12,22 @@ public final class RetrievalEligibility {
             LogicalKnowledgeBaseRecord knowledgeBase,
             BindingRecord binding,
             RetrievalProperties properties) {
+        return isEligible(knowledgeBase, binding, properties, true);
+    }
+
+    /**
+     * Evaluates binding/runtime gates while optionally ignoring the current lifecycle. Governance
+     * uses the latter form for a Suspended KB to decide whether another safe binding would keep the
+     * KB available for remediation and re-activation rather than terminal retirement.
+     */
+    public static boolean isEligible(
+            LogicalKnowledgeBaseRecord knowledgeBase,
+            BindingRecord binding,
+            RetrievalProperties properties,
+            boolean requireActiveLifecycle) {
         return knowledgeBase != null
                 && binding != null
-                && "active".equals(knowledgeBase.lifecycle())
+                && (!requireActiveLifecycle || "active".equals(knowledgeBase.lifecycle()))
                 && "chat_ready".equals(knowledgeBase.capability())
                 && knowledgeBase.modelEligible()
                 && knowledgeBase.health() != null
