@@ -4,6 +4,8 @@ import com.atlas.knowledgebase.evidence.CitationAssembler;
 import com.atlas.knowledgebase.evidence.CitationRecord;
 import com.atlas.knowledgebase.evidence.CitationRepository;
 import com.atlas.knowledgebase.retrieval.RetrievalTurn;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -17,14 +19,17 @@ public class AssistantCompletionService {
     private final ChatMessageRepository messages;
     private final CitationAssembler assembler;
     private final CitationRepository citations;
+    private final ObjectMapper objectMapper;
 
     public AssistantCompletionService(
             ChatMessageRepository messages,
             CitationAssembler assembler,
-            CitationRepository citations) {
+            CitationRepository citations,
+            ObjectMapper objectMapper) {
         this.messages = messages;
         this.assembler = assembler;
         this.citations = citations;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -38,13 +43,25 @@ public class AssistantCompletionService {
             String coverageJson,
             RetrievalTurn turn,
             Instant completedAt) {
-        int won = messages.completeIfInFlight(messageId, answerText, coverageJson, completedAt);
+        String conflictJson =
+                turn.conflict() == null ? null : writeJson(turn.conflict());
+        int won =
+                messages.completeIfInFlight(
+                        messageId, answerText, coverageJson, conflictJson, completedAt);
         if (won == 0) {
             return CompletionResult.lost();
         }
         CitationAssembler.Assembly assembly = assembler.assemble(messageId, turn, completedAt);
         citations.replaceForMessage(messageId, assembly.citations());
         return new CompletionResult(true, assembly.citations(), assembly.summaries());
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Unable to serialize conflict section", e);
+        }
     }
 
     public record CompletionResult(

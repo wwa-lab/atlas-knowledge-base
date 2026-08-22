@@ -50,6 +50,7 @@ public class ChatService {
     private final CitationAssembler citationAssembler;
     private final AssistantCompletionService completions;
     private final ChatPayloadProjector projections;
+    private final ChatHistoryAuthorizationService historyAuthorization;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -67,6 +68,7 @@ public class ChatService {
             CitationAssembler citationAssembler,
             AssistantCompletionService completions,
             ChatPayloadProjector projections,
+            ChatHistoryAuthorizationService historyAuthorization,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock) {
@@ -81,6 +83,7 @@ public class ChatService {
         this.citationAssembler = citationAssembler;
         this.completions = completions;
         this.projections = projections;
+        this.historyAuthorization = historyAuthorization;
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -122,7 +125,11 @@ public class ChatService {
         Map<String, Object> body = projections.thread(thread);
         List<Map<String, Object>> history = new ArrayList<>();
         for (ChatMessageRecord message : messages.findByThreadId(threadId)) {
-            history.add(projections.message(message));
+            boolean exposeCompletedContent =
+                    !"assistant".equals(message.role())
+                            || !"completed".equals(message.status())
+                            || historyAuthorization.canExpose(user, message);
+            history.add(projections.message(message, exposeCompletedContent));
         }
         body.put("messages", history);
         return body;
@@ -287,6 +294,12 @@ public class ChatService {
             throw new ChatNotFoundException(threadId);
         }
         if ("completed".equals(message.status())) {
+            if (!historyAuthorization.canExpose(user, message)) {
+                throw new ChatForbiddenException(
+                        "HISTORY_CONTENT_REDACTED",
+                        "Current source authorization no longer permits replaying this answer.",
+                        "request_access_or_reconnect");
+            }
             return replayCompleted(message);
         }
         if ("processing".equals(message.status()) || "streaming".equals(message.status())) {
@@ -402,6 +415,16 @@ public class ChatService {
                                 completeQuietly(flight.emitter);
                                 inFlight.remove(assistant.messageId(), flight);
                             } catch (RuntimeException failure) {
+                                if (flight.cancellation.isCancelled()) {
+                                    persistCancelled(assistant.messageId(), flight);
+                                    completeQuietly(flight.emitter);
+                                    inFlight.remove(assistant.messageId(), flight);
+                                    return;
+                                }
+                                if (!retrievalStillActive(assistant.messageId(), flight)) {
+                                    completeQuietly(flight.emitter);
+                                    return;
+                                }
                                 messages.failIfInFlight(assistant.messageId(), clock.instant());
                                 sendStreamError(flight, assistant.requestId(), failure);
                                 inFlight.remove(assistant.messageId(), flight);
@@ -457,7 +480,7 @@ public class ChatService {
         try {
             flight.emitter.send(SseEmitter.event().name("error").data(payload));
             flight.emitter.complete();
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) {
             completeQuietly(flight.emitter);
         }
     }

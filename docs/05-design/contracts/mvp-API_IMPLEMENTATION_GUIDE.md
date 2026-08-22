@@ -365,6 +365,21 @@ Non-compliant docs must never receive fabricated/title-only citations.
 
 **Errors:** `422` scope cardinality/capability; `403` unauthorized KB.
 
+### GET `/chats/{thread_id}`
+
+**Purpose:** Reopen a private thread with its current scope and message history.
+
+**Response:** The `messages` array contains the user questions and assistant
+states. Completed assistant messages include the persisted `citations`,
+`coverage`, `conflict`, and `classification` projections used by the Chat
+surface when the stored KB/binding scope still passes current authorization and
+runtime checks and current-user provider/binding authorization. If that boundary has drifted or access has been revoked, the
+completed assistant state retains only non-sensitive metadata and sets
+`content_redacted: true`; `answer`, `citations`, `coverage`, `conflict`, and
+`classification` are omitted. Incomplete or failed assistant messages do not
+expose answer bodies. The projection is subject to the same current-session
+ownership and authorization boundary as the thread itself.
+
 ### POST `/chats/{thread_id}/scope`
 
 **Purpose:** Change scope after answers exist → new thread or explicit branch.
@@ -449,6 +464,11 @@ Example final event:
 **Purpose:** Safe idempotent retry of incomplete request.
 
 **Response:** Same streaming contract as ask. Must not create unintended duplicate completed answers.
+
+For a completed answer with disclosed partial coverage, the endpoint is a
+safe replay of that persisted answer unless a later retrieval retry contract
+explicitly opts into a new generation; the client must keep the coverage
+disclosure visible and must not present the replay as full-scope coverage.
 
 ## Citation And Evidence Contract (TASK-016)
 

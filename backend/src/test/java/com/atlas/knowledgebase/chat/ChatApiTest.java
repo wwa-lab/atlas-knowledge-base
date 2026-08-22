@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atlas.knowledgebase.session.SessionProperties;
 import com.atlas.knowledgebase.session.SessionService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -37,6 +39,7 @@ class ChatApiTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private SessionProperties sessionProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private ObjectMapper objectMapper;
 
     @AfterEach
     void resetModelEntitlement() {
@@ -48,6 +51,169 @@ class ChatApiTest {
         mockMvc.perform(get("/api/v1/chats"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+    }
+
+    @Test
+    void completedThreadHistoryIncludesPersistedEvidenceProjection() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Chat History Projection");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        askAndAwaitStreamError(owner, threadId, "How do we rotate the gateway cert?");
+        String assistantId =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT message_id FROM chat_message
+                        WHERE thread_id = ? AND message_role = 'assistant' AND status = 'completed'
+                        """,
+                        String.class,
+                        threadId);
+        jdbcTemplate.update(
+                "UPDATE chat_message SET conflict_section = ? WHERE message_id = ?",
+                "{\"viewpoints\":[{\"claim\":\"Rotate every 90 days\"}]}",
+                assistantId);
+
+        String historyBody =
+                mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        JsonNode history = objectMapper.readTree(historyBody);
+        JsonNode assistant = null;
+        for (JsonNode message : history.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                assistant = message;
+                break;
+            }
+        }
+        assertThat(assistant).isNotNull();
+        assertThat(assistant.path("status").asText()).isEqualTo("completed");
+        assertThat(assistant.path("answer").asText()).isNotBlank();
+        assertThat(assistant.path("citations").get(0).path("citation_id").asText()).isNotBlank();
+        assertThat(assistant.path("coverage").path("successful").get(0).asText()).isNotBlank();
+        assertThat(assistant.path("conflict").path("viewpoints").get(0).path("claim").asText())
+                .isEqualTo("Rotate every 90 days");
+
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        jdbcTemplate.update("UPDATE binding SET enabled = 0 WHERE binding_id = ?", bindingId);
+        JsonNode redactedHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode redactedAssistant = null;
+        for (JsonNode message : redactedHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                redactedAssistant = message;
+                break;
+            }
+        }
+        assertThat(redactedAssistant).isNotNull();
+        assertThat(redactedAssistant.path("answer").isNull()).isTrue();
+        assertThat(redactedAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(redactedAssistant.has("citations")).isFalse();
+        assertThat(redactedAssistant.has("coverage")).isFalse();
+        assertThat(redactedAssistant.has("conflict")).isFalse();
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("HISTORY_CONTENT_REDACTED"));
+
+        jdbcTemplate.update(
+                "UPDATE binding SET enabled = 1, source_identity = ? WHERE binding_id = ?",
+                "{\"dataset_id\":\"ds_1\",\"retrieval_fixture\":\"binding_denied\"}",
+                bindingId);
+        JsonNode adapterDeniedHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode adapterDeniedAssistant = null;
+        for (JsonNode message : adapterDeniedHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                adapterDeniedAssistant = message;
+                break;
+            }
+        }
+        assertThat(adapterDeniedAssistant).isNotNull();
+        assertThat(adapterDeniedAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(adapterDeniedAssistant.path("answer").isNull()).isTrue();
+
+        String credentialOwnerId = "u_chat_credential_owner";
+        jdbcTemplate.update("DELETE FROM provider_connection WHERE user_id IN (?, ?)", owner.userId(), credentialOwnerId);
+        jdbcTemplate.update("DELETE FROM atlas_user WHERE user_id = ?", credentialOwnerId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO atlas_user (
+                  user_id, sso_subject, display_name, email, roles, model_entitled,
+                  created_at, updated_at)
+                VALUES (?, ?, 'Credential Owner', NULL, '[\"end_user\"]', 0,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                credentialOwnerId,
+                "sso-" + credentialOwnerId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO provider_connection (
+                  connection_id, user_id, provider, status, granted_scopes, expires_at,
+                  last_verified_at, secret_ref, updated_at)
+                VALUES (?, ?, 'github', 'connected', '[\"repo:read\"]', NULL,
+                        CURRENT_TIMESTAMP, 'fixture:connected', CURRENT_TIMESTAMP)
+                """,
+                "pc_fixture_credential_owner",
+                credentialOwnerId);
+        jdbcTemplate.update(
+                "UPDATE binding SET provider_profile = 'git_markdown', auth_method = 'delegated_user', credential_owner = ?, source_identity = ? WHERE binding_id = ?",
+                credentialOwnerId,
+                "{\"repo\":\"org/runbooks\"}",
+                bindingId);
+        JsonNode wrongPrincipalHistory =
+                objectMapper.readTree(
+                        mockMvc.perform(get("/api/v1/chats/" + threadId).cookie(owner.session()))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        JsonNode wrongPrincipalAssistant = null;
+        for (JsonNode message : wrongPrincipalHistory.path("messages")) {
+            if ("assistant".equals(message.path("role").asText())) {
+                wrongPrincipalAssistant = message;
+                break;
+            }
+        }
+        assertThat(wrongPrincipalAssistant).isNotNull();
+        assertThat(wrongPrincipalAssistant.path("content_redacted").asBoolean()).isTrue();
+        assertThat(wrongPrincipalAssistant.path("answer").isNull()).isTrue();
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages/" + assistantId + "/retry")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("HISTORY_CONTENT_REDACTED"));
     }
 
     @Test
