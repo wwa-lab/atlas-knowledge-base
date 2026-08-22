@@ -7,6 +7,7 @@ import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RetrievalScopeTest {
@@ -43,7 +44,14 @@ class RetrievalScopeTest {
 
         assertThat(scope.logicalKbIds()).containsExactly("lkb_snapshot");
         assertThat(scope.bindingIds()).containsExactly("bnd_snapshot");
-        assertThat(scope.configVersions()).containsEntry("lkb_snapshot", 7);
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> kbVersions =
+                (Map<String, Integer>) scope.configVersions().get("logical_kbs");
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> bindingVersions =
+                (Map<String, Integer>) scope.configVersions().get("bindings");
+        assertThat(kbVersions).containsEntry("lkb_snapshot", 7);
+        assertThat(bindingVersions).containsEntry("bnd_snapshot", 3);
         assertThat(scope.knowledgeBases().getFirst().bindings()).hasSize(1);
     }
 

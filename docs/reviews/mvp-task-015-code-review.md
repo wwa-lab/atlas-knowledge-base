@@ -873,3 +873,206 @@ None identified.
 Do not merge until the three Major/P0 correctness gaps are remediated and covered by regression tests. Binding authorization ordering and fail-closed behavior are otherwise materially aligned.
 
 # Gate A Merge Gate: Fail
+
+---
+
+# Gate A — Immutable-Scope Re-review
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **HEAD reviewed:** `adb84f808a32c6b22dc5286b9c4fb0ba193eb759`
+- **Diff reviewed:** Complete `origin/main...HEAD`, excluding the prior review file as evidence.
+- **Design reviewed:** Accepted MVP requirements, US-004/US-006, specification, architecture/data flow/data model, detailed design, API guide, TASK-015, traceability, ADR-0002/0004/0006/0007.
+- **Code inspected:** All changed backend sources, configuration, and tests.
+- **Objective:** Independently verify TASK-015 and the prior blockers after remediation.
+
+---
+
+## Overall Assessment
+
+- **Alignment rating:** 89%
+- **Verdict:** Partially aligned
+- **Rationale:** The remediation correctly establishes one immutable in-memory scope for authorization, dispatch, fusion, and most answer persistence. Composite dedup, cancellable bounded execution, provider/binding controls, authorization ordering, and failure branching are materially aligned. One persistence-boundary gap remains: the exact binding configuration snapshot is not recorded, and retry can retain a stale answer classification.
+
+---
+
+## Areas of Good Alignment
+
+- `RetrievalScope` defensively captures KB and binding records once; retrieval no longer reloads registry state before dispatch.
+- Authorization completes for all applicable bindings before retrieval fan-out begins.
+- `ProviderExecution` includes semaphore acquisition in the deadline, cancels timed-out or interrupted futures, and releases capacity after cooperative interruption.
+- Dedup uses canonical source identity, source URL, version, and fingerprint while retaining each provenance path.
+- Provider-level flags plus binding `enabled`, `kill_switch`, `feature_flag`, health, and conservative freshness handling gate dispatch.
+- Ordinary connector failures remain disclosed partial coverage when other grounded evidence succeeds; authorization/security failures are not treated as ordinary partial success.
+- Security failures suspend the logical KB and discard its fused evidence.
+- Browse-only/model-ineligible content is excluded.
+- API errors use the accepted envelope, and retrieval errors include coverage details.
+- DTOs/results are records or defensively copied immutable collections.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+**Persisted answer snapshot is incomplete and retry classification can remain stale**
+
+- **Design / task expected:** REQ-CHAT-004 and FR-35 require the exact scope, configuration version, and binding set for each answer. The accepted data model defines `chat_message.config_versions` as the “KB/binding config versions used” and stores the inherited highest classification.
+- **Code currently does:**
+  - `RetrievalScope.configVersions()` records only each KB’s version, although every `BindingRecord` also has `configVersion`: `RetrievalScope.java:29-36`.
+  - Initial and retry persistence both use that incomplete map: `ChatService.java:183-185`, `201-203`, and `302-307`.
+  - Retry refreshes scope, binding set, and config versions but does not update `classification`: `ChatMessageRepository.java:128-144`.
+  - The final event reads classification from the old stored assistant row: `ChatService.java:386-392`, `616-626`.
+- **Why it matters:** A binding may change while retaining the same stable ID. History then cannot identify which binding configuration authorized and produced the answer. A retry after a classification/configuration change may be labeled with the previous classification, weakening audit and security traceability.
+- **Recommended fix:** Persist both KB and binding config versions from `RetrievalScope`, and update classification atomically when moving a retryable assistant row back to `processing`. Add a retry regression test that changes a binding config version and classification and verifies the persisted/final snapshot.
+
+### Minor
+
+**Binding authorization error drops the contract’s actionable target identifiers**
+
+- **Design / task expected:** The API guide’s `KB_BINDING_ACCESS_MISSING` response includes `logical_kb_id` and `binding_id`.
+- **Code currently does:** `RetrievalTurn` supplies both identifiers, but `retrieveOrThrow` converts the result to `ChatForbiddenException`, whose handler cannot emit details: `ChatService.java:438-445`, `ChatForbiddenException.java:3-20`, `ChatExceptionHandler.java:13-16`.
+- **Why it matters:** The client receives `reconnect_or_request_access` without knowing which source needs action.
+- **Recommended fix:** Carry allow-listed KB/binding details through authorization/security exceptions.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Per-turn KB/binding authorization | Implemented |
+| Immutable dispatch scope | Implemented |
+| Exact persisted answer snapshot | Partial |
+| Parallel adapter fan-out | Implemented |
+| Independent timeout/concurrency | Implemented |
+| Cancellation and capacity restoration | Implemented for interruptible adapters |
+| RRF | Implemented |
+| REQ-RAG-015 composite dedup/provenance | Implemented |
+| Coverage accounting | Implemented |
+| Ordinary partial failure | Implemented |
+| Binding-access/security fail-closed | Implemented |
+| Item-level omission | Implemented |
+| Profile/binding flags and health | Implemented |
+| Freshness-required safety | Implemented conservatively |
+| Real provider adapters/citations | Intentionally deferred |
+
+**Task coverage:**
+
+- Clearly implemented: TASK-015 retrieval orchestration, stubs, authorization, fan-out, RRF, coverage, partial/fail-closed/item-omit behavior.
+- Partially implemented: exact persisted KB/binding configuration and classification snapshot.
+- Not yet reflected by design intent: quota/backoff/circuit-breaker internals and real adapters, intentionally deferred by the accepted task plan.
+- Unmapped changes: None identified.
+
+**Behaviors implemented but not clearly supported by design:**
+
+- None identified. Conservative rejection of all `freshness_required` KBs is a fail-closed stub interpretation because current freshness evidence cannot yet be proven.
+
+---
+
+## Architectural / Design Boundary Check
+
+- **Module boundary violations:** None identified.
+- **Misplaced responsibilities:** None blocking.
+- **Coupling issues:** Persisted answer provenance flattens configuration identity to KB versions and omits binding versions.
+- **Hidden shortcuts:** Retry refreshes most of the snapshot but leaves classification unchanged.
+
+---
+
+## Behavior and State Check
+
+- **Workflow / state handling:** Aligned except retry snapshot persistence.
+- **Validation behavior:** Aligned.
+- **Retry / failure handling:** Safe terminal-state CAS and retrieval re-execution are aligned; retry metadata refresh is incomplete.
+- **User-visible behavior:** Coverage and failure envelopes align; authorization errors omit source identifiers.
+
+---
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned; provider protocols remain behind retrievers.
+- **External system handling:** Stub-only as TASK-015 permits.
+- **Secret / credential safety:** Aligned; no provider/model secrets introduced.
+- **Logging / audit hooks:** Content-free retrieval/security audit present.
+- **Error propagation:** Typed security, ordinary, timeout, and unknown paths align.
+
+---
+
+## Readiness Verdict
+
+- **Suitable for merge:** No
+- **Suitable for further testing:** Yes
+- **Blockers:** Persist exact binding configuration versions and current retry classification.
+- **Acceptable deviations:** Stub-only adapters; conservative freshness handling; documented in-process RRF pending the remaining ADR reconciliation.
+- **Required corrections:** Major finding above.
+
+---
+
+## Recommended Fixes
+
+1. Extend `RetrievalScope.configVersions()` to include binding configuration versions in an unambiguous persisted structure.
+2. Add classification to `markProcessingIfRetryable(...)` and update it atomically with the refreshed snapshot.
+3. Add an integration test covering KB version, binding version, binding set, and classification after retry.
+4. Carry `blockLogicalKbId` and `blockBindingId` into authorization/security API details.
+
+## Minimal Fix Path
+
+- No orchestration rewrite is needed.
+- Change the derived persistence projection from `RetrievalScope`.
+- Add one retry repository argument/column update.
+- Add focused scope and Chat retry regression assertions.
+
+---
+
+## Open Risks / Questions
+
+- RRF/dedup internals remain ADR-gated in the accepted architecture, while TASK-015 explicitly permits the documented in-process implementation. This is an SDD reconciliation risk, not an additional code blocker.
+- Future real adapters must honor interruption or provide explicit transport cancellation; the current executor correctly exercises the cooperative interrupt contract.
+
+# Architecture Review: TASK-015 Retrieval Orchestrator
+
+## Score: 90%
+
+## Violations Found
+
+### P0 (Must Fix)
+
+- [ ] Persisted per-answer configuration identity omits binding config versions, and retry can retain stale classification — `RetrievalScope.java:29-36`, `ChatMessageRepository.java:128-144`, `ChatService.java:302-307` — provenance ownership, immutable state, and security-classification integrity.
+
+### P1 (Fix Next Touch)
+
+None identified.
+
+### P2 (Track)
+
+- [ ] Binding-access failures discard the KB/binding identifiers already available from the orchestrator — `ChatService.java:438-445`, `ChatExceptionHandler.java:13-16` — API actionability and error-boundary alignment.
+
+## Good Practices Confirmed
+
+- Feature-based `chat`, `retrieval`, `adapters`, `registry`, and shared web packages.
+- Modular-monolith and replaceable adapter boundaries follow ADR-0002/0004.
+- Environment-owned provider budgets and profile flags.
+- Immutable records and defensive collection copies at asynchronous boundaries.
+- Bounded virtual-thread execution with deadline-aware semaphore acquisition and cancellation.
+- Composite provenance-preserving dedup.
+- Security failures remain in application orchestration and trigger suspension/audit.
+- No schema, secret, provider-protocol, or frontend boundary drift.
+
+## Verification
+
+- `git fetch origin` — completed.
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — passed.
+- `./mvnw -q test` — passed: 116 tests, 0 failures, 0 errors, 0 skipped.
+- Worktree remained clean; no files were changed.
+
+## Recommendation
+
+Keep the new immutable scope and execution architecture. Complete its persistence projection by recording binding versions and refreshing classification on retry, then rerun backend verification and a fresh Gate A review.
+
+# Gate A Merge Gate: Fail

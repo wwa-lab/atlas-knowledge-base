@@ -13,7 +13,12 @@ public class ChatExceptionHandler {
     @ExceptionHandler(ChatForbiddenException.class)
     public ResponseEntity<Map<String, Object>> forbidden(ChatForbiddenException ex) {
         return ApiErrorResponses.entity(
-                HttpStatus.FORBIDDEN, "authorization", ex.code(), ex.getMessage(), ex.nextStep());
+                HttpStatus.FORBIDDEN,
+                "authorization",
+                ex.code(),
+                ex.getMessage(),
+                ex.nextStep(),
+                ex.details());
     }
 
     @ExceptionHandler(ChatNotFoundException.class)

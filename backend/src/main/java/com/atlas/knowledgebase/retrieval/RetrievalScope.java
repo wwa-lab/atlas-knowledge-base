@@ -26,14 +26,22 @@ public record RetrievalScope(List<KnowledgeBaseSnapshot> knowledgeBases) {
                 .toList();
     }
 
-    public Map<String, Integer> configVersions() {
-        Map<String, Integer> versions = new LinkedHashMap<>();
+    public Map<String, Object> configVersions() {
+        Map<String, Integer> logicalKbVersions = new LinkedHashMap<>();
+        Map<String, Integer> bindingVersions = new LinkedHashMap<>();
         knowledgeBases.forEach(
-                snapshot ->
-                        versions.put(
-                                snapshot.knowledgeBase().logicalKbId(),
-                                snapshot.knowledgeBase().configVersion()));
-        return Map.copyOf(versions);
+                snapshot -> {
+                    logicalKbVersions.put(
+                            snapshot.knowledgeBase().logicalKbId(),
+                            snapshot.knowledgeBase().configVersion());
+                    snapshot.bindings().forEach(
+                            binding ->
+                                    bindingVersions.put(
+                                            binding.bindingId(), binding.configVersion()));
+                });
+        return Map.of(
+                "logical_kbs", Map.copyOf(logicalKbVersions),
+                "bindings", Map.copyOf(bindingVersions));
     }
 
     public record KnowledgeBaseSnapshot(

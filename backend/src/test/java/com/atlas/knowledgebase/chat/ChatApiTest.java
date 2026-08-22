@@ -99,8 +99,13 @@ class ChatApiTest {
         assertThat(status).isEqualTo("incomplete_cancelled");
         assertThat(answer).isNull();
         jdbcTemplate.update(
-                "UPDATE logical_knowledge_base SET config_version = 2 WHERE logical_kb_id = ?",
+                "UPDATE logical_knowledge_base SET config_version = 2, classification = 'restricted' WHERE logical_kb_id = ?",
                 kbId);
+        String retriedBindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        jdbcTemplate.update(
+                "UPDATE binding SET config_version = 2 WHERE binding_id = ?", retriedBindingId);
 
         MvcResult retry =
                 mockMvc.perform(
@@ -130,6 +135,14 @@ class ChatApiTest {
                         String.class,
                         assistantId);
         assertThat(retriedVersions).contains("\"" + kbId + "\":2");
+        assertThat(retriedVersions).contains("\"" + retriedBindingId + "\":2");
+        String retriedClassification =
+                jdbcTemplate.queryForObject(
+                        "SELECT classification FROM chat_message WHERE message_id = ?",
+                        String.class,
+                        assistantId);
+        assertThat(retriedClassification).isEqualTo("restricted");
+        assertThat(retryBody).contains("restricted");
         mockMvc.perform(
                         post("/api/v1/chats/" + threadId + "/scope")
                                 .cookie(owner.session())
@@ -425,6 +438,44 @@ class ChatApiTest {
                 jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM chat_message WHERE thread_id = ?", Integer.class, threadId);
         assertThat(messages).isZero();
+    }
+
+    @Test
+    void bindingAccessFailureNamesTheActionableKnowledgeBaseAndBinding() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Binding Denied KB",
+                        "{\"dataset_id\":\"ds_denied\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"binding_denied\"}");
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
+                                .content("{\"question\":\"What is the runbook?\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("KB_BINDING_ACCESS_MISSING"))
+                .andExpect(jsonPath("$.error.details.logical_kb_id").value(kbId))
+                .andExpect(jsonPath("$.error.details.binding_id").value(bindingId));
     }
 
     private String activateDify(LoggedIn owner, String name) throws Exception {

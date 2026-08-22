@@ -129,18 +129,20 @@ public class ChatMessageRepository {
             String messageId,
             String logicalKbScopeJson,
             String bindingSetJson,
-            String configVersionsJson) {
+            String configVersionsJson,
+            String classification) {
         return jdbcTemplate.update(
                 """
                 UPDATE chat_message
                 SET status = ?, answer_text = NULL, logical_kb_scope = ?, binding_set = ?,
-                    config_versions = ?, coverage = NULL, completed_at = NULL
+                    config_versions = ?, classification = ?, coverage = NULL, completed_at = NULL
                 WHERE message_id = ? AND status IN ('incomplete_cancelled', 'failed')
                 """,
                 "processing",
                 logicalKbScopeJson,
                 bindingSetJson,
                 configVersionsJson,
+                classification,
                 messageId);
     }
 

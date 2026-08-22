@@ -209,7 +209,7 @@ public class ChatService {
                                 null));
         threads.touch(threadId, now);
         audit(user.userId(), actualScope.logicalKbIds().getFirst(), "chat_ask", "allow", "ok");
-        return startGeneration(user, assistant, question, resolved, turn, false);
+        return startGeneration(user, assistant, question, turn, false);
     }
 
     public Map<String, Object> cancel(AtlasUserRecord user, String threadId, String messageId) {
@@ -272,7 +272,7 @@ public class ChatService {
         ResolvedScope resolved = resolveScope(user, readIds(thread.selectedLogicalKbIdsJson()));
         String question = latestUserQuestion(threadId, message);
         RetrievalTurn turn = retrieveOrThrow(user, question, resolved);
-        return startGeneration(user, message, question, resolved, turn, true);
+        return startGeneration(user, message, question, turn, true);
     }
 
     private SseEmitter replayCompleted(ChatMessageRecord message) {
@@ -293,7 +293,6 @@ public class ChatService {
             AtlasUserRecord user,
             ChatMessageRecord assistant,
             String question,
-            ResolvedScope resolved,
             RetrievalTurn turn,
             boolean retry) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
@@ -304,7 +303,8 @@ public class ChatService {
                                 assistant.messageId(),
                                 writeJson(turn.scope().logicalKbIds()),
                                 writeJson(turn.scope().bindingIds()),
-                                writeJson(turn.scope().configVersions()))
+                                writeJson(turn.scope().configVersions()),
+                                highestClassification(turn.scope()))
                         == 0) {
             inFlight.remove(assistant.messageId(), flight);
             throw new ChatConflictException("NOT_RETRYABLE", "This message cannot be retried.");
@@ -320,7 +320,7 @@ public class ChatService {
                 .start(
                         () ->
                                 runGeneration(
-                                        user, assistant, question, resolved, turn, retry, flight));
+                                        user, assistant, question, turn, retry, flight));
         return emitter;
     }
 
@@ -328,7 +328,6 @@ public class ChatService {
             AtlasUserRecord user,
             ChatMessageRecord assistant,
             String question,
-            ResolvedScope resolved,
             RetrievalTurn turn,
             boolean retry,
             InFlight flight) {
@@ -442,7 +441,10 @@ public class ChatService {
             throw new ChatForbiddenException(
                     "KB_BINDING_ACCESS_MISSING",
                     "One complete source of the selected knowledge base is unavailable for this turn.",
-                    "reconnect_or_request_access");
+                    "reconnect_or_request_access",
+                    Map.of(
+                            "logical_kb_id", turn.blockLogicalKbId(),
+                            "binding_id", turn.blockBindingId()));
         }
         if (turn.block() == RetrievalTurn.Block.BINDING_UNAVAILABLE) {
             throw new ChatRetrievalException(
@@ -544,8 +546,6 @@ public class ChatService {
             throw new ChatValidationException("SCOPE_DUPLICATE", "Duplicate knowledge bases are not allowed.");
         }
         List<String> logicalKbIds = List.copyOf(unique);
-        List<String> bindingIds = new ArrayList<>();
-        Map<String, Integer> versions = new LinkedHashMap<>();
         List<RetrievalScope.KnowledgeBaseSnapshot> snapshots = new ArrayList<>();
         String classification = null;
         for (String logicalKbId : logicalKbIds) {
@@ -569,21 +569,15 @@ public class ChatService {
                         "NOT_CHAT_READY",
                         "Knowledge base is not Chat-ready: " + logicalKbId);
             }
-            versions.put(logicalKbId, kb.configVersion());
             if (classification == null
                     || (kb.classification() != null && kb.classification().compareTo(classification) > 0)) {
                 classification = kb.classification();
             }
             List<BindingRecord> currentBindings = bindings.findByLogicalKbId(logicalKbId);
-            for (BindingRecord binding : currentBindings) {
-                bindingIds.add(binding.bindingId());
-            }
             snapshots.add(new RetrievalScope.KnowledgeBaseSnapshot(kb, currentBindings));
         }
         return new ResolvedScope(
                 logicalKbIds,
-                List.copyOf(bindingIds),
-                versions,
                 classification == null ? "internal" : classification,
                 new RetrievalScope(snapshots));
     }
@@ -664,6 +658,14 @@ public class ChatService {
         }
     }
 
+    private String highestClassification(RetrievalScope scope) {
+        return scope.knowledgeBases().stream()
+                .map(snapshot -> snapshot.knowledgeBase().classification())
+                .filter(value -> value != null && !value.isBlank())
+                .max(String::compareTo)
+                .orElse("internal");
+    }
+
     private void audit(String userId, String logicalKbId, String action, String authorization, String status) {
         try {
             auditEvents.insert(
@@ -697,8 +699,6 @@ public class ChatService {
 
     private record ResolvedScope(
             List<String> logicalKbIds,
-            List<String> bindingIds,
-            Map<String, Integer> configVersions,
             String classification,
             RetrievalScope retrievalScope) {}
 
