@@ -735,3 +735,154 @@ None identified.
 5. Re-run the same frontend, backend, and exact diff checks.
 
 **Gate A verdict: FAIL — one Major authorization-boundary defect remains.**
+
+## Gate A — current-principal rerun (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+
+- **Design reviewed:** MVP product baseline, accepted specification, architecture/data flow/data model, detailed design, API guide, ADR-0002/0003/0004/0006/0007/0008/0009
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` — TASK-024
+- **Diff reviewed:** `git diff origin/main...HEAD` at `4809f83`
+- **Objective:** Fresh-context Gate A review, emphasizing the prior authorization-principal and cancellation findings
+- **Reviewer posture:** Review-only; no files modified
+
+## Overall Assessment
+
+- **Alignment rating:** 94%
+- **Verdict:** Aligned with minor deviations
+- **Gate A verdict:** **PASS**
+- **Rationale:** The prior blocking authorization defect is corrected. History GET and completed replay share the same current-user authorization service; delegated access checks the viewer’s provider connection, while `sso_group_mapping` explicitly bypasses individual OAuth state and still requires adapter authorization. The cancellation path no longer produces the prior completed-emitter exception. No Critical, Major, or architecture P0 issues remain.
+
+## Areas of Good Alignment
+
+- `ChatHistoryAuthorizationService.canExpose()` is shared by:
+  - `ChatService.get()` for reopened history.
+  - `ChatService.retry()` for completed-answer replay.
+- Delegated GitHub/Confluence checks query `provider_connection` with `user.userId()`, not `binding.credentialOwner()`.
+- `sso_group_mapping` is explicitly handled and still proceeds through the current-user adapter authorization decision.
+- Missing, non-connected, expired, revoked, reconnect-required, malformed, unknown-provider, timeout, and adapter-denied states fail closed through the combined checks.
+- The regression fixture deliberately makes the viewer and credential owner different, connects only the credential owner, then proves:
+  - GET history redacts the completed assistant payload.
+  - Completed retry returns `403 HISTORY_CONTENT_REDACTED`.
+  - The prior credential-owner lookup would have incorrectly allowed this fixture.
+- History redaction removes answer, citations, coverage, conflict, and classification while retaining permitted state metadata.
+- Cancellation now checks cancellation/persisted state before error emission, and already-completed emitter sends are safely absorbed.
+- Terminal persistence remains compare-and-set based: cancellation cannot be overwritten by completion and vice versa.
+- Frontend session/CSRF handling uses opaque cookies and memory-only CSRF state; no provider/model credentials or browser storage were introduced.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+None identified.
+
+### Minor
+
+#### Group-mapping and provider-state branches lack direct regression tests
+
+- **Expected:** Security-sensitive authorization branches should have direct coverage.
+- **Current coverage:** The viewer-versus-credential-owner missing-connection case is strong, but there is no direct Chat history/replay test for:
+  - positive `sso_group_mapping`;
+  - viewer connected while credential owner is disconnected;
+  - explicit expired, revoked, reconnect-required, or expired-by-time states.
+- **Impact:** The implementation is straightforward and fail-closed, so this is not merge-blocking, but these branches remain more vulnerable to later regression.
+- **Recommendation:** Add parameterized authorization tests during the next security-focused touch or TASK-031.
+
+#### Cancellation event sequencing is not asserted directly
+
+- The focused concurrency test triggers the relevant cancellation/retrieval race and the prior completed-emitter exception is gone, but it does not capture and assert the exact post-cancel SSE event sequence.
+- Add a recording emitter or MVC-level race test if this path changes again.
+
+#### Chat UI integration coverage remains light
+
+- Utility parsing/state tests pass, but no mounted `ChatView` test covers reservation-to-cancel, history redaction, or partial replay behavior.
+- Non-blocking for TASK-024; recommended before the later accessibility/security gates.
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Shared GET/replay authorization decision | Implemented |
+| Current viewer principal for delegated connections | Implemented and regression-tested |
+| Explicit `sso_group_mapping` behavior | Implemented; direct test missing |
+| Current KB/binding/config/runtime checks | Implemented |
+| Current-user adapter authorization | Implemented fail-closed |
+| Redacted history projection | Implemented |
+| Completed retry authorization | Implemented |
+| Cancellation versus terminal persistence | Implemented and tested |
+| Post-cancel emitter safety | Implemented; focused run no longer emits the prior exception |
+| Selector, streaming, coverage, conflict, retry | Implemented |
+| Session/CSRF and secret safety | Implemented |
+| Mounted component behavior | Partial |
+
+**Task coverage:**
+
+- Clearly implemented: TASK-024 landing experience, selector, disabled reasons, streaming state, coverage/conflict presentation, cancellation, retry/replay, scope branching/repair, history reopening, and CSRF/session handling.
+- Partially covered by tests: authorization-state matrix and mounted UI transitions.
+- Tasks missing from code: None identified.
+- Unmapped scope creep: None significant.
+
+## Architectural / Design Boundary Check
+
+### Architecture Review Score: 86%
+
+- **P0:** None.
+- **P1:** `frontend/src/views/ChatView.vue` remains a 773-line component containing transport, CSRF caching, SSE parsing, business state, orchestration, and rendering. A later touch should extract a Chat API client and store/composable boundary.
+- **P2:** Theme values remain broadly inline rather than centralized as reusable design tokens.
+- **Good practices:** Backend authorization is centralized and reused; provider interaction stays behind ports; code remains within the Chat domain; terminal completion/citation persistence is transactional; no new credential-bearing state exists.
+
+## Behavior and State Check
+
+- **Workflow/state handling:** Aligned.
+- **Validation behavior:** Fail-closed and aligned.
+- **Retry/cancel/failure handling:** Aligned; completed replay is gated and incomplete retry preserves the same assistant identity.
+- **User-visible behavior:** Aligned for redaction, partial coverage, conflict, scope repair, and structured errors.
+- **Persistence behavior:** Aligned; losing cancellation/completion transitions cannot overwrite the winner.
+
+## Integration Check
+
+- **Adapter boundaries:** Aligned.
+- **Provider connection boundary:** Aligned with the current viewer.
+- **External system handling:** Correctly fail-closed; real-provider proof remains appropriately deferred to TASK-019–021.
+- **Secret/credential safety:** Aligned.
+- **Logging/audit:** No protected content or credentials found.
+- **Error propagation:** Aligned; completed-emitter races no longer escape as uncaught exceptions in focused verification.
+
+## Verification Results
+
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — passed.
+- `git diff --check origin/main...HEAD` — passed.
+- `./mvnw -q -pl backend -Dtest=ChatApiTest,ChatMessageTerminalUpdateTest,ChatServiceConcurrencyTest test` — passed:
+  - `ChatApiTest`: 20 passed.
+  - `ChatMessageTerminalUpdateTest`: 2 passed.
+  - `ChatServiceConcurrencyTest`: 1 passed.
+  - No completed-`ResponseBodyEmitter` exception appeared.
+- `frontend/npm test` — passed: 2 files, 10 tests.
+- `frontend/npm run build` — passed.
+- Worktree remained clean.
+- Codex log protection trigger remained installed; WAL remained at 0 bytes.
+
+## Readiness Verdict
+
+- **Suitable for merge:** Yes, subject to required Gate B and green PR checks.
+- **Blockers before proceeding:** None from Gate A.
+- **Acceptable deviations:** Page-local Chat architecture for this slice, conservative history redaction, and deferred component/security-matrix coverage.
+- **Required corrections:** None.
+- **Recommended non-blocking corrections:** Add direct `sso_group_mapping`/connection-state tests and mounted Chat cancellation/redaction tests.
+
+## Minimal Fix Path
+
+No blocking fix is required. The smallest follow-up hardening would add parameterized history/replay authorization tests without changing production behavior.
+
+## Open Risks / Questions
+
+- Live adapter handling of delegated versus group-mapped provider access remains spike-gated and must preserve the current-user decision when TASK-019–021 land.
+- The large `ChatView` component will become increasingly difficult to extend if later frontend tasks continue adding transport and state directly.
+
+**Gate A verdict: PASS — no Critical, Major, or architecture P0 findings remain.**
