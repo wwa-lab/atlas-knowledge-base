@@ -56,3 +56,12 @@ Review comment:
 
 - [P2] Ignore stale catalog filter responses — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:130-132
   When two reset catalog loads overlap, the older response can still merge into `items` and replace `nextCursor` after a newer filter/search request has already applied. For example, a user can submit filter A, quickly submit filter B, and if A resolves last the list becomes mixed or cursor-paginated for the wrong query; capture the query/request id and only apply the response if it still matches the current applied filters.
+
+## Gate A — fresh rerun after catalog request guard (verbatim)
+
+The catalog UI largely implements the intended flow, but it exposes a Start Chat action for KB states that the Chat selector rejects. That creates a user-visible broken path for suspended or unhealthy chat-ready entries.
+
+Review comment:
+
+- [P2] Hide Start Chat for non-selectable KBs — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:385-385
+  For owner/admin users who can view suspended KBs, or for chat-ready KBs whose health is unavailable, this condition still renders Start Chat because `chat_start_allowed` only reflects capability/model eligibility. The Chat view then applies the stricter `isChatSelectable` lifecycle/health checks and lands the user on an error state instead of presenting the disabled reason in detail, so the detail affordance is misleading for those catalog entries.

@@ -15,6 +15,7 @@ import {
   type CatalogItem,
   type CatalogPage,
 } from '../catalog/catalogUtils'
+import { isChatSelectable } from '../chat/chatUtils'
 
 class CatalogApiError extends Error {
   readonly status: number
@@ -382,7 +383,7 @@ watch(selectedId, (value) => {
             <p v-if="detail.description" class="lede">{{ detail.description }}</p>
           </div>
           <RouterLink
-            v-if="detail.access?.authorized === true && detail.chat_start_allowed"
+            v-if="detail.chat_start_allowed && isChatSelectable(detail)"
             class="button button-primary"
             :to="{ name: 'chat', query: { logical_kb_id: detail.logical_kb_id } }"
           >
