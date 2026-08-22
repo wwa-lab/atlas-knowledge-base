@@ -96,3 +96,12 @@ Review comment:
 
 - [P2] Surface containment in user-visible coverage — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-614`
   When a retriever returns both safe hits and contained hits, this adds a new `prompt_injection_contained` coverage key and sets `partial_coverage`, but the existing Chat coverage contract/UI only renders `successful`, `failed`, `timed_out`, `quota_limited`, and `item_omitted`. The user will see a partial-coverage banner with the binding still listed as successful and no contained/omitted reason, so the prompt-injection containment is not actually reported in the visible coverage details. Add this to an existing displayed omission path or update the client/API contract to render the new field.
+
+## Gate A — follow-up after coverage consumer fix
+
+The containment flow is surfaced to the client, but backend analytics still classifies a contained partial answer as a success. This loses the security-boundary outcome from monitoring.
+
+Review comment:
+
+- [P2] Include contained evidence in partial telemetry — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-614`
+  When the only degraded condition is `prompt_injection_contained`, this marks the turn coverage as partial, but `ChatService.analyticsOutcome()` only counts `failed`, `timed_out`, and `quota_limited` as partial. Those security-contained answers will still be recorded as successful in analytics/monitoring, so TASK-028 containment is reported to the client but lost from backend outcome metrics; update the backend partial-outcome check to include this new coverage marker or `partial_coverage`.

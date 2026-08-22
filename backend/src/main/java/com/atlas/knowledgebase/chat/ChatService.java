@@ -740,6 +740,8 @@ public class ChatService {
         return hasItems(turn.coverage().get("failed"))
                         || hasItems(turn.coverage().get("timed_out"))
                         || hasItems(turn.coverage().get("quota_limited"))
+                        || hasItems(turn.coverage().get("prompt_injection_contained"))
+                        || Boolean.TRUE.equals(turn.coverage().get("partial_coverage"))
                 ? "partial"
                 : "success";
     }
