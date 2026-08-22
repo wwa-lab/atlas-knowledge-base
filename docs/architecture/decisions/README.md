@@ -20,6 +20,7 @@ Use ADRs for durable, cross-cutting decisions required by `PROJECT_RULES.md`.
 | ADR-0007 | Local SME model gateway for grounded generation | Accepted |
 | ADR-0008 | Immutable evidence resolution and private citation access | Accepted |
 | ADR-0009 | Content-free governance previews and immutable binding rollback | Accepted |
+| ADR-0010 | Separate boundary for reporter-authored issue notes | Accepted |
 
 Stack ADRs ADR-0002–0006 are Accepted. ADR-0007 amends model-channel topology
 and Copilot credential location. ADR-0008 closes the TASK-016 implementation

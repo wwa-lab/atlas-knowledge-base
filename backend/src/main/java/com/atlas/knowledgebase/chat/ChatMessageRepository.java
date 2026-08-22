@@ -82,6 +82,27 @@ public class ChatMessageRepository {
                 .findFirst();
     }
 
+    /** Looks up an assistant message only through the reporter's active private thread. */
+    public Optional<ChatMessageRecord> findOwnedAssistantById(String messageId, String userId) {
+        return jdbcTemplate
+                .query(
+                        """
+                        SELECT m.*
+                        FROM chat_message m
+                        JOIN chat_thread t ON t.thread_id = m.thread_id
+                        WHERE m.message_id = ?
+                          AND t.user_id = ?
+                          AND t.deleted_at IS NULL
+                          AND m.message_role = 'assistant'
+                          AND m.status = 'completed'
+                        """,
+                        ROW_MAPPER,
+                        messageId,
+                        userId)
+                .stream()
+                .findFirst();
+    }
+
     public List<ChatMessageRecord> findByThreadId(String threadId) {
         return jdbcTemplate.query(
                 """
