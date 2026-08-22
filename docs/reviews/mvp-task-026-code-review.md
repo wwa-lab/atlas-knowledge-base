@@ -98,3 +98,7 @@ Full review comments:
 
 - [P2] Reset stale open-original state on citation changes — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/evidence/EvidenceDrawer.vue:99-101
   If the user starts `Open verified original` for one citation and then switches the drawer to another citation before the POST completes, this guarded `finally` skips clearing `opening` because `props.citationId` no longer matches. The new citation then stays stuck in the re-authorizing state; invalidate `openRequestId` and reset `opening/originalUrl/openStatus` when `citationId` changes.
+
+## Gate A — fresh review after Evidence Drawer fix (verbatim)
+
+No discrete introduced correctness, security, or maintainability issues were found in the diff. Type checking with vue-tsc passed; Vitest could not start because the read-only sandbox blocked Vite temp-file creation.
