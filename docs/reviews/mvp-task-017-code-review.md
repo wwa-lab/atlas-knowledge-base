@@ -132,3 +132,84 @@ Assessment on requested focus areas:
 - Preview claim atomicity / rollback: implementation matches ADR intent. The claim insert happens before mutable-state reads and is inside the same transaction, so stale validation should roll the claim back rather than burn it ([GovernanceService.java:303](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:303), [GovernancePreviewClaimRepository.java:17](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernancePreviewClaimRepository.java:17)).
 - Shared retrieval eligibility: mostly centralized correctly and applied both in governance preview/retire logic and dispatch-time rereads, but the lifecycle check is too strict for suspended-KB retirement.
 - Auth/CSRF and API/migration portability: no additional blocker found in scope; admin endpoints are covered by CSRF tests and the migration applied under the targeted test run.
+
+## Gate A — Second rerun (verbatim)
+
+# Code vs Design Review Report — TASK-017 Fresh Rerun
+
+## Review Scope
+
+- **Revision:** `c69c0ed61297eccb4ab94d1343964cfd8e8d7251`
+- **Base:** `origin/main` at `edaa08efab5bcde4b0d2dabfc49b91554fc233c2`
+- **Design reviewed:** TASK-017 requirements/tasks/traceability, US-006, accepted specification, architecture/data model, API guide, ADR-0009
+- **Code inspected:** Complete `origin/main...HEAD` production, test, migration, and documentation diff
+- **Excluded evidence:** `docs/reviews/mvp-task-017-code-review.md` was not opened or used
+- **Skills applied:** Project-local `review-code-against-design` and `architecture-review`
+- **Overall alignment:** Partially aligned; one Major behavioral gap remains
+
+## Areas of Good Alignment
+
+- Admin-only authorization and global CSRF protection remain correctly applied to every governance POST endpoint.
+- Preview claiming uses a content-free, transactional primary-key insert. [GovernancePreviewClaimRepository.java:19](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernancePreviewClaimRepository.java:19), [GovernanceService.java:303](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:303), and [V3__governance_controls.sql:31](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/resources/db/migration/V3__governance_controls.sql:31) structurally prevent two committed confirmations from consuming the same preview.
+- Disable and kill-switch flags are independent, versioned, audited, and reread immediately before provider dispatch.
+- Rollback retains immutable complete history, monotonic live versions, optimistic updates, and applicable source revalidation.
+- Retire now correctly preserves a Suspended KB when another binding would pass runtime gates after remediation.
+- Ownerless suspension, content-free audit data, API envelopes/errors, and the Flyway-managed schema remain aligned.
+- Architecture review found no P0 structural violation.
+
+## Misalignments and Gaps
+
+### Critical
+
+None identified.
+
+### Major
+
+#### Suspended-KB retire confirmation can produce a lifecycle outcome different from its impact preview
+
+- **Design expected:** ADR-0009 and the API guide require confirmation to be bound to the previewed impact and fail closed when relevant state changes.
+- **Code currently does:** Preview stores current `runtime_binding_ids` at [GovernanceService.java:97](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:97), and confirmation compares only that list at [GovernanceService.java:325](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:325). For a Suspended KB this list is always empty because runtime eligibility requires Active lifecycle. The actual retirement decision separately ignores Suspended lifecycle for siblings at [GovernanceService.java:386](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:386).
+- **Failure case:** A Suspended KB has a safe sibling, so preview returns `would_retire_logical_kb=false` and an empty runtime list. Another admin then disables or kill-switches that sibling. The runtime list remains empty, so the original preview passes confirmation; `wouldRetireKnowledgeBase` recalculates true and terminally retires the KB despite the confirmed preview predicting otherwise. The inverse transition can similarly change a previewed Retire into remaining Suspended.
+- **Why it matters:** The administrator can confirm one lifecycle impact and receive another terminal result. This breaks exact/stale preview semantics on an irreversible governance operation.
+- **Recommended fix:** Persist and compare a retire-specific sibling fingerprint produced by the same lifecycle-optional predicate used by `wouldRetireKnowledgeBase`—for example sorted resumable sibling IDs/config versions—or bind the preview to an explicit KB/binding-set semantic version. Add a safe→unsafe sibling transition test asserting `409 IMPACT_PREVIEW_STALE` and zero target/KB mutation.
+
+### Minor
+
+#### Atomic preview claiming lacks an actual concurrency test
+
+- Sequential replay is covered, but no two-thread/two-transaction test proves exactly one claim succeeds, and no test proves that downstream stale/revalidation rollback releases the claim.
+- The database design is structurally sound; this is a verification gap rather than a second implementation blocker.
+
+## Coverage Check
+
+| Design area | Status |
+|---|---|
+| Admin authorization / CSRF | Implemented and tested |
+| Exact operation/binding/target-state preview | Implemented |
+| Atomic replay prevention | Implemented; concurrent test missing |
+| Disable/kill dispatch stop | Implemented and tested |
+| Active-KB retire eligibility | Implemented |
+| Suspended-KB safe sibling preservation | Implemented |
+| Suspended-KB retire preview staleness | Partial; Major gap |
+| Rollback history/revalidation | Implemented and tested |
+| Ownerless suspension | Implemented |
+| Migration/audit safety | Implemented |
+
+## Architectural / Boundary Assessment
+
+- **Module boundary violations:** None blocking.
+- **Persistence design:** The dedicated claim table is preferable to scanning audit JSON and matches ADR-0009.
+- **Policy reuse:** Shared `RetrievalEligibility` removes duplicated runtime-gate definitions.
+- **Hidden shortcut:** Retire uses two different state fingerprints—current runtime IDs for confirmation and lifecycle-optional eligibility for the final decision.
+
+## Exact Verification
+
+- `./mvnw -q -pl backend -Dtest=GovernanceApiTest,RetrievalOrchestratorDispatchSnapshotTest test`
+  - **Passed**
+  - `GovernanceApiTest`: 9 tests, 0 failures/errors/skips
+  - `RetrievalOrchestratorDispatchSnapshotTest`: 30 tests, 0 failures/errors/skips
+- `git diff --check origin/main...HEAD -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md' ':(exclude)docs/reviews/mvp-task-017-code-review.md'`
+  - **Passed**
+- Final HEAD remained `c69c0ed61297eccb4ab94d1343964cfd8e8d7251`.
+- Final worktree was clean.
+- No files were edited.

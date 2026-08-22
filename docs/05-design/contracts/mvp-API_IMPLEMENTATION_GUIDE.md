@@ -917,7 +917,9 @@ The confirmation request for disable, kill switch, rollback, and retire is the s
 `{ "confirm": true, "impact_preview_id": "imp_1" }`. A missing, mismatched, stale, or replayed
 preview is rejected with `409`; confirmation never trusts client-supplied binding state. The
 server claims the preview through a unique database key in the same transaction as the mutation,
-so concurrent confirmations cannot both apply.
+so concurrent confirmations cannot both apply. Retire previews also bind a content-free sibling
+fingerprint calculated from the lifecycle-appropriate runtime gates; a change to a safe or unsafe
+sibling fails closed as `IMPACT_PREVIEW_STALE`.
 
 ### POST `/admin/bindings/{binding_id}/kill-switch`
 

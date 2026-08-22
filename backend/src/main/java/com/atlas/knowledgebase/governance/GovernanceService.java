@@ -101,6 +101,9 @@ public class GovernanceService {
         details.put(
                 "would_retire_logical_kb",
                 operation == Operation.RETIRE && wouldRetireKnowledgeBase(binding));
+        if (operation == Operation.RETIRE) {
+            details.put("retire_sibling_fingerprint", retireSiblingFingerprint(binding));
+        }
         if (rollbackTarget != null) {
             details.put("rollback_target_config_version", rollbackTarget.configVersion());
         }
@@ -330,6 +333,15 @@ public class GovernanceService {
                     "IMPACT_PREVIEW_STALE",
                     "Another binding changed after the impact preview; run a new preview.");
         }
+        if (expectedOperation == Operation.RETIRE) {
+            String previewFingerprint = details.path("retire_sibling_fingerprint").asText("");
+            if (previewFingerprint.isBlank()
+                    || !previewFingerprint.equals(retireSiblingFingerprint(binding))) {
+                throw new GovernanceConflictException(
+                        "IMPACT_PREVIEW_STALE",
+                        "Retire impact changed after the preview; run a new preview.");
+            }
+        }
         return new PreviewContext(binding, details);
     }
 
@@ -395,6 +407,48 @@ public class GovernanceService {
                                                 other,
                                                 retrievalProperties,
                                                 requireActiveLifecycle));
+    }
+
+    /**
+     * Content-free fingerprint for the state that determines whether a retire operation would
+     * leave a resumable sibling binding. It intentionally uses the lifecycle-optional predicate
+     * for Suspended KBs, matching {@link #wouldRetireKnowledgeBase(BindingRecord)} exactly.
+     */
+    private String retireSiblingFingerprint(BindingRecord target) {
+        LogicalKnowledgeBaseRecord kb = requireKnowledgeBase(target.logicalKbId());
+        boolean requireActiveLifecycle = !"suspended".equals(kb.lifecycle());
+        List<String> siblingStates =
+                bindings.findByLogicalKbId(target.logicalKbId()).stream()
+                        .filter(binding -> !binding.bindingId().equals(target.bindingId()))
+                        .map(
+                                binding ->
+                                        String.join(
+                                                ":",
+                                                binding.bindingId(),
+                                                Integer.toString(binding.configVersion()),
+                                                Boolean.toString(binding.enabled()),
+                                                Boolean.toString(binding.killSwitch()),
+                                                Boolean.toString(binding.featureFlag()),
+                                                binding.health(),
+                                                binding.providerProfile(),
+                                                Boolean.toString(
+                                                        RetrievalEligibility.isEligible(
+                                                                kb,
+                                                                binding,
+                                                                retrievalProperties,
+                                                                requireActiveLifecycle))))
+                        .sorted()
+                        .toList();
+        return String.join(
+                "|",
+                kb.logicalKbId(),
+                Integer.toString(kb.configVersion()),
+                kb.lifecycle(),
+                kb.capability(),
+                Boolean.toString(kb.modelEligible()),
+                kb.health(),
+                Boolean.toString(kb.freshnessRequired()),
+                String.join(",", siblingStates));
     }
 
     private List<String> runtimeBindingIds(String logicalKbId) {

@@ -357,6 +357,64 @@ class GovernanceApiTest {
     }
 
     @Test
+    void suspendedRetirePreviewStalesWhenSafeSiblingChanges() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String bindingId = activeDifyBinding(owner, "Governance suspended stale " + UUID.randomUUID());
+        String logicalKbId =
+                jdbcTemplate.queryForObject(
+                        "SELECT logical_kb_id FROM binding WHERE binding_id = ?", String.class, bindingId);
+        String remainingBindingId = "bnd_suspended_stale_" + UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbcTemplate.update(
+                """
+                INSERT INTO binding (
+                  binding_id, logical_kb_id, provider_profile, source_identity, binding_role,
+                  auth_method, health, enabled, kill_switch, feature_flag, freshness_policy,
+                  locator_rules, credential_owner, region_constraints, config_version,
+                  created_at, updated_at)
+                VALUES (?, ?, 'confluence', '{}', 'supplemental', 'delegated_user', 'healthy',
+                        1, 0, 1, NULL, '{}', 'owner@example.com', NULL, 1, ?, ?)
+                """,
+                remainingBindingId,
+                logicalKbId,
+                Timestamp.from(now),
+                Timestamp.from(now));
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET lifecycle = 'suspended' WHERE logical_kb_id = ?",
+                logicalKbId);
+
+        LoggedIn admin = loginAdminKeepingOwner();
+        String preview = preview(admin, bindingId, "{\"operation\":\"retire\"}");
+        jdbcTemplate.update(
+                "UPDATE binding SET kill_switch = 1, config_version = config_version + 1 WHERE binding_id = ?",
+                remainingBindingId);
+
+        mockMvc.perform(
+                        post("/api/v1/admin/bindings/" + bindingId + "/retire")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"confirm\":true,\"impact_preview_id\":\""
+                                                + preview
+                                                + "\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("IMPACT_PREVIEW_STALE"));
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT lifecycle FROM logical_knowledge_base WHERE logical_kb_id = ?",
+                                String.class,
+                                logicalKbId))
+                .isEqualTo("suspended");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT enabled FROM binding WHERE binding_id = ?",
+                                Integer.class,
+                                bindingId))
+                .isEqualTo(1);
+    }
+
+    @Test
     void missingCsrfAndMissingConfirmationAreRejected() throws Exception {
         LoggedIn owner = login("kb_owner");
         String bindingId = activeDifyBinding(owner, "Governance csrf " + UUID.randomUUID());
