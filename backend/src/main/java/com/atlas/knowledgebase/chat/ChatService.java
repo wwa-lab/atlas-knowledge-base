@@ -444,9 +444,18 @@ public class ChatService {
         }
         if (turn.block() == RetrievalTurn.Block.NO_EVIDENCE) {
             throw new ChatRetrievalException(
+                    "retrieval",
                     "NO_GROUNDED_EVIDENCE",
                     "No selected source returned grounded evidence for this turn.",
                     "retry_or_change_scope",
+                    Map.of("coverage", turn.coverage()));
+        }
+        if (turn.block() == RetrievalTurn.Block.UNKNOWN) {
+            throw new ChatRetrievalException(
+                    "unknown",
+                    "RETRIEVAL_UNKNOWN_FAILURE",
+                    "Retrieval could not be completed safely for this turn.",
+                    "retry_or_contact_support",
                     Map.of("coverage", turn.coverage()));
         }
         return turn;

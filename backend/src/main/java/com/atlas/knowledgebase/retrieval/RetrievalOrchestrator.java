@@ -2,6 +2,7 @@ package com.atlas.knowledgebase.retrieval;
 
 import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.Retriever;
+import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
 import com.atlas.knowledgebase.registry.BindingRecord;
@@ -23,9 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,7 +43,7 @@ public class RetrievalOrchestrator {
     private final LogicalKnowledgeBaseRepository knowledgeBases;
     private final BindingRepository bindings;
     private final KbAccessService access;
-    private final List<Retriever> retrievers;
+    private final RetrieverRegistry retrievers;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -50,7 +53,7 @@ public class RetrievalOrchestrator {
             LogicalKnowledgeBaseRepository knowledgeBases,
             BindingRepository bindings,
             KbAccessService access,
-            List<Retriever> retrievers,
+            RetrieverRegistry retrievers,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock) {
@@ -69,6 +72,7 @@ public class RetrievalOrchestrator {
         List<String> timedOut = new ArrayList<>();
         List<ReciprocalRankFusion.RankedList> ranked = new ArrayList<>();
         Set<String> securityKbs = new LinkedHashSet<>();
+        Set<String> unknownKbs = new LinkedHashSet<>();
         String blockKb = null;
         String blockBinding = null;
 
@@ -110,7 +114,7 @@ public class RetrievalOrchestrator {
                                             new BindingOutcome(
                                                     item.kb().logicalKbId(),
                                                     item.binding(),
-                                                    Retriever.Result.timeout())));
+                                                    classifyFailure(error))));
         }
         for (CompletableFuture<BindingOutcome> future : futures) {
             BindingOutcome outcome = future.join();
@@ -122,6 +126,10 @@ public class RetrievalOrchestrator {
                 case SECURITY -> {
                     failed.add(bindingId);
                     securityKbs.add(logicalKbId);
+                    if (blockKb == null) {
+                        blockKb = logicalKbId;
+                        blockBinding = bindingId;
+                    }
                     knowledgeBases.suspend(logicalKbId);
                     audit(
                             user.userId(),
@@ -131,8 +139,23 @@ public class RetrievalOrchestrator {
                             "deny",
                             "fail_closed");
                 }
+                case UNKNOWN -> {
+                    failed.add(bindingId);
+                    unknownKbs.add(logicalKbId);
+                    if (blockKb == null) {
+                        blockKb = logicalKbId;
+                        blockBinding = bindingId;
+                    }
+                    audit(
+                            user.userId(),
+                            logicalKbId,
+                            bindingId,
+                            "retrieve",
+                            "deny",
+                            "unknown");
+                }
                 case SUCCESS -> {
-                    if (securityKbs.contains(logicalKbId)) {
+                    if (securityKbs.contains(logicalKbId) || unknownKbs.contains(logicalKbId)) {
                         break;
                     }
                     successful.add(bindingId);
@@ -153,13 +176,15 @@ public class RetrievalOrchestrator {
             }
         }
 
-        if (!securityKbs.isEmpty()) {
+        Set<String> blockedKbs = new LinkedHashSet<>(securityKbs);
+        blockedKbs.addAll(unknownKbs);
+        if (!blockedKbs.isEmpty()) {
             successful.removeIf(
                     bindingId -> {
                         BindingRecord binding = bindings.findById(bindingId).orElse(null);
-                        return binding != null && securityKbs.contains(binding.logicalKbId());
+                        return binding != null && blockedKbs.contains(binding.logicalKbId());
                     });
-            ranked.removeIf(list -> securityKbs.contains(list.logicalKbId()));
+            ranked.removeIf(list -> blockedKbs.contains(list.logicalKbId()));
         }
 
         List<ReciprocalRankFusion.FusedHit> fused = ReciprocalRankFusion.fuse(ranked);
@@ -170,9 +195,11 @@ public class RetrievalOrchestrator {
 
         RetrievalTurn.Block block = RetrievalTurn.Block.NONE;
         boolean anyEvidence = !fused.isEmpty();
-        if (!anyEvidence && !securityKbs.isEmpty()) {
+        if (!securityKbs.isEmpty()) {
             block = RetrievalTurn.Block.SECURITY;
-        } else if (!anyEvidence && blockBinding != null) {
+        } else if (!unknownKbs.isEmpty()) {
+            block = RetrievalTurn.Block.UNKNOWN;
+        } else if (blockBinding != null) {
             block = RetrievalTurn.Block.BINDING_ACCESS;
         } else if (!anyEvidence) {
             block = RetrievalTurn.Block.NO_EVIDENCE;
@@ -193,11 +220,7 @@ public class RetrievalOrchestrator {
         if (!"chat_ready".equals(kb.capability()) || !kb.modelEligible()) {
             return new BindingOutcome(kb.logicalKbId(), binding, Retriever.Result.failed());
         }
-        Retriever retriever =
-                retrievers.stream()
-                        .filter(candidate -> candidate.supports(binding.providerProfile()))
-                        .findFirst()
-                        .orElse(null);
+        Retriever retriever = retrievers.find(binding.providerProfile()).orElse(null);
         if (retriever == null) {
             return new BindingOutcome(kb.logicalKbId(), binding, Retriever.Result.failed());
         }
@@ -213,6 +236,29 @@ public class RetrievalOrchestrator {
                                 binding.sourceIdentityJson(),
                                 BINDING_TIMEOUT));
         return new BindingOutcome(kb.logicalKbId(), binding, result);
+    }
+
+    private Retriever.Result classifyFailure(Throwable error) {
+        Throwable cause = unwrap(error);
+        if (cause instanceof TimeoutException) {
+            return Retriever.Result.timeout();
+        }
+        if (cause instanceof RetrieverException retrieverException) {
+            return switch (retrieverException.outcome()) {
+                case SECURITY -> Retriever.Result.security();
+                case FAILED -> Retriever.Result.failed();
+                default -> Retriever.Result.unknown();
+            };
+        }
+        return Retriever.Result.unknown();
+    }
+
+    private Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private boolean bindingAuthorized(

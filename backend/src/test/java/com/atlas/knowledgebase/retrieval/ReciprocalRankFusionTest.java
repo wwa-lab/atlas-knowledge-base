@@ -10,8 +10,24 @@ class ReciprocalRankFusionTest {
 
     @Test
     void higherRanksScoreHigherAndDuplicateFingerprintsMergeProvenance() {
-        Retriever.Hit shared =
-                new Retriever.Hit("doc-shared", "Shared", "fixture", "v1", "{}", 1, "fp-shared");
+        Retriever.Hit sharedGit =
+                new Retriever.Hit(
+                        "doc-shared-git",
+                        "Shared Git",
+                        "fixture",
+                        "git-v1",
+                        "{\"path\":\"runbook.md\"}",
+                        1,
+                        "fp-shared");
+        Retriever.Hit sharedDify =
+                new Retriever.Hit(
+                        "doc-shared-dify",
+                        "Shared Dify",
+                        "fixture",
+                        "dify-v7",
+                        "{\"document_id\":\"doc-7\"}",
+                        2,
+                        "fp-shared");
         Retriever.Hit onlyGit =
                 new Retriever.Hit("doc-git", "Git only", "fixture", "v1", "{}", 2, "fp-git");
         Retriever.Hit onlyDify =
@@ -20,12 +36,17 @@ class ReciprocalRankFusionTest {
                 ReciprocalRankFusion.fuse(
                         List.of(
                                 new ReciprocalRankFusion.RankedList(
-                                        "lkb_git", "bnd_git", "git_markdown", List.of(shared, onlyGit)),
+                                        "lkb_git", "bnd_git", "git_markdown", List.of(sharedGit, onlyGit)),
                                 new ReciprocalRankFusion.RankedList(
-                                        "lkb_dify", "bnd_dify", "dify", List.of(onlyDify, shared))));
+                                        "lkb_dify", "bnd_dify", "dify", List.of(onlyDify, sharedDify))));
         assertThat(fused).hasSize(3);
         assertThat(fused.getFirst().hit().fingerprint()).isEqualTo("fp-shared");
         assertThat(fused.getFirst().provenance()).hasSize(2);
+        assertThat(fused.getFirst().provenance().stream().map(path -> path.hit().locatorJson()).toList())
+                .containsExactlyInAnyOrder(
+                        "{\"path\":\"runbook.md\"}", "{\"document_id\":\"doc-7\"}");
+        assertThat(fused.getFirst().provenance().stream().map(path -> path.hit().version()).toList())
+                .containsExactlyInAnyOrder("git-v1", "dify-v7");
         assertThat(fused.stream().map(hit -> hit.hit().fingerprint()).toList())
                 .containsExactly("fp-shared", "fp-dify", "fp-git");
     }

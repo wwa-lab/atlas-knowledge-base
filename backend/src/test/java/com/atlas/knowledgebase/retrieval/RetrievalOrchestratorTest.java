@@ -122,6 +122,70 @@ class RetrievalOrchestratorTest {
     }
 
     @Test
+    void thrownSecurityFailureStillFailsClosedAndSuspends() {
+        Instant now = Instant.parse("2026-08-22T03:02:30Z");
+        AtlasUserRecord user = owner("usr_ret_thrown_sec", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_thrown_sec", user.userId(), now);
+        binding(
+                "bnd_ret_thrown_sec",
+                kb.logicalKbId(),
+                "dify",
+                "{\"retrieval_fixture\":\"throw_security\"}",
+                now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.SECURITY);
+        assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
+                .isEqualTo("suspended");
+    }
+
+    @Test
+    void thrownConnectorFailureIsFailedCoverageAlongsideSafeEvidence() {
+        Instant now = Instant.parse("2026-08-22T03:02:45Z");
+        AtlasUserRecord user = owner("usr_ret_thrown_failed", now);
+        LogicalKnowledgeBaseRecord ok = chatReadyKb("lkb_ret_thrown_ok", user.userId(), now);
+        LogicalKnowledgeBaseRecord failed = chatReadyKb("lkb_ret_thrown_failed", user.userId(), now);
+        binding("bnd_ret_thrown_ok", ok.logicalKbId(), "dify", "{}", now);
+        binding(
+                "bnd_ret_thrown_failed",
+                failed.logicalKbId(),
+                "dify",
+                "{\"retrieval_fixture\":\"throw_failed\"}",
+                now);
+
+        RetrievalTurn turn =
+                retrieval.retrieve(user, "question", List.of(ok.logicalKbId(), failed.logicalKbId()));
+
+        assertThat(turn.blocked()).isFalse();
+        @SuppressWarnings("unchecked")
+        List<String> failedBindings = (List<String>) turn.coverage().get("failed");
+        assertThat(failedBindings).contains("bnd_ret_thrown_failed");
+        @SuppressWarnings("unchecked")
+        List<String> timedOut = (List<String>) turn.coverage().get("timed_out");
+        assertThat(timedOut).doesNotContain("bnd_ret_thrown_failed");
+    }
+
+    @Test
+    void unknownAdapterExceptionBlocksGenerationWithoutSuspending() {
+        Instant now = Instant.parse("2026-08-22T03:02:55Z");
+        AtlasUserRecord user = owner("usr_ret_thrown_unknown", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_thrown_unknown", user.userId(), now);
+        binding(
+                "bnd_ret_thrown_unknown",
+                kb.logicalKbId(),
+                "dify",
+                "{\"retrieval_fixture\":\"throw_unknown\"}",
+                now);
+
+        RetrievalTurn turn = retrieval.retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.UNKNOWN);
+        assertThat(knowledgeBases.findById(kb.logicalKbId()).orElseThrow().lifecycle())
+                .isEqualTo("active");
+    }
+
+    @Test
     void itemOmitKeepsTheKnowledgeBaseInScope() {
         Instant now = Instant.parse("2026-08-22T03:03:00Z");
         AtlasUserRecord user = owner("usr_ret_omit", now);

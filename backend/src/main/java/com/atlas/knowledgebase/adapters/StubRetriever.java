@@ -4,14 +4,23 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Set;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
  * Fixture retriever for Dify, Git Markdown, and Confluence. Does not call providers. Controlled by
  * {@code source_identity.retrieval_fixture}: {@code timeout}, {@code failed}, {@code security},
- * {@code item_omit}, or success (default).
+ * {@code item_omit}, typed {@code throw_failed}/{@code throw_security}, unknown
+ * {@code throw_unknown}, or success (default).
  */
 @Component
+@Profile({"local", "non-prod"})
+@ConditionalOnProperty(
+        name = "atlas.retrieval.stub.enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 public class StubRetriever implements Retriever {
 
     static final int TOP_K = 5;
@@ -23,10 +32,8 @@ public class StubRetriever implements Retriever {
     }
 
     @Override
-    public boolean supports(String providerProfile) {
-        return "dify".equals(providerProfile)
-                || "git_markdown".equals(providerProfile)
-                || "confluence".equals(providerProfile);
+    public Set<String> providerProfiles() {
+        return Set.of("dify", "git_markdown", "confluence");
     }
 
     @Override
@@ -36,6 +43,9 @@ public class StubRetriever implements Retriever {
             case "timeout" -> Result.timeout();
             case "failed" -> Result.failed();
             case "security" -> Result.security();
+            case "throw_failed" -> throw RetrieverException.failed("fixture connector failure");
+            case "throw_security" -> throw RetrieverException.security("fixture security failure");
+            case "throw_unknown" -> throw new IllegalStateException("fixture unknown failure");
             case "item_omit" -> {
                 Hit kept = hit(request, "kept", 1);
                 Hit omitted = hit(request, "restricted", 2);

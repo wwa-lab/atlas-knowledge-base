@@ -39,7 +39,9 @@ public final class ReciprocalRankFusion {
                                 hit.fingerprint(),
                                 ignored -> new Acc(0.0d, new ArrayList<>(), hit));
                 acc.score += add;
-                acc.paths.add(new Provenance(list.logicalKbId(), list.bindingId(), list.provider(), rank));
+                acc.paths.add(
+                        new Provenance(
+                                list.logicalKbId(), list.bindingId(), list.provider(), rank, hit));
                 position++;
             }
         }
@@ -60,16 +62,29 @@ public final class ReciprocalRankFusion {
     }
 
     public record RankedList(
-            String logicalKbId, String bindingId, String provider, List<Retriever.Hit> hits) {}
+            String logicalKbId, String bindingId, String provider, List<Retriever.Hit> hits) {
+        public RankedList {
+            hits = hits == null ? List.of() : List.copyOf(hits);
+        }
+    }
 
-    public record Provenance(String logicalKbId, String bindingId, String provider, int rank) {}
+    public record Provenance(
+            String logicalKbId,
+            String bindingId,
+            String provider,
+            int rank,
+            Retriever.Hit hit) {}
 
     public record FusedHit(
             Retriever.Hit hit,
             List<Provenance> provenance,
             String logicalKbId,
             String bindingId,
-            String provider) {}
+            String provider) {
+        public FusedHit {
+            provenance = provenance == null ? List.of() : List.copyOf(provenance);
+        }
+    }
 
     private static final class Acc {
         private double score;

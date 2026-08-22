@@ -5,12 +5,18 @@ import java.util.Map;
 public final class ChatRetrievalException extends RuntimeException {
 
     private final String code;
+    private final String category;
     private final String nextStep;
     private final Map<String, Object> details;
 
     public ChatRetrievalException(
-            String code, String message, String nextStep, Map<String, Object> details) {
+            String category,
+            String code,
+            String message,
+            String nextStep,
+            Map<String, Object> details) {
         super(message);
+        this.category = category;
         this.code = code;
         this.nextStep = nextStep;
         this.details = details == null ? Map.of() : Map.copyOf(details);
@@ -18,6 +24,10 @@ public final class ChatRetrievalException extends RuntimeException {
 
     public String code() {
         return code;
+    }
+
+    public String category() {
+        return category;
     }
 
     public String nextStep() {

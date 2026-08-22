@@ -42,7 +42,7 @@ public class ChatExceptionHandler {
     public ResponseEntity<Map<String, Object>> retrieval(ChatRetrievalException ex) {
         return ApiErrorResponses.entity(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "retrieval",
+                ex.category(),
                 ex.code(),
                 ex.getMessage(),
                 ex.nextStep(),

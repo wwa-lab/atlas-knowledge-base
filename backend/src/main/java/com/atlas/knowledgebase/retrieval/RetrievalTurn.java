@@ -13,11 +13,18 @@ public record RetrievalTurn(
         String blockLogicalKbId,
         String blockBindingId) {
 
+    public RetrievalTurn {
+        coverage = coverage == null ? Map.of() : Map.copyOf(coverage);
+        fused = fused == null ? List.of() : List.copyOf(fused);
+        citations = citations == null ? List.of() : List.copyOf(citations);
+    }
+
     public enum Block {
         NONE,
         BINDING_ACCESS,
         SECURITY,
-        NO_EVIDENCE
+        NO_EVIDENCE,
+        UNKNOWN
     }
 
     public boolean blocked() {
