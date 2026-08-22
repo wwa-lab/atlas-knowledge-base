@@ -38,3 +38,12 @@ Full review comments:
 
 - [P2] Prevent older preview responses from replacing the selected file — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:186-188
   If a user clicks two files in the tree before the first preview request finishes, the first request can resolve last and assign `preview.value` for a path that is no longer `selectedPath`, showing the wrong Markdown under the current selection. Capture the requested path and selected KB before awaiting, then ignore the response unless both still match.
+
+## Gate A — fresh rerun after stale-response fixes (verbatim)
+
+The catalog pagination fix and browse UI are mostly sound, but the new Chat deep-link behavior can silently select the wrong knowledge base when the requested KB is invalid or no longer chat-selectable.
+
+Review comment:
+
+- [P2] Do not fall back from requested Chat KB — /Users/leo/wwa-lab/atlas-knowledge-base/frontend/src/views/ChatView.vue:313-315
+  When `/chat?logical_kb_id=...` contains a KB that is no longer selectable (for example access was revoked after opening the detail page, the KB became browse-only/unhealthy, or the URL was shared manually), `chooseInitialScope([requestedId])` falls back to the first selectable KB. That can start a new chat scoped to an unrelated knowledge base instead of failing or showing that the requested KB is unavailable, which is especially risky because the user arrived via a specific “Start Chat” intent.

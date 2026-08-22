@@ -310,9 +310,17 @@ async function load(): Promise<void> {
       await loadThread(existing.thread_id)
     } else {
       staleScopeIds.value = []
-      selectedIds.value = chooseInitialScope(
-        requestedId ? [requestedId] : chatList.last_valid_logical_kb_ids,
-      )
+      if (requestedId) {
+        const requested = knowledgeBases.value.find((kb) => kb.logical_kb_id === requestedId)
+        selectedIds.value = requested && isChatSelectable(requested) ? [requestedId] : []
+        if (selectedIds.value.length === 0) {
+          error.value = requested
+            ? `${requested.name} is not currently available for Chat.`
+            : `Knowledge base ${requestedId} was not found or is not currently available for Chat.`
+        }
+      } else {
+        selectedIds.value = chooseInitialScope(chatList.last_valid_logical_kb_ids)
+      }
     }
   } catch (cause) {
     authRequired.value = cause instanceof ChatApiError && cause.status === 401
