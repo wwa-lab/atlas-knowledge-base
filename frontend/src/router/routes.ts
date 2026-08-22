@@ -13,7 +13,7 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Chat' },
   },
   {
-    path: '/kbs',
+    path: '/kbs/:logicalKbId?',
     name: 'knowledge-bases',
     component: KnowledgeBasesView,
     meta: { title: 'Knowledge bases' },
