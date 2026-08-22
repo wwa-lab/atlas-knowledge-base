@@ -82,3 +82,7 @@ Full review comments:
 
 - [P2] Reject cleartext external authorization URLs — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/SettingsView.vue:25-27
   If a real provider authorization response is misconfigured to return an `http://` URL, this accepts it via `safeExternalUrl(value)` and redirects the browser into a cleartext OAuth flow. Same-origin local callbacks are already handled by `sameOriginProviderPath`; non-same-origin provider authorization should be limited to HTTPS to avoid leaking the OAuth state/login flow over plaintext.
+
+## Gate A — fresh review after provider-flow fix (verbatim)
+
+I did not find any discrete introduced correctness, security, or maintainability issues in the diff relative to main. The frontend changes appear consistent with the existing backend contracts and the previously documented review fixes.
