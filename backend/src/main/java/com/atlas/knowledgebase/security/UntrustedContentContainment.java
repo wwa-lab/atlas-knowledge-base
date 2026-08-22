@@ -48,6 +48,9 @@ public final class UntrustedContentContainment {
             return Decision.safe();
         }
         for (String field : fields(hit)) {
+            if (field.length() > MAX_FIELD_CHARS) {
+                return Decision.contained("field_too_large");
+            }
             String normalized = normalize(field);
             if (normalized.length() > MAX_FIELD_CHARS) {
                 return Decision.contained("field_too_large");
