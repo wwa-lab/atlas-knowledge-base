@@ -285,3 +285,85 @@ None identified.
   - **Passed**
 - Final HEAD: `e62b8e6a9b8d29d671062865787bb399a5e1c26d`
 - Final worktree: clean.
+
+## Gate A — Fresh lock-boundary rerun (verbatim)
+
+# Code vs Design Review Report
+
+## Review Scope
+- Design reviewed: `docs/architecture/decisions/ADR-0009-governance-preview-and-rollback.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`, relevant `mvp-data-model` and `mvp-tasks`
+- Tasks reviewed: `docs/06-tasks/mvp-tasks.md` (`TASK-017`)
+- Code inspected: governance controller/service/exception flow, binding + KB repositories, retrieval orchestrator/eligibility, Flyway `V3`, targeted governance/retrieval tests
+- Review objective: verify TASK-017 implementation fidelity, especially the retire row-lock boundary, preview claim atomicity, eligibility consistency, auth/CSRF, rollback, migration, and tests
+
+## Overall Assessment
+- Alignment rating: 94%
+- Verdict: Aligned with minor deviations
+- Rationale: The implementation matches ADR-0009’s core design. The preview claim is transactional, retire now locks the KB row plus sibling binding rows before re-validating the content-free fingerprint, runtime disable/kill-switch participate in optimistic versioning plus history snapshots, and retrieval re-reads authoritative state before adapter dispatch. I did not find a correctness gap that would block TASK-017 on the reviewed scope.
+
+## Areas of Good Alignment
+- Retire TOCTOU closure is implemented as designed: `requirePreview()` claims the preview, then `lockRetireState()` takes `FOR UPDATE` locks on the KB row and all binding rows before re-checking preview version/runtime state and the sibling fingerprint in [GovernanceService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:272).
+- Binding writers that matter to this boundary all go through row-locking + optimistic version checks: `update`, `updateRuntime`, and `restore` in [BindingRepository.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/registry/BindingRepository.java:107); KB lifecycle writes use `findByIdForUpdate` in [LogicalKnowledgeBaseRepository.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/registry/LogicalKnowledgeBaseRepository.java:83).
+- Eligibility/predicate consistency is strong: governance preview, retire decision, and dispatch-time runtime gating all share `RetrievalEligibility` in [RetrievalEligibility.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalEligibility.java:7).
+- Retrieval now re-reads authoritative KB/binding state both before authorization and before adapter dispatch, preventing provider calls after a runtime disable drift, in [RetrievalOrchestrator.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:102) and tested in [RetrievalOrchestratorDispatchSnapshotTest.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestratorDispatchSnapshotTest.java:185).
+- Rollback restores immutable prior rows from `binding_config_history`, revalidates source constraints, and keeps live `config_version` monotonic in [GovernanceService.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/governance/GovernanceService.java:146) and [BindingRepository.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/registry/BindingRepository.java:283).
+- Admin role and CSRF enforcement are covered by API tests, including non-admin rejection and missing-CSRF failure, in [GovernanceApiTest.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/governance/GovernanceApiTest.java:38) and [GovernanceApiTest.java](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/test/java/com/atlas/knowledgebase/governance/GovernanceApiTest.java:417).
+
+## Misalignments and Gaps
+
+### Critical
+- None identified.
+
+### Major
+- None identified.
+
+### Minor
+- Oracle portability remains only partially verified. `V3__governance_controls.sql` is H2-local tested, but I did not run the required Oracle migration command, so cross-dialect acceptance is still unproven for this review. Relevant file: [V3__governance_controls.sql](/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/resources/db/migration/V3__governance_controls.sql:1).
+
+## Coverage Check
+- Preview/confirm one-time claim: Implemented
+- Atomic rollback with immutable history: Implemented
+- Disable/kill-switch independent runtime controls: Implemented
+- Retire last-eligible-binding logic including suspended KB nuance: Implemented
+- Retrieval pre-dispatch authoritative re-read: Implemented
+- Admin/CSRF enforcement: Implemented
+- Oracle migration verification: Partial
+
+## Architectural / Design Boundary Check
+- Module boundary violations: None identified
+- Misplaced responsibilities: None identified
+- Coupling issues: None material; governance owns owner-less suspend as ADR-0009 requires
+- Hidden shortcuts: None identified in code; direct SQL tweaks in tests are fixture setup only
+
+## Behavior and State Check
+- Workflow / state handling: Aligned
+- Validation behavior: Aligned
+- Retry / stale / replay handling: Aligned
+- User-visible behavior: Aligned with the accepted contract examples
+
+## Integration Check
+- Adapter boundaries: Aligned
+- External system handling: Rollback revalidation stays behind `SourceProbe`, aligned
+- Secret / credential safety: Aligned on reviewed scope; no tokens/source bodies persisted
+- Logging / audit hooks: Aligned and content-free
+- Error propagation at integration boundaries: Aligned
+
+## Verification
+- `git diff --check origin/main...HEAD -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md' ':(exclude)docs/reviews/mvp-task-017-code-review.md'` — passed
+- `./mvnw -q -Dtest=GovernanceApiTest,RetrievalOrchestratorDispatchSnapshotTest test` — passed
+- Focused test evidence:
+  - `GovernanceApiTest`: 10 tests, 0 failures
+  - `RetrievalOrchestratorDispatchSnapshotTest`: 30 tests, 0 failures
+- Not run: full backend suite, Oracle Flyway migration command
+
+## Readiness
+- Suitable for next step: Yes, conditional on the usual elevated Gate B/human step for schema/API/auth-sensitive PR handling and Oracle migration verification elsewhere in the loop
+- Blockers before proceeding: None from Gate A
+- Required corrections: None
+- Acceptable deviations: Oracle verification still outstanding
+
+## Open Risks / Questions
+- `[UNVERIFIED]` Oracle 19c acceptance for `V3` was not exercised in this review.
+- Existing `backend/target/surefire-reports` contains an older unrelated failure in `AtlasKnowledgeBaseApplicationTests` expecting schema version `2`; I did not rerun that test here, so I am not treating it as a current TASK-017 finding.
+
+Gate A result: no Critical or Major findings on the reviewed TASK-017 implementation; aligned with ADR-0009 and the accepted TASK-017 design intent.
