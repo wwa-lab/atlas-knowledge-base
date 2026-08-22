@@ -68,11 +68,7 @@ public class StubSourceProbe implements SourceProbe {
         if (identity.path("kb_validated").asBoolean(false)) {
             return true;
         }
-        if (identity.hasNonNull("kb_contract") && !identity.get("kb_contract").isNull()) {
-            return true;
-        }
-        String path = identity.path("kb_path").asText("");
-        return !path.isBlank();
+        return identity.hasNonNull("kb_contract") && !identity.get("kb_contract").isNull();
     }
 
     /**
@@ -102,10 +98,7 @@ public class StubSourceProbe implements SourceProbe {
         }
         return switch (binding.providerProfile()) {
             case "dify" -> identity.hasNonNull("document_version") || identity.hasNonNull("chunk_version");
-            case "git_markdown" ->
-                    identity.hasNonNull("commit")
-                            || identity.hasNonNull("commit_sha")
-                            || gitKbValidated(binding);
+            case "git_markdown" -> identity.hasNonNull("commit") || identity.hasNonNull("commit_sha");
             case "confluence" -> identity.hasNonNull("page_version") || identity.hasNonNull("version");
             default -> false;
         };

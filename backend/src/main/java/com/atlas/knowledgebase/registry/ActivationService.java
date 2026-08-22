@@ -206,7 +206,7 @@ public class ActivationService {
         if (!"draft".equals(kb.lifecycle())) {
             throw new DraftValidationException("NOT_A_DRAFT", "Only Draft knowledge bases can be activated.");
         }
-        if (kb.ownerUserId() == null || kb.ownerUserId().isBlank() || users.findById(kb.ownerUserId()).isEmpty()) {
+        if (isOwnerless(kb)) {
             throw new HardGateException(
                     "OWNER_REQUIRED",
                     "A knowledge base without an accountable Owner cannot be activated.",

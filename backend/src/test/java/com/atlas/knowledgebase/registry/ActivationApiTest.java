@@ -78,7 +78,7 @@ class ActivationApiTest {
         assertThat(csv).startsWith("document_id,reason");
         assertThat(csv.toLowerCase()).doesNotContain("title");
 
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -96,7 +96,7 @@ class ActivationApiTest {
     void activateWithoutDifyAuditStaysDraft() throws Exception {
         LoggedIn owner = login("kb_owner");
         String logicalKbId = createDraftWithDify(owner, "No audit", true);
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -129,7 +129,7 @@ class ActivationApiTest {
                                         }
                                         """))
                 .andExpect(status().isOk());
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -162,7 +162,7 @@ class ActivationApiTest {
                                         }
                                         """))
                 .andExpect(status().isOk());
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -205,7 +205,7 @@ class ActivationApiTest {
                                 .header(SessionService.CSRF_HEADER, owner.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exclusion_reasons.acl_mixed").exists());
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -247,7 +247,7 @@ class ActivationApiTest {
                                 .cookie(owner.session())
                                 .header(SessionService.CSRF_HEADER, owner.csrf()))
                 .andExpect(status().isOk());
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -287,7 +287,7 @@ class ActivationApiTest {
                 {"dataset_id":"ds_1","original_version_mapping":{"doc_1":"v1"},"acl_mixed":true}
                 """,
                 bindingId);
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -296,6 +296,93 @@ class ActivationApiTest {
                                 .content("{\"confirm\":true}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
+    void gitKbPathWithoutCommitStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Git kb_path only");
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "config_version": 1,
+                                          "bindings": [{
+                                            "provider_profile": "git_markdown",
+                                            "role": "canonical",
+                                            "source_identity": {"repo": "org/runbooks", "kb_path": "manifest.json"}
+                                          }]
+                                        }
+                                        """))
+                .andExpect(status().isOk());
+        LoggedIn admin = loginAdminKeepingOwner();
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
+    void gitKbValidatedWithoutCommitStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraft(owner, "Git kb_validated only");
+        mockMvc.perform(
+                        patch("/api/v1/knowledge-bases/drafts/" + logicalKbId)
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {
+                                          "config_version": 1,
+                                          "bindings": [{
+                                            "provider_profile": "git_markdown",
+                                            "role": "canonical",
+                                            "source_identity": {"repo": "org/runbooks", "kb_validated": true}
+                                          }]
+                                        }
+                                        """))
+                .andExpect(status().isOk());
+        LoggedIn admin = loginAdminKeepingOwner();
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("HARD_GATE_FAILURE"));
+        assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
+    }
+
+    @Test
+    void ownerLostKbOwnerBeforeActivateStaysDraft() throws Exception {
+        LoggedIn owner = login("kb_owner");
+        String logicalKbId = createDraftWithDify(owner, "Lost owner", true);
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/drafts/" + logicalKbId + "/content-audit")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf()))
+                .andExpect(status().isOk());
+        LoggedIn admin = login("atlas_admin");
+        mockMvc.perform(
+                        post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
+                                .cookie(admin.session())
+                                .header(SessionService.CSRF_HEADER, admin.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"confirm\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("OWNER_REQUIRED"));
         assertThat(knowledgeBases.findById(logicalKbId).orElseThrow().lifecycle()).isEqualTo("draft");
     }
 
@@ -322,7 +409,7 @@ class ActivationApiTest {
                                 .cookie(owner.session())
                                 .header(SessionService.CSRF_HEADER, owner.csrf()))
                 .andExpect(status().isOk());
-        LoggedIn admin = login("atlas_admin");
+        LoggedIn admin = loginAdminKeepingOwner();
         mockMvc.perform(
                         post("/api/v1/knowledge-bases/" + logicalKbId + "/activate")
                                 .cookie(admin.session())
@@ -427,6 +514,19 @@ class ActivationApiTest {
                         .andExpect(status().isCreated())
                         .andReturn();
         return jsonString(created.getResponse().getContentAsString(), "logical_kb_id");
+    }
+
+    /**
+     * Local SSO is one user. Admin activate must keep {@code kb_owner} on that user so FR-28
+     * does not fire; tests that need Owner-less strip the role after activate.
+     */
+    private LoggedIn loginAdminKeepingOwner() throws Exception {
+        LoggedIn admin = login("atlas_admin");
+        jdbcTemplate.update(
+                "UPDATE atlas_user SET roles = ? WHERE user_id = ?",
+                "[\"end_user\",\"kb_owner\",\"atlas_admin\"]",
+                admin.userId());
+        return admin;
     }
 
     private LoggedIn login(String extraRole) throws Exception {
