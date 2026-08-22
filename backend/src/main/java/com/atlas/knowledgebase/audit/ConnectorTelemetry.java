@@ -88,16 +88,57 @@ public final class ConnectorTelemetry {
             Duration backoff,
             int consecutiveFailures,
             boolean circuitOpen) {
+        recordResilience(
+                connector,
+                cause,
+                retryAfter,
+                backoff,
+                consecutiveFailures,
+                circuitOpen,
+                true);
+    }
+
+    /**
+     * Records provider resilience state after an operation outcome has already been recorded.
+     * Keeping the outcome counters untouched prevents one failed request from being counted twice.
+     */
+    public void recordResilienceState(
+            String connector,
+            ProviderResilienceCause cause,
+            Duration retryAfter,
+            Duration backoff,
+            int consecutiveFailures,
+            boolean circuitOpen) {
+        recordResilience(
+                connector,
+                cause,
+                retryAfter,
+                backoff,
+                consecutiveFailures,
+                circuitOpen,
+                false);
+    }
+
+    private void recordResilience(
+            String connector,
+            ProviderResilienceCause cause,
+            Duration retryAfter,
+            Duration backoff,
+            int consecutiveFailures,
+            boolean circuitOpen,
+            boolean countOutcome) {
         String safeConnector = requireName(connector, "connector");
         if (cause == null) {
             throw new IllegalArgumentException("resilience cause is required");
         }
         ConnectorState state =
                 connectors.computeIfAbsent(safeConnector, ignored -> new ConnectorState());
-        switch (cause) {
-            case QUOTA -> state.quotaLimited.incrementAndGet();
-            case TIMEOUT -> state.timeouts.incrementAndGet();
-            case RETRIEVAL, UNKNOWN -> state.failures.incrementAndGet();
+        if (countOutcome) {
+            switch (cause) {
+                case QUOTA -> state.quotaLimited.incrementAndGet();
+                case TIMEOUT -> state.timeouts.incrementAndGet();
+                case RETRIEVAL, UNKNOWN -> state.failures.incrementAndGet();
+            }
         }
         state.consecutiveFailures.set(Math.max(0, consecutiveFailures));
         state.circuitOpen.set(circuitOpen);

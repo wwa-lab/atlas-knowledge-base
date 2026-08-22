@@ -172,7 +172,7 @@ public final class ProviderExecution implements AutoCloseable {
                     return new ProviderState(
                             failures, current.unavailableUntilNanos(), current.cause());
                 });
-        telemetry.recordResilience(
+        telemetry.recordResilienceState(
                 providerProfile,
                 switch (cause) {
                     case QUOTA -> ConnectorTelemetry.ProviderResilienceCause.QUOTA;
@@ -191,13 +191,17 @@ public final class ProviderExecution implements AutoCloseable {
     /** A successful provider result closes the failure counter after any active window expires. */
     public void recordSuccess(String providerProfile) {
         AtomicReference<ProviderState> reference = stateFor(providerProfile);
-        long now = System.nanoTime();
-        reference.updateAndGet(
-                current ->
-                        current.unavailableUntilNanos() > now
-                                ? current
-                                : ProviderState.available());
-        telemetry.recordResilienceClosed(providerProfile);
+        while (true) {
+            long now = System.nanoTime();
+            ProviderState current = reference.get();
+            if (current.unavailableUntilNanos() > now) {
+                return;
+            }
+            if (reference.compareAndSet(current, ProviderState.available())) {
+                telemetry.recordResilienceClosed(providerProfile);
+                return;
+            }
+        }
     }
 
     public ConnectorTelemetry telemetry() {
