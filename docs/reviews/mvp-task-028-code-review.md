@@ -105,3 +105,7 @@ Review comment:
 
 - [P2] Include contained evidence in partial telemetry — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-614`
   When the only degraded condition is `prompt_injection_contained`, this marks the turn coverage as partial, but `ChatService.analyticsOutcome()` only counts `failed`, `timed_out`, and `quota_limited` as partial. Those security-contained answers will still be recorded as successful in analytics/monitoring, so TASK-028 containment is reported to the client but lost from backend outcome metrics; update the backend partial-outcome check to include this new coverage marker or `partial_coverage`.
+
+## Gate A — final after telemetry fix
+
+No actionable correctness, security, or maintainability regressions were identified in the changed lines. Backend tests and diff whitespace checks passed; frontend verification was blocked by the read-only sandbox when Vite attempted to write its temp config file.
