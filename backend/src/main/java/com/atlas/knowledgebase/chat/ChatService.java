@@ -5,6 +5,7 @@ import com.atlas.knowledgebase.adapters.CancellationSource;
 import com.atlas.knowledgebase.adapters.ModelChannel;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.evidence.CitationAssembler;
 import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
@@ -46,6 +47,9 @@ public class ChatService {
     private final ChatClassificationPolicy classificationPolicy;
     private final RetrievalOrchestrator retrieval;
     private final ModelChannel modelChannel;
+    private final CitationAssembler citationAssembler;
+    private final AssistantCompletionService completions;
+    private final ChatPayloadProjector projections;
     private final AuditEventRepository auditEvents;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -60,6 +64,9 @@ public class ChatService {
             ChatClassificationPolicy classificationPolicy,
             RetrievalOrchestrator retrieval,
             ModelChannel modelChannel,
+            CitationAssembler citationAssembler,
+            AssistantCompletionService completions,
+            ChatPayloadProjector projections,
             AuditEventRepository auditEvents,
             ObjectMapper objectMapper,
             Clock clock) {
@@ -71,6 +78,9 @@ public class ChatService {
         this.classificationPolicy = classificationPolicy;
         this.retrieval = retrieval;
         this.modelChannel = modelChannel;
+        this.citationAssembler = citationAssembler;
+        this.completions = completions;
+        this.projections = projections;
         this.auditEvents = auditEvents;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -79,7 +89,7 @@ public class ChatService {
     public Map<String, Object> list(AtlasUserRecord user) {
         List<Map<String, Object>> items = new ArrayList<>();
         for (ChatThreadRecord thread : threads.findActiveByUserId(user.userId())) {
-            items.add(threadProjection(thread));
+            items.add(projections.thread(thread));
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("items", items);
@@ -104,15 +114,15 @@ public class ChatService {
                                 now,
                                 null));
         audit(user.userId(), resolved.logicalKbIds().getFirst(), "chat_create", "allow", "ok");
-        return threadProjection(thread);
+        return projections.thread(thread);
     }
 
     public Map<String, Object> get(AtlasUserRecord user, String threadId) {
         ChatThreadRecord thread = requireOwnThread(user, threadId);
-        Map<String, Object> body = threadProjection(thread);
+        Map<String, Object> body = projections.thread(thread);
         List<Map<String, Object>> history = new ArrayList<>();
         for (ChatMessageRecord message : messages.findByThreadId(threadId)) {
-            history.add(messageProjection(message));
+            history.add(projections.message(message));
         }
         body.put("messages", history);
         return body;
@@ -126,7 +136,7 @@ public class ChatService {
         Instant now = clock.instant();
         if (!hasMessages) {
             ChatThreadRecord updated = threads.updateScope(threadId, writeJson(resolved.logicalKbIds()), now);
-            return threadProjection(updated);
+            return projections.thread(updated);
         }
         if (mode == null || mode.isBlank()) {
             throw new ChatValidationException(
@@ -148,7 +158,7 @@ public class ChatService {
                                 now,
                                 now,
                                 null));
-        Map<String, Object> body = threadProjection(created);
+        Map<String, Object> body = projections.thread(created);
         if (branchedFrom != null) {
             body.put("branched_from_thread_id", branchedFrom);
         }
@@ -184,7 +194,7 @@ public class ChatService {
                                 question,
                                 null,
                                 writeJson(actualScope.logicalKbIds()),
-                                writeJson(actualScope.bindingIds()),
+                                writeJson(actualScope.bindingSnapshots()),
                                 writeJson(actualScope.configVersions()),
                                 null,
                                 null,
@@ -201,7 +211,7 @@ public class ChatService {
                                 null,
                                 null,
                                 writeJson(actualScope.logicalKbIds()),
-                                writeJson(actualScope.bindingIds()),
+                                writeJson(actualScope.bindingSnapshots()),
                                 writeJson(actualScope.configVersions()),
                                 null,
                                 null,
@@ -290,7 +300,7 @@ public class ChatService {
                 messages.markProcessingIfRetryable(
                         message.messageId(),
                         writeJson(resolved.retrievalScope().logicalKbIds()),
-                        writeJson(resolved.retrievalScope().bindingIds()),
+                        writeJson(resolved.retrievalScope().bindingSnapshots()),
                         writeJson(resolved.retrievalScope().configVersions()),
                         resolved.classification());
         if (reserved == 0) {
@@ -314,7 +324,7 @@ public class ChatService {
             emitter.send(
                     SseEmitter.event()
                             .name("final")
-                            .data(finalPayload(message, message.answerText(), null)));
+                            .data(projections.replay(message)));
             emitter.complete();
         } catch (IOException e) {
             emitter.completeWithError(e);
@@ -504,10 +514,14 @@ public class ChatService {
                             }
                             Instant done = clock.instant();
                             String coverage = writeJson(turn.coverage());
-                            int completed =
-                                    messages.completeIfInFlight(
-                                            assistant.messageId(), completeAnswer, coverage, done);
-                            if (completed == 0) {
+                            AssistantCompletionService.CompletionResult completion =
+                                    completions.complete(
+                                            assistant.messageId(),
+                                            completeAnswer,
+                                            coverage,
+                                            turn,
+                                            done);
+                            if (!completion.won()) {
                                 completeQuietly(flight.emitter);
                                 return;
                             }
@@ -517,7 +531,13 @@ public class ChatService {
                                 flight.emitter.send(
                                         SseEmitter.event()
                                                 .name("final")
-                                                .data(finalPayload(stored, completeAnswer, turn)));
+                                                .data(
+                                                        projections.completed(
+                                                                stored,
+                                                                completeAnswer,
+                                                                completion.summaries(),
+                                                                turn.coverage(),
+                                                                turn.conflict())));
                                 flight.emitter.complete();
                             } catch (IOException e) {
                                 completeQuietly(flight.emitter);
@@ -571,8 +591,9 @@ public class ChatService {
             ResolvedScope resolved,
             CancellationSource cancellation) {
         RetrievalTurn turn =
-                retrieval.retrieve(
-                        user, question, resolved.retrievalScope(), cancellation);
+                citationAssembler.filterValidCandidates(
+                        retrieval.retrieve(
+                                user, question, resolved.retrievalScope(), cancellation));
         if (turn.block() == RetrievalTurn.Block.BINDING_ACCESS) {
             throw new ChatForbiddenException(
                     "KB_BINDING_ACCESS_MISSING",
@@ -618,6 +639,14 @@ public class ChatService {
                     "RETRIEVAL_UNKNOWN_FAILURE",
                     "Retrieval could not be completed safely for this turn.",
                     "retry_or_contact_support",
+                    Map.of("coverage", turn.coverage()));
+        }
+        if (turn.fused().isEmpty()) {
+            throw new ChatRetrievalException(
+                    "retrieval",
+                    "NO_GROUNDED_EVIDENCE",
+                    "No selected source returned citation-complete grounded evidence for this turn.",
+                    "retry_or_change_scope",
                     Map.of("coverage", turn.coverage()));
         }
         return turn;
@@ -719,62 +748,6 @@ public class ChatService {
                 logicalKbIds,
                 classificationPolicy.resolve(snapshots),
                 new RetrievalScope(snapshots));
-    }
-
-    private Map<String, Object> threadProjection(ChatThreadRecord thread) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("thread_id", thread.threadId());
-        body.put("logical_kb_ids", readIds(thread.selectedLogicalKbIdsJson()));
-        if (thread.branchedFromThreadId() != null) {
-            body.put("branched_from_thread_id", thread.branchedFromThreadId());
-        }
-        return body;
-    }
-
-    private Map<String, Object> messageProjection(ChatMessageRecord message) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("message_id", message.messageId());
-        body.put("role", message.role());
-        body.put("status", message.status());
-        body.put("question", message.questionText());
-        if ("completed".equals(message.status())) {
-            body.put("answer", message.answerText());
-        } else {
-            body.put("answer", null);
-        }
-        body.put("request_id", message.requestId());
-        return body;
-    }
-
-    private Map<String, Object> finalPayload(
-            ChatMessageRecord message, String answer, RetrievalTurn turn) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("message_id", message.messageId());
-        body.put("status", "completed");
-        body.put("answer", answer);
-        body.put("citations", turn == null ? List.of() : turn.citations());
-        body.put("coverage", turn == null ? storedCoverage(message) : turn.coverage());
-        body.put("conflict", turn == null ? null : turn.conflict());
-        body.put("classification", message.classification());
-        body.put("request_id", message.requestId());
-        return body;
-    }
-
-    private Map<String, Object> storedCoverage(ChatMessageRecord message) {
-        if (message.coverageJson() == null || message.coverageJson().isBlank()) {
-            Map<String, Object> coverage = new LinkedHashMap<>();
-            coverage.put("successful", List.of());
-            coverage.put("failed", List.of());
-            coverage.put("timed_out", List.of());
-            return coverage;
-        }
-        try {
-            Map<String, Object> coverage =
-                    objectMapper.readValue(message.coverageJson(), new TypeReference<Map<String, Object>>() {});
-            return coverage == null ? Map.of() : coverage;
-        } catch (JsonProcessingException e) {
-            return Map.of();
-        }
     }
 
     private List<String> readIds(String json) {

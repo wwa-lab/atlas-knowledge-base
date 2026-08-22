@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -94,15 +95,51 @@ public class StubRetriever implements Retriever {
         String locator =
                 switch (request.providerProfile()) {
                     case "git_markdown" ->
-                            "{\"repository\":\"org/runbooks\",\"commit_sha\":\"abc123def\",\"path\":\"docs/"
-                                    + suffix
-                                    + ".md\",\"line_range\":[1,20]}";
+                            writeLocator(
+                                    Map.of(
+                                            "repository",
+                                            sourceIdentityValue(
+                                                    request.sourceIdentityJson(), "repo", "org/runbooks"),
+                                            "commit_sha",
+                                            "abc123def",
+                                            "path",
+                                            "docs/" + suffix + ".md",
+                                            "line_range",
+                                            List.of(1, 20),
+                                            "atlas_fixture",
+                                            true));
                     case "confluence" ->
-                            "{\"space\":\"SUPPORT\",\"page_id\":\""
-                                    + documentId
-                                    + "\",\"version\":1}";
+                            writeLocator(
+                                    Map.of(
+                                            "instance",
+                                            sourceIdentityValue(
+                                                    request.sourceIdentityJson(),
+                                                    "instance",
+                                                    "atlas-fixture"),
+                                            "page_id",
+                                            documentId,
+                                            "page_version",
+                                            1,
+                                            "atlas_fixture",
+                                            true));
                     default ->
-                            "{\"dataset_id\":\"ds_fixture\",\"document_id\":\"" + documentId + "\"}";
+                            writeLocator(
+                                    Map.of(
+                                            "dataset_id",
+                                            sourceIdentityValue(
+                                                    request.sourceIdentityJson(),
+                                                    "dataset_id",
+                                                    "ds_fixture"),
+                                            "document_id",
+                                            documentId,
+                                            "chunk_id",
+                                            documentId + ":chunk",
+                                            "original_version",
+                                            Map.of(
+                                                    "source_id", documentId + ":source",
+                                                    "version", "v1"),
+                                            "atlas_fixture",
+                                            true));
                 };
         String sourceUrl =
                 switch (request.providerProfile()) {
@@ -124,6 +161,26 @@ public class StubRetriever implements Retriever {
                 locator,
                 rank,
                 fingerprint);
+    }
+
+    private String writeLocator(Map<String, Object> locator) {
+        try {
+            return objectMapper.writeValueAsString(locator);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Unable to serialize fixture locator", e);
+        }
+    }
+
+    private String sourceIdentityValue(String sourceIdentityJson, String key, String fallback) {
+        if (sourceIdentityJson == null || sourceIdentityJson.isBlank()) {
+            return fallback;
+        }
+        try {
+            String value = objectMapper.readTree(sourceIdentityJson).path(key).asText("");
+            return value.isBlank() ? fallback : value;
+        } catch (JsonProcessingException e) {
+            return fallback;
+        }
     }
 
     private String fixture(String sourceIdentityJson) {

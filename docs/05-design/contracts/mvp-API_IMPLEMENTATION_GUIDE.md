@@ -124,8 +124,8 @@ framework and persistence products are out of scope for this guide.
 
 | Operation | Method | Endpoint | Auth |
 |---|---|---|---|
-| Evidence drawer | GET | `/citations/{citation_id}` | Session |
-| Open original | POST | `/citations/{citation_id}/open-original` | Session+CSRF |
+| Evidence drawer | GET | `/citations/{citation_id}` | Session + current user's private thread |
+| Open original | POST | `/citations/{citation_id}/open-original` | Session+CSRF + current user's private thread |
 | Create issue | POST | `/issues` | Session+CSRF |
 | Impact preview | POST | `/admin/bindings/{binding_id}/impact-preview` | Atlas Admin |
 | Disable binding | POST | `/admin/bindings/{binding_id}/disable` | Atlas Admin |
@@ -448,9 +448,238 @@ Example final event:
 
 **Response:** Same streaming contract as ask. Must not create unintended duplicate completed answers.
 
+## Citation And Evidence Contract (TASK-016)
+
+ADR-0008 is normative for locator validation, private lookup, immutable
+resolution, and audit behavior. TASK-016 uses provider-neutral stub resolution;
+real adapter capability remains TASK-019–TASK-021.
+
+**Current implementation grounding (verified 2026-08-22):** the final Chat
+envelope already contains `citations`, but `RetrievalOrchestrator` supplies an
+empty list and no citation rows are persisted. RRF preserves each provenance
+path; TASK-016 must assemble one citation per preserved path and persist the
+winning set atomically. The current `StubRetriever` Git locator matches the
+required keys, but its Confluence fixture uses `space/page_id/version` and its
+Dify fixture omits `chunk_id` and `original_version`; TASK-016 must update those
+synthetic fixture shapes exactly as defined below.
+
+### Provider locator schemas
+
+Locator JSON is a closed schema. Required strings are non-blank; unknown keys,
+missing keys, wrong types, provider/shape mismatch, and violated constraints are
+invalid and must produce `503 EVIDENCE_RESOLUTION_UNKNOWN` without provider
+dispatch or navigation.
+
+#### Git (`provider = "git_markdown"`)
+
+```json
+{
+  "repository": "org/repo",
+  "commit_sha": "abc1234",
+  "path": "docs/cert.md",
+  "line_range": [10, 40],
+  "stable_source_id": "source_123",
+  "move_mapping": {
+    "moved_to_locator": {
+      "repository": "org/repo",
+      "commit_sha": "def5678",
+      "path": "docs/security/cert.md",
+      "line_range": [12, 42],
+      "stable_source_id": "source_123"
+    }
+  }
+}
+```
+
+| Key | Type | Constraint |
+|---|---|---|
+| `repository` | string | Required, non-blank |
+| `commit_sha` | string | Required, non-blank immutable commit identifier |
+| `path` | string | Required, non-blank |
+| `line_range` | array of two integers | Required; positive `start`, positive `end`, `start <= end` |
+| `stable_source_id` | string | Optional; non-blank when present |
+| `atlas_fixture` | boolean | Optional; only literal `true` on local/test synthetic locators; absent for live-provider locators |
+| `move_mapping` | object | Optional; contains exactly `moved_to_locator` |
+| `move_mapping.moved_to_locator` | Git locator object | Same Git shape, but nested `move_mapping` is forbidden |
+
+When `move_mapping` is present, both the cited and target locators must contain
+the same `stable_source_id`. Matching repository or path text is not sufficient.
+
+#### Confluence (`provider = "confluence"`)
+
+```json
+{
+  "instance": "corp-confluence",
+  "page_id": "123456",
+  "page_version": 17,
+  "attachment_id": "att_42",
+  "attachment_version": 3
+}
+```
+
+| Key | Type | Constraint |
+|---|---|---|
+| `instance` | string | Required, non-blank |
+| `page_id` | string | Required, non-blank |
+| `page_version` | integer | Required, positive |
+| `attachment_id` | string | Optional, non-blank; must appear with `attachment_version` |
+| `attachment_version` | integer | Optional, positive; must appear with `attachment_id` |
+| `atlas_fixture` | boolean | Optional; same local/test-only rule as Git |
+
+#### Dify (`provider = "dify"`)
+
+```json
+{
+  "dataset_id": "dataset_123",
+  "document_id": "document_456",
+  "chunk_id": "chunk_789",
+  "original_version": {
+    "source_id": "source_abc",
+    "version": "v17"
+  }
+}
+```
+
+| Key | Type | Constraint |
+|---|---|---|
+| `dataset_id` | string | Required, non-blank |
+| `document_id` | string | Required, non-blank |
+| `chunk_id` | string | Required, non-blank |
+| `original_version` | object | Required; contains exactly `source_id` and `version` |
+| `original_version.source_id` | string | Required, non-blank |
+| `original_version.version` | string | Required, non-blank |
+| `atlas_fixture` | boolean | Optional; same local/test-only rule as Git |
+
+### Locator input-safety limits
+
+| Rule | Exact constraint |
+|---|---|
+| JSON size | Maximum 16,384 UTF-8 bytes |
+| JSON shape | One object, no duplicate keys, maximum four container levels including root/arrays |
+| Integer range | `1..2147483647` |
+| Git repository | At most 201 ASCII chars; exactly `[A-Za-z0-9._-]{1,100}/[A-Za-z0-9._-]{1,100}`; neither component `.` nor `..` |
+| Git commit | `[A-Fa-f0-9]{7,64}` |
+| Git path | NFC UTF-8, at most 2,048 bytes, relative POSIX path; no leading `/`, empty/`.`/`..` segment, `\\`, control, scheme/host, query, or fragment |
+| Instance alias | `[A-Za-z0-9._-]{1,128}` |
+| Other locator ids/version | `[A-Za-z0-9._:-]{1,256}` |
+
+Provider/shape mismatch, unknown/duplicate/extra keys, malformed JSON, and any
+limit violation return `503 EVIDENCE_RESOLUTION_UNKNOWN` before dispatch.
+Trusted HTTPS origins come only from adapter configuration, never locator,
+binding JSON, or request fields. Navigation percent-encodes every validated
+UTF-8 path/query component. Fixture navigation uses the single reserved origin
+`https://evidence-fixture.invalid`.
+
+Fixture dispatch is allowed only when the active plane is `local` or an
+automated test, the validated locator contains `atlas_fixture: true`, and the
+current authoritative binding `source_identity` also contains
+`atlas_fixture: true`. Missing, false, wrong-type, or mismatched markers return
+`503` before resolver dispatch. Live adapters reject either marker. Excerpt or
+title text and URL/provider naming are never used to infer fixture status.
+
+### Current authoritative source-identity continuity
+
+| Provider | Required current continuity |
+|---|---|
+| Git | `locator.repository` exactly equals authoritative `source_identity.repo` |
+| Dify | `locator.dataset_id` exactly equals authoritative `source_identity.dataset_id`; live adapter proves document/chunk membership and the `original_version.source_id` + `version` mapping |
+| Confluence | Authoritative `source_identity` contains configured `instance`, `space_id`, and optional `page_root_id`; locator instance matches; live adapter proves page remains in the Space/root scope and attachment remains on that page |
+
+Missing, unprovable, or mismatched continuity returns `503`. A definitive
+current-user denial from the matching live adapter returns `403`. Message-time
+binding/config snapshots are diagnostic drift input only and never authority.
+
+### Resolver verification modes
+
+Every resolver-bearing response freezes these fields:
+
+| Field | Type | Values / invariant |
+|---|---|---|
+| `verification_mode` | string | `fixture` \| `provider` \| `none` |
+| `provider_verified` | boolean | `true` only when a live adapter supports the reported outcome |
+
+- `fixture` exists only in automated tests and `local`, accepts only citations
+  carrying both required machine markers, always sets `provider_verified: false`, may simulate
+  `ok`/`moved`/`unavailable`, and may return `ok` navigation only under
+  `https://evidence-fixture.invalid`. Fixture moved omits
+  `moved_to_locator_id`.
+- `non-prod` and `prod` require live adapters. Without one, they return `503`
+  with `verification_mode: "none"` and `provider_verified: false`.
+- Live `ok`, `moved`, and `unavailable` require
+  `verification_mode: "provider"` and `provider_verified: true`.
+- Pre-dispatch validation failure uses `none`/`false`; live inconclusive failure
+  uses `provider`/`false`. A fixture result must never be presented as
+  provider-verified.
+
+### Citation persistence invariant
+
+- The citation set and the assistant transition to `completed` commit in one
+  transaction only when that completion write wins. Cancelled, failed, and
+  losing completion callbacks leave no citation rows.
+- Assemble one citation per RRF-preserved provenance path, including paths
+  merged under one representative fused hit.
+- Before model dispatch, omit any provenance path missing a valid locator,
+  version, excerpt, document title, Owner, classification, binding role, or
+  other required common-core metadata and disclose that item omission in
+  coverage. A fused item may retain only its valid paths. If no valid grounded
+  evidence remains, return `NO_GROUNDED_EVIDENCE`, do not call the model, and do
+  not create a completed answer or citation rows.
+- Retry reuses the assistant message and atomically replaces that message's
+  citation set only when retry completion wins. A reader must not observe a
+  completed answer with a partial or stale citation set.
+- V2 is sufficient: existing citation columns store answer-time metadata, and
+  the completed message's compact `binding_set` snapshot stores objects with
+  exactly `binding_id` and answer-time `binding_role`. No TASK-016 migration or
+  evidence cache is permitted. A cache requires a separate Security/Data ADR.
+- New citation rows require non-blank `version_label`, `excerpt`,
+  `document_title`, `owner`, `classification`, and `resolve_status`, plus a
+  non-null `atlas_verified_at`, schema identifiers/provider, and a validated
+  locator. The matching completed-message snapshot requires non-blank
+  `binding_role`. `source_updated_at` alone may be null for unknown freshness.
+  Owner uses the answer-time display name or stable `owner_user_id` fallback;
+  no other required field is synthesized, truncated, or substituted.
+- A completion-time missing/invalid required field is
+  `CITATION_METADATA_INCOMPLETE`: roll back the assistant completion and entire
+  citation-set replacement, leave no partial/stale set, and keep the answer out
+  of `completed` state.
+
+### Common private-access behavior
+
+For both citation endpoints:
+
+1. Resolve `citation_id` only through a Chat thread owned by the current session
+   user. Missing and cross-user citations both return the same `404` body.
+2. Re-authorize the current authoritative logical knowledge base, binding, and
+   provider/source identity boundary on every request. A prior GET does not
+   authorize a later POST.
+3. Definitive current denial returns `403`. If provider/binding/source drift
+   prevents safe continuity verification, return `503` and do not use a stale
+   answer-time authorization snapshot.
+4. Every authenticated GET emits `evidence_view`; every authenticated POST emits
+   `evidence_open`, including Moved, Unavailable, and Unknown. Definitive denial
+   also emits `authorization_denied`. For a current-user citation the operation
+   event may contain user/time, KB id, binding id, connector, authorization
+   result, `evidence_locator_ids: [citation_id]`, status, and error category.
+   `citation_id` is the only permitted evidence identifier. Missing/cross-user
+   events contain user/time, action, generic status, and error category only.
+   `details`, raw/hashed locator, excerpt, source/answer body, prompt, source
+   identity, navigation URL, and move target are forbidden. Full telemetry
+   remains TASK-027.
+
+Shared errors:
+
+| HTTP | category | code | Condition |
+|---|---|---|---|
+| `401` | `authentication` | `SESSION_REQUIRED` | Missing or expired Atlas session |
+| `404` | `unavailable` | `EVIDENCE_NOT_FOUND` | Citation missing or not in the current user's private thread; identical response for both |
+| `403` | `authorization` | `EVIDENCE_ACCESS_DENIED` | Current KB, binding, provider, or source authorization definitively denies access |
+| `503` | `unknown` | `EVIDENCE_RESOLUTION_UNKNOWN` | Invalid/mismatched locator, unknown provider, unsafe runtime/source drift, or resolver cannot prove a safe outcome |
+
 ### GET `/citations/{citation_id}`
 
-**Purpose:** Evidence Drawer projection.
+**Purpose:** Return the accepted Evidence Drawer projection after current
+re-authorization. The short persisted citation excerpt may be returned; the
+operation must not refetch, cache, or mirror a full source body.
 
 **Response 200**
 ```json
@@ -461,6 +690,7 @@ Example final event:
   "logical_kb_name": "AMH Support KB",
   "provider": "git_markdown",
   "binding_id": "bnd_git_1",
+  "binding_role": "canonical",
   "version": "abc1234",
   "locator": {
     "repository": "org/repo",
@@ -468,42 +698,140 @@ Example final event:
     "path": "docs/cert.md",
     "line_range": [10, 40]
   },
+  "document_title": "Gateway certificate rotation",
   "owner": "hase-owner",
   "classification": "internal",
   "source_updated_at": "2026-08-18T00:00:00Z",
   "atlas_verified_at": "2026-08-20T01:40:00Z",
-  "resolve_status": "ok"
+  "resolve_status": "ok",
+  "verification_mode": "fixture",
+  "provider_verified": false,
+  "open_original_action": {
+    "method": "POST",
+    "path": "/api/v1/citations/cit_1/open-original",
+    "requires_csrf": true
+  }
 }
 ```
 
-**Side effects:** Re-authorization before returning protected excerpt when required by policy; never return full Atlas document mirror as source of truth.
+A valid, authorized Drawer may return `ok`, `moved`, or `unavailable`; `unknown`
+uses the shared `503` error and returns no protected projection. The safe action
+descriptor never contains an external URL. This GET projection plus a separately
+re-authorized successful POST is the REQ-SRC-001 authorized-original-navigation
+contract.
+
+A legacy citation row missing any required projection field returns
+`503 EVIDENCE_RESOLUTION_UNKNOWN` before any protected field is returned. GET
+never synthesizes, backfills, truncates, or substitutes missing metadata.
+
+Exact field authority/null rules:
+
+| Fields | Authority / null rule |
+|---|---|
+| `excerpt`, `document_title`, `owner`, `classification` | Required non-blank persisted answer-time metadata; current auth cannot rewrite it |
+| `source_updated_at` | Persisted answer-time timestamp or JSON `null` when freshness was unknown |
+| `binding_role` | Persisted answer-time value from the completed message's compact `binding_set` entry |
+| `logical_kb_name` | Current authoritative KB display name after re-authorization |
+| `logical_kb_id`, `binding_id`, `provider`, `version`, `locator` | Persisted immutable citation identity/version coordinates |
+| `atlas_verified_at` | Required non-null answer-time Atlas citation-validation timestamp, not current Drawer authorization time |
+| `resolve_status`, `verification_mode`, `provider_verified` | Current safe resolver result |
+| `open_original_action` | Derived from current API base path + scoped `citation_id`; exact keys shown above |
 
 ### POST `/citations/{citation_id}/open-original`
 
-**Purpose:** Re-authorize and navigate to authorized original version.
+**Purpose:** Re-authorize and resolve navigation to only the exact immutable
+version represented by the persisted citation locator.
 
-**Response 200**
+**Request body:** No body is required. An absent body or `{}` is accepted.
+Client-supplied locator, version, or target URL fields return `422` with
+`category = "validation"` and `code = "EVIDENCE_OPEN_BODY_INVALID"`; they are
+never used for resolution.
+
+**Response 200 — exact immutable version verified**
 ```json
 {
   "navigation_url": "https://github.example/org/repo/blob/abc1234/docs/cert.md#L10-L40",
-  "resolve_status": "ok"
+  "resolve_status": "ok",
+  "verification_mode": "provider",
+  "provider_verified": true
 }
 ```
 
-**Errors:** `410`/`409` with `moved` or `unavailable` — must not silently open latest content.
+Only `ok` may include `navigation_url`. Local/test fixture `ok` instead returns
+the same fields with `verification_mode: "fixture"`,
+`provider_verified: false`, and a URL whose origin is exactly
+`https://evidence-fixture.invalid`. Fixture navigation is forbidden in
+`non-prod` and `prod`.
 
-Example:
+**Response 409 — same stable source identity moved**
 ```json
 {
   "error": {
     "category": "moved",
     "code": "EVIDENCE_MOVED",
-    "message": "The cited version moved; latest content was not opened as a substitute.",
+    "message": "The cited immutable locator is no longer canonical; no newer content was opened.",
     "request_id": "req_01H...",
-    "next_step": "inspect_move_mapping_or_ask_owner"
+    "next_step": "inspect_move_mapping_or_ask_owner",
+    "details": {
+      "provider": "git_markdown",
+      "verification_mode": "provider",
+      "provider_verified": true,
+      "stable_source_id": "source_123",
+      "moved_to_locator_id": "loc_sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
   }
 }
 ```
+
+Live `moved` requires a provider-verified mapping for the same stable source
+identity. A fixture simulation is `fixture`/`false` and omits the target id.
+`moved_to_locator_id` is optional and, when present, is exactly
+`"loc_sha256:" + lowercase_hex(SHA-256(RFC8785_JCS(moved_to_locator)))`.
+`details` must not contain a target URL, raw target locator, excerpt, body,
+automatic redirect, or latest-version substitute.
+
+**Response 410 — exact version unavailable**
+```json
+{
+  "error": {
+    "category": "unavailable",
+    "code": "EVIDENCE_UNAVAILABLE",
+    "message": "The cited immutable version is deleted, not retained, or cannot be resolved with a verifiable move mapping.",
+    "request_id": "req_01H...",
+    "next_step": "ask_owner_or_retry_later",
+    "details": {
+      "verification_mode": "provider",
+      "provider_verified": true
+    }
+  }
+}
+```
+
+**Response 503 — safe outcome unknown**
+```json
+{
+  "error": {
+    "category": "unknown",
+    "code": "EVIDENCE_RESOLUTION_UNKNOWN",
+    "message": "Atlas cannot safely verify the cited immutable version.",
+    "request_id": "req_01H...",
+    "next_step": "retry_later",
+    "details": {
+      "verification_mode": "none",
+      "provider_verified": false
+    }
+  }
+}
+```
+
+Exact POST outcome mapping:
+
+| Resolver outcome | HTTP | code | Verification / navigation behavior |
+|---|---|---|---|
+| `ok` | `200` | — | Live requires `provider/true`; fixture requires `fixture/false` and reserved origin; exact immutable version only |
+| `moved` | `409` | `EVIDENCE_MOVED` | Live `provider/true` or fixture simulation `fixture/false`; no navigation/latest substitution; hash only for verified live mapping |
+| `unavailable` | `410` | `EVIDENCE_UNAVAILABLE` | Live `provider/true` or fixture simulation `fixture/false`; no navigation; ask Owner or retry later |
+| `unknown` | `503` | `EVIDENCE_RESOLUTION_UNKNOWN` | `none/false` before dispatch or `provider/false` when inconclusive; fail closed |
 
 ### POST `/issues`
 
@@ -602,7 +930,21 @@ Git capability: browse_only <-> chat_ready (gates + Owner activation)
 - Contract tests must assert tokens never appear in JSON responses
 - Catalog tests: Private hidden; Catalog unauthorized limited fields
 - Chat tests: 1–5 logical KB limit; Browse-only rejected; incomplete not completed
-- Evidence tests: Moved/Unavailable do not open latest silently
+- Evidence tests: current-user private-thread lookup; identical 404 for missing
+  and cross-user ids; current KB/binding/provider re-authorization; closed
+  locator-schema size/depth/duplicate-key/field/path validation; trusted-origin
+  URL construction; no dispatch on provider/locator/source-identity mismatch;
+  Git repo continuity/line range/move identity; Confluence instance+Space/root
+  scope and attachment pair; Dify dataset/document/chunk/original-version
+  continuity; local/test fixture marker and reserved origin; non-prod/prod
+  no-adapter `unknown`; live `ok` requires provider verification;
+  `ok`/`moved`/`unavailable`/`unknown` HTTP mapping; derived move-locator hash;
+  required answer-time fields + current KB name + source-time null + safe action;
+  required-metadata path omission; all-invalid `NO_GROUNDED_EVIDENCE`;
+  completion-invariant rollback; legacy required-field null returns `503`; no
+  latest substitution; exact content-free audit allow-list; one citation per
+  provenance path; atomic winning citation set; retry replacement; cancelled/
+  failed turns leave no citations
 - Admin tests: hard-gate failure cannot activate; disable stops retrieval
 
 ## Open Contract Items

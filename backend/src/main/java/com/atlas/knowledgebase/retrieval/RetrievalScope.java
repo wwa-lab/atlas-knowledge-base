@@ -26,6 +26,18 @@ public record RetrievalScope(List<KnowledgeBaseSnapshot> knowledgeBases) {
                 .toList();
     }
 
+    /** Compact immutable answer-time binding metadata required by ADR-0008. */
+    public List<Map<String, String>> bindingSnapshots() {
+        return knowledgeBases.stream()
+                .flatMap(snapshot -> snapshot.bindings().stream())
+                .map(
+                        binding ->
+                                Map.of(
+                                        "binding_id", binding.bindingId(),
+                                        "binding_role", binding.bindingRole()))
+                .toList();
+    }
+
     public Map<String, Object> configVersions() {
         Map<String, Integer> logicalKbVersions = new LinkedHashMap<>();
         Map<String, Integer> bindingVersions = new LinkedHashMap<>();

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.ModelChannel;
 import com.atlas.knowledgebase.audit.AuditEventRepository;
+import com.atlas.knowledgebase.evidence.CitationAssembler;
 import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
@@ -49,6 +50,9 @@ class ChatServiceConcurrencyTest {
         BindingRepository bindings = mock(BindingRepository.class);
         RetrievalOrchestrator retrieval = mock(RetrievalOrchestrator.class);
         ModelChannel modelChannel = mock(ModelChannel.class);
+        CitationAssembler citationAssembler = mock(CitationAssembler.class);
+        AssistantCompletionService completions = mock(AssistantCompletionService.class);
+        ChatPayloadProjector projections = mock(ChatPayloadProjector.class);
         AuditEventRepository auditEvents = mock(AuditEventRepository.class);
         ChatClassificationProperties classificationProperties = new ChatClassificationProperties();
         classificationProperties.setApprovedValues(java.util.Set.of("internal", "restricted"));
@@ -62,6 +66,9 @@ class ChatServiceConcurrencyTest {
                         new ChatClassificationPolicy(classificationProperties),
                         retrieval,
                         modelChannel,
+                        citationAssembler,
+                        completions,
+                        projections,
                         auditEvents,
                         new ObjectMapper(),
                         Clock.fixed(NOW, ZoneOffset.UTC));
@@ -115,6 +122,7 @@ class ChatServiceConcurrencyTest {
                         RetrievalTurn.Block.NONE,
                         null,
                         null);
+        when(citationAssembler.filterValidCandidates(any())).thenReturn(turn);
 
         when(threads.findById(thread.threadId())).thenReturn(Optional.of(thread));
         when(messages.findById(failedAssistant.messageId()))
