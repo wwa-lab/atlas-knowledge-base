@@ -130,3 +130,124 @@ Arbitrary `note` is stored and returned as part of `diagnostics`
 ## Gate A Verdict
 - **Pass:** No
 - **Severity summary:** 0 Critical, 1 Major, 0 Minor
+
+---
+
+# Code vs Design Review Report — TASK-018 (Gate A rerun)
+
+## Review Scope
+- **Design reviewed:** `docs/03-spec/mvp-spec.md` (FR-58 to FR-61), `docs/04-architecture/mvp-architecture.md`, `docs/04-architecture/mvp-data-model.md`, `docs/05-design/mvp-design.md`, `docs/05-design/contracts/mvp-API_IMPLEMENTATION_GUIDE.md`
+- **Tasks reviewed:** `docs/06-tasks/mvp-tasks.md` (`TASK-018`)
+- **Code / files inspected:** `backend/src/main/java/com/atlas/knowledgebase/issues/*`, `backend/src/main/java/com/atlas/knowledgebase/chat/ChatMessageRepository.java`, `backend/src/test/java/com/atlas/knowledgebase/issues/IssueApiTest.java`, `backend/src/main/resources/db/migration/V2__core_entities.sql`
+- **Review objective:** Re-check Gate A after the fix and confirm the implementation now keeps diagnostics allow-listed/content-free, excludes `note` from response and persistence, and has no remaining Critical/Major gaps.
+
+---
+
+## Overall Assessment
+- **Alignment rating:** 93%
+- **Verdict:** Aligned with minor deviations
+- **Rationale:** The repaired implementation now satisfies the blocking requirement that issue reports remain content-free: `note` is validated but not returned, not persisted in `issue_report`, and not written into ordinary audit details. Routing behavior matches TASK-018 and FR-60/61. I did not find any remaining Critical or Major misalignment in `git diff origin/main...HEAD` excluding the review file.
+
+---
+
+## Areas of Good Alignment
+- `IssueService.create(...)` persists only `issue_id`, user/context references, `category`, serialized diagnostics, and `route_target`; there is no persistence field for `note`.
+- `IssueService.diagnostics(...)` builds diagnostics from identifiers/status/authorization context and never injects request free text, answer body, prompt body, or citation excerpt.
+- `IssueReportRecord`, `IssueReportRepository`, and `V2__core_entities.sql` model `issue_report` exactly as the accepted data model requires: no full-body fields and no `note` column.
+- `IssueService.audit(...)` writes a minimal `audit_event.details` payload containing only `issue_id`, `category`, and `route_target`, which stays within the content-free audit intent.
+- `IssueApiTest.routesGitCitationAndKeepsDiagnosticsContentFree()` explicitly checks that response, persisted diagnostics JSON, and audit details do not contain the free-text note or secret prompt/answer/source bodies.
+- Ownership and fail-closed behavior are implemented for `message_id`/`citation_id` lookups, which is consistent with the surrounding security intent.
+
+---
+
+## Misalignments and Gaps
+
+### Critical
+None identified.
+
+### Major
+None identified.
+
+### Minor
+**Diagnostics allow-list is implemented by convention, not by an explicit central allow-list artifact**
+- **Design / task expected:** TASK-018 and the data model require “allow-listed diagnostics only”.
+- **Code currently does:** `IssueService.diagnostics(...)` hardcodes a small set of safe fields inline (`request_id`, `message_id`, `citation_id`, `logical_kb_id`, `binding_id`, `provider`, `status`, `authorization_result`, `issue_id`) but there is no named constant or shared allow-list contract.
+- **Why it matters:** The current field set is still non-sensitive and aligned with FR-59, so this is not blocking. The risk is future drift if someone later adds fields casually.
+- **Recommended fix:** Optional follow-up only: extract the diagnostics keys into an explicit constant/set or document them in code to make the allow-list boundary harder to erode.
+
+---
+
+## Coverage Check
+
+| Design Area | Status |
+|---|---|
+| Category validation and issue classification | Implemented |
+| Source/owner/security route mapping | Implemented |
+| Content-free diagnostics only | Implemented |
+| No automatic full prompt/evidence/answer body attach | Implemented |
+| `issue_report` persistence shape | Implemented |
+| Ordinary audit remains content-free | Implemented |
+| Cross-user fail-closed lookup | Implemented |
+
+**Task coverage (if tasks.md is provided):**
+- Tasks clearly implemented: TASK-018 objective and scope for POST `/issues`
+- Tasks partially implemented: None identified within TASK-018 scope
+- Tasks not yet reflected in code: None identified within TASK-018 scope
+- Code changes not clearly mapped to any task: None material; helper lookup in `ChatMessageRepository` supports TASK-018 ownership enforcement
+
+**Behaviors implemented but not clearly supported by design:**
+- Acceptance/validation of an optional request `note` while intentionally excluding it from response/persistence. This is consistent with the API guide example and not a finding.
+
+---
+
+## Architectural / Design Boundary Check
+- **Module boundary violations:** None identified
+- **Misplaced responsibilities:** None identified
+- **Coupling issues:** None material for this slice
+- **Hidden shortcuts:** None identified beyond the minor in-code allow-list convention noted above
+
+---
+
+## Behavior and State Check
+- **Workflow / state handling:** Aligned
+- **Validation behavior:** Aligned
+- **Retry / skip / resume / failure handling:** Not applicable
+- **User-visible behavior:** Aligned
+
+---
+
+## Integration Check
+- **Adapter boundaries:** Aligned
+- **External system handling:** Aligned for this stubbed routing slice
+- **Secret / credential safety:** Aligned
+- **Logging / audit hooks:** Aligned
+- **Error propagation at integration boundaries:** Aligned
+
+---
+
+## Readiness Verdict
+- **Suitable for:** merge / next implementation step — Yes
+- **Blockers before proceeding:** None
+- **Acceptable deviations:** Diagnostics allow-list is enforced in code but not extracted into a formal shared constant/spec artifact
+- **Required corrections:** None
+
+---
+
+## Recommended Fixes
+1. Optional: extract/document the diagnostics key allow-list in `IssueService` so future edits cannot widen it casually.
+
+## Minimal Fix Path
+- No blocking fix path required. Current revision is acceptable for Gate A.
+
+---
+
+## Open Risks / Questions
+- FR-59 says reports “may attach non-sensitive identifiers such as ...”; the current diagnostics also include `message_id`, `citation_id`, `provider`, and `issue_id`. I treated that as acceptable variation because they are still non-sensitive identifiers and the design does not define a narrower canonical field list.
+
+## Command Results
+- `./mvnw -q -pl backend -Dtest=IssueApiTest test` — **passed**
+- `git diff --check -- . ':(exclude).agents/skills/**' ':(exclude)docs/product/atlas-knowledge-base-product-spec-v0.2-cn.md'` — **passed**
+
+## Gate A Verdict
+- **Pass**
+- **Critical/Major remaining:** None
