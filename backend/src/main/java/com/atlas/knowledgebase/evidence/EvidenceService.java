@@ -170,18 +170,24 @@ public final class EvidenceService {
                             user.userId(), binding.bindingId(), binding.authMethod());
             EvidenceResolver resolver =
                     resolvers.find(citation.provider()).orElseThrow(UnknownState::new);
-            EvidenceResolver.AuthorizationResult authorization =
-                    resolver.authorize(
-                            new EvidenceResolver.AuthorizationRequest(
-                                    citation.provider(),
-                                    locator,
-                                    sourceIdentity,
-                                    authorizationContext));
+            EvidenceResolver.AuthorizationResult authorization;
+            try {
+                authorization =
+                        resolver.authorize(
+                                new EvidenceResolver.AuthorizationRequest(
+                                        citation.provider(),
+                                        locator,
+                                        sourceIdentity,
+                                        authorizationContext));
+            } catch (RuntimeException exception) {
+                throw authorizationUnknown(user, citation, action, locator);
+            }
+            if (authorization == null
+                    || authorization.outcome() == EvidenceResolver.AuthorizationOutcome.UNKNOWN) {
+                throw authorizationUnknown(user, citation, action, locator);
+            }
             if (authorization.outcome() == EvidenceResolver.AuthorizationOutcome.ACCESS_DENIED) {
                 throw denied(user, citation, action);
-            }
-            if (authorization.outcome() != EvidenceResolver.AuthorizationOutcome.AUTHORIZED) {
-                throw new UnknownState();
             }
             return new Prepared(
                     citation,
@@ -357,6 +363,19 @@ public final class EvidenceService {
                 Map.of());
     }
 
+    private EvidenceException authorizationUnknown(
+            AtlasUserRecord user,
+            CitationRecord citation,
+            String action,
+            EvidenceLocatorValidator.ValidatedLocator locator) {
+        EvidenceResolver.VerificationMode mode =
+                locator.fixtureMarked()
+                        ? EvidenceResolver.VerificationMode.FIXTURE
+                        : EvidenceResolver.VerificationMode.PROVIDER;
+        audit.owned(user.userId(), citation, action, "unknown", "unknown", "unknown");
+        return unknown(mode);
+    }
+
     private void requireCitationMetadata(CitationRecord citation) {
         requireText(citation.versionLabel());
         requireText(citation.excerpt());
@@ -393,9 +412,10 @@ public final class EvidenceService {
         if (result == null) {
             throw new IllegalArgumentException("resolver result is required");
         }
-        boolean fixtureResult =
-                result.verificationMode() == EvidenceResolver.VerificationMode.FIXTURE;
-        if (locator.fixtureMarked() != fixtureResult) {
+        boolean expectedMode = locator.fixtureMarked()
+                ? result.verificationMode() == EvidenceResolver.VerificationMode.FIXTURE
+                : result.verificationMode() == EvidenceResolver.VerificationMode.PROVIDER;
+        if (!expectedMode) {
             throw new IllegalArgumentException("fixture and provider result boundaries do not match");
         }
         if (result.status() == EvidenceResolver.Status.MOVED) {

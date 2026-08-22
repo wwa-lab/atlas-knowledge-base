@@ -163,6 +163,19 @@ class CitationCompletionServiceTest {
     }
 
     @Test
+    void fallsBackToStableOwnerIdWhenDisplayNameIsNull() {
+        jdbc.update("UPDATE atlas_user SET display_name = NULL WHERE user_id = ?", USER_ID);
+
+        CitationAssembler.Assembly assembly =
+                assembler.assemble(
+                        MESSAGE_ID,
+                        turn(List.of(path("fp-a", "Title", "Excerpt", 1))),
+                        NOW);
+
+        assertThat(assembly.citations().getFirst().owner()).isEqualTo(USER_ID);
+    }
+
+    @Test
     void filtersInvalidProvenanceBeforeModelAndDisclosesItemOmissionInCoverage() {
         RetrievalTurn mixed =
                 turn(

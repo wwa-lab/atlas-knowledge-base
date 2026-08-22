@@ -199,7 +199,7 @@ public class CitationAssembler {
         String displayName =
                 users.findById(kb.ownerUserId())
                         .map(user -> user.displayName())
-                        .filter(name -> !name.isBlank())
+                        .filter(name -> name != null && !name.isBlank())
                         .orElse(kb.ownerUserId());
         requireText(displayName, 255, "owner");
         return displayName;

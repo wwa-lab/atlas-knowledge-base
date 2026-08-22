@@ -242,6 +242,44 @@ class EvidenceServiceTest {
     }
 
     @Test
+    void liveAuthorizationExceptionFailsClosedAndAuditsTheView() {
+        citation = liveCitation();
+        arrangeOwnedCitation(citation, liveBinding());
+        when(access.authorized(user, kb())).thenReturn(true);
+        when(resolver.authorize(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("provider authorization unavailable"));
+
+        assertThatThrownBy(() -> service.drawer(user, citation.citationId()))
+                .isInstanceOfSatisfying(
+                        EvidenceException.class,
+                        error ->
+                                assertThat(error.details())
+                                        .containsEntry("verification_mode", "provider")
+                                        .containsEntry("provider_verified", false));
+        verify(audit).owned(user.userId(), citation, "evidence_view", "unknown", "unknown", "unknown");
+        verify(resolver, never()).resolve(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void liveUnknownResolverModeIsNormalizedToProviderInconclusive() {
+        citation = liveCitation();
+        arrangeOwnedCitation(citation, liveBinding());
+        when(access.authorized(user, kb())).thenReturn(true);
+        when(resolver.authorize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(EvidenceResolver.AuthorizationResult.authorized());
+        when(resolver.resolve(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(EvidenceResolver.Result.unknown(EvidenceResolver.VerificationMode.NONE));
+
+        assertThatThrownBy(() -> service.drawer(user, citation.citationId()))
+                .isInstanceOfSatisfying(
+                        EvidenceException.class,
+                        error ->
+                                assertThat(error.details())
+                                        .containsEntry("verification_mode", "provider")
+                                        .containsEntry("provider_verified", false));
+    }
+
+    @Test
     void adapterReceivesUserScopedContextAndCannotMutateDrawerCoordinates() {
         arrangeOwnedCitation();
         when(access.authorized(user, kb())).thenReturn(true);
