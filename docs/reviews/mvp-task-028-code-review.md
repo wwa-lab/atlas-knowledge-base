@@ -48,3 +48,12 @@ Review comment:
 
 - [P2] Avoid treating ordinary runbooks as injection — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:35-38`
   When a valid KB article or runbook says something like “run the shell command ...” or API docs say “call this function”, this new `execute|run|invoke|call` rule marks the hit as `embedded_instruction`, and `RetrievalOrchestrator` drops it before fusion. TASK-028 requires retrieved content not to be executed as instructions, but Atlas still needs to retrieve and cite operational command documentation; this can produce missing evidence or `NO_EVIDENCE` for common runbook content unless the rule is constrained to model-directed/tool-invocation attacks.
+
+## Gate A — follow-up after command-rule narrowing
+
+The containment layer is wired in the right place, but one heuristic is broad enough to suppress ordinary documentation content before fusion. This is a retrieval correctness regression for common KB inputs.
+
+Review comment:
+
+- [P2] Constrain command-rule matches to assistant-directed text — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:37-39`
+  When a valid KB article says something like “you can call this function” or “you can run this shell command,” this rule matches `you ... call/run ... function/command` and `RetrievalOrchestrator` drops the hit before fusion. TASK-028 requires untrusted content not to trigger tool execution, but Atlas still needs to retrieve and cite ordinary API docs and runbooks; constrain this pattern to explicit model/assistant-directed injection attempts to avoid losing common evidence.
