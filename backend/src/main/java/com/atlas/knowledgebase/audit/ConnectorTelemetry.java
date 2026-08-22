@@ -316,8 +316,8 @@ public final class ConnectorTelemetry {
             finish(Outcome.CANCELLED, null);
         }
 
-        public long elapsedMillis() {
-            return ConnectorTelemetry.elapsedMillis(startedAtNanos);
+        public synchronized long elapsedMillis() {
+            return finished ? recordedLatencyMs : ConnectorTelemetry.elapsedMillis(startedAtNanos);
         }
 
         private synchronized void finish(Outcome outcome, Duration retryAfter) {

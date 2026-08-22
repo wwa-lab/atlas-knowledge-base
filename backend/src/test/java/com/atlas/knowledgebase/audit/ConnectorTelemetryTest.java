@@ -82,8 +82,20 @@ class ConnectorTelemetryTest {
         assertThat(telemetry.analyticsSnapshots())
                 .containsEntry(
                         "connector.retrieve:quota",
-                        new ConnectorTelemetry.AnalyticsSnapshot(
+                new ConnectorTelemetry.AnalyticsSnapshot(
                                 "connector.retrieve:quota", 1, 0, 0));
+    }
+
+    @Test
+    void completedOperationKeepsRecordedLatency() throws Exception {
+        ConnectorTelemetry telemetry = new ConnectorTelemetry();
+        ConnectorTelemetry.Operation operation = telemetry.start("dify", "retrieve");
+
+        operation.success();
+        long recorded = operation.elapsedMillis();
+        Thread.sleep(20);
+
+        assertThat(operation.elapsedMillis()).isEqualTo(recorded);
     }
 
     @Test
