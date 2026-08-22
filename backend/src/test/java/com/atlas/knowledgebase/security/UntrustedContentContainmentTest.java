@@ -51,6 +51,23 @@ class UntrustedContentContainmentTest {
         assertThat(decision.toString()).doesNotContain("exfiltrate");
     }
 
+    @Test
+    void acceptsOrdinaryQueryParametersThatResembleEventHandlerNames() {
+        Retriever.Hit hit =
+                new Retriever.Hit(
+                        "corp/runbook",
+                        "https://git.example.invalid/runbook.md?only=true",
+                        "runbook",
+                        "Deployment Runbook",
+                        "The deployment runbook rotates certificates every 90 days.",
+                        "v1",
+                        "{}",
+                        1,
+                        "fp-runbook-query");
+
+        assertThat(containment.inspect(hit).contained()).isFalse();
+    }
+
     private static Retriever.Hit hit(String excerpt) {
         return new Retriever.Hit(
                 "corp/runbook",

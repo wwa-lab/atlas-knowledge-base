@@ -30,3 +30,12 @@ Review comment:
 
 - [P2] Preserve successful coverage for empty retrievals — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:564-565`
   When a retriever returns `SUCCESS` with zero hits, or with hits that are all filtered out, this condition now skips adding the binding to `coverage.successful`. Before this change, a successful search with no evidence was still disclosed as a successful binding; now the final turn can show no evidence with empty `successful`, `failed`, and `timed_out`, hiding that the selected source was actually queried successfully. Record retrieval success independently from whether `safeHits` is empty, and only gate fusion on non-empty hits.
+
+## Gate A — follow-up after Gate B finding
+
+The containment layer can incorrectly remove valid retrieval hits for common URL/query or text patterns beginning with `on...=`, which affects retrieval correctness. The issue is discrete and should be fixed before considering the patch correct.
+
+Review comment:
+
+- [P2] Constrain event-handler detection to markup context — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:21-22`
+  When a safe hit has a source URL or metadata/excerpt containing an ordinary query parameter or token like `only=true` or `once=...`, the unanchored `on[a-z]+\\s*=` branch classifies it as `active_markup`; because all hit fields are inspected, that drops otherwise valid evidence before fusion. Limit this rule to HTML-like attributes or known handler names so normal source identifiers are not falsely contained.
