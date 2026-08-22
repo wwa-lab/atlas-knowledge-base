@@ -68,6 +68,13 @@ public class ChatMessageRepository {
         return findById(message.messageId()).orElseThrow();
     }
 
+    /** Persists the user question and its processing assistant placeholder atomically. */
+    @Transactional
+    public void insertAskPair(ChatMessageRecord userMessage, ChatMessageRecord assistantMessage) {
+        insert(userMessage);
+        insert(assistantMessage);
+    }
+
     public Optional<ChatMessageRecord> findById(String messageId) {
         return jdbcTemplate
                 .query("SELECT * FROM chat_message WHERE message_id = ?", ROW_MAPPER, messageId)
@@ -125,14 +132,24 @@ public class ChatMessageRepository {
     }
 
     @Transactional
-    public int markProcessingIfRetryable(String messageId) {
+    public int markProcessingIfRetryable(
+            String messageId,
+            String logicalKbScopeJson,
+            String bindingSetJson,
+            String configVersionsJson,
+            String classification) {
         return jdbcTemplate.update(
                 """
                 UPDATE chat_message
-                SET status = ?, answer_text = NULL, coverage = NULL, completed_at = NULL
+                SET status = ?, answer_text = NULL, logical_kb_scope = ?, binding_set = ?,
+                    config_versions = ?, classification = ?, coverage = NULL, completed_at = NULL
                 WHERE message_id = ? AND status IN ('incomplete_cancelled', 'failed')
                 """,
                 "processing",
+                logicalKbScopeJson,
+                bindingSetJson,
+                configVersionsJson,
+                classification,
                 messageId);
     }
 

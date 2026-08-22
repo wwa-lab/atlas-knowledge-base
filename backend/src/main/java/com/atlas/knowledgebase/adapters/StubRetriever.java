@@ -1,0 +1,141 @@
+package com.atlas.knowledgebase.adapters;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
+/**
+ * Fixture retriever for Dify, Git Markdown, and Confluence. Does not call providers. Controlled by
+ * {@code source_identity.retrieval_fixture}: {@code binding_denied}, {@code timeout}, {@code
+ * quota}, {@code failed}, {@code security}, {@code item_omit}, typed {@code throw_failed}/{@code
+ * throw_security}, unknown {@code throw_unknown}, or success (default).
+ */
+@Component
+@Profile({"local", "non-prod"})
+@ConditionalOnProperty(
+        name = "atlas.retrieval.stub.enabled",
+        havingValue = "true",
+        matchIfMissing = true)
+public class StubRetriever implements Retriever {
+
+    private static final Duration LOCAL_FIXTURE_RETRY_AFTER = Duration.ofSeconds(1);
+
+    private final ObjectMapper objectMapper;
+
+    public StubRetriever(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public Set<String> providerProfiles() {
+        return Set.of("dify", "git_markdown", "confluence");
+    }
+
+    @Override
+    public AuthorizationResult authorize(AuthorizationRequest request) {
+        request.cancellation().throwIfCancelled();
+        String fixture = fixture(request.sourceIdentityJson());
+        return switch (fixture) {
+            case "binding_denied" -> AuthorizationResult.accessDenied();
+            case "authorization_quota" -> AuthorizationResult.quota(LOCAL_FIXTURE_RETRY_AFTER);
+            case "authorization_timeout" -> AuthorizationResult.timeout();
+            case "authorization_failed" -> AuthorizationResult.failed();
+            case "authorization_security" -> AuthorizationResult.security();
+            case "authorization_unknown" -> AuthorizationResult.unknown();
+            default -> AuthorizationResult.authorized();
+        };
+    }
+
+    @Override
+    public Result retrieve(Request request) {
+        request.cancellation().throwIfCancelled();
+        String fixture = fixture(request.sourceIdentityJson());
+        return switch (fixture) {
+            case "cancel_wait" -> waitForCancellation(request);
+            case "quota" -> Result.quota(LOCAL_FIXTURE_RETRY_AFTER);
+            case "timeout" -> Result.timeout();
+            case "failed" -> Result.failed();
+            case "security" -> Result.security();
+            case "throw_failed" -> throw RetrieverException.failed("fixture connector failure");
+            case "throw_security" -> throw RetrieverException.security("fixture security failure");
+            case "throw_unknown" -> throw new IllegalStateException("fixture unknown failure");
+            case "item_omit" -> {
+                Hit kept = hit(request, "kept", 1);
+                Hit omitted = hit(request, "restricted", 2);
+                yield Result.success(List.of(kept), List.of(omitted));
+            }
+            default -> Result.success(
+                    List.of(hit(request, "primary", 1), hit(request, "secondary", 2)), List.of());
+        };
+    }
+
+    private Result waitForCancellation(Request request) {
+        try {
+            while (true) {
+                request.cancellation().throwIfCancelled();
+                Thread.sleep(25);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("fixture retrieval cancelled");
+        }
+    }
+
+    private Hit hit(Request request, String suffix, int rank) {
+        String documentId = request.bindingId() + ":" + suffix;
+        String fingerprint = request.providerProfile() + ":" + documentId + ":v1";
+        String locator =
+                switch (request.providerProfile()) {
+                    case "git_markdown" ->
+                            "{\"repository\":\"org/runbooks\",\"commit_sha\":\"abc123def\",\"path\":\"docs/"
+                                    + suffix
+                                    + ".md\",\"line_range\":[1,20]}";
+                    case "confluence" ->
+                            "{\"space\":\"SUPPORT\",\"page_id\":\""
+                                    + documentId
+                                    + "\",\"version\":1}";
+                    default ->
+                            "{\"dataset_id\":\"ds_fixture\",\"document_id\":\"" + documentId + "\"}";
+                };
+        String sourceUrl =
+                switch (request.providerProfile()) {
+                    case "git_markdown" ->
+                            "https://github.example/org/runbooks/blob/abc123def/docs/"
+                                    + suffix
+                                    + ".md";
+                    case "confluence" ->
+                            "https://confluence.example/pages/" + documentId;
+                    default -> "atlas://dify/ds_fixture/" + documentId;
+                };
+        return new Hit(
+                request.providerProfile() + ":" + documentId,
+                sourceUrl,
+                documentId,
+                "Fixture " + suffix,
+                "Local retrieval fixture; not a real internal excerpt (" + suffix + ").",
+                "v1",
+                locator,
+                rank,
+                fingerprint);
+    }
+
+    private String fixture(String sourceIdentityJson) {
+        if (sourceIdentityJson == null || sourceIdentityJson.isBlank()) {
+            return "success";
+        }
+        try {
+            JsonNode node = objectMapper.readTree(sourceIdentityJson);
+            String named = node.path("retrieval_fixture").asText("");
+            return named.isBlank() ? "success" : named;
+        } catch (JsonProcessingException e) {
+            return "success";
+        }
+    }
+}

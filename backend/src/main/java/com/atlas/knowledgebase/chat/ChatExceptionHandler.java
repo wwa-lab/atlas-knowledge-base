@@ -13,7 +13,12 @@ public class ChatExceptionHandler {
     @ExceptionHandler(ChatForbiddenException.class)
     public ResponseEntity<Map<String, Object>> forbidden(ChatForbiddenException ex) {
         return ApiErrorResponses.entity(
-                HttpStatus.FORBIDDEN, "authorization", ex.code(), ex.getMessage(), ex.nextStep());
+                HttpStatus.FORBIDDEN,
+                "authorization",
+                ex.code(),
+                ex.getMessage(),
+                ex.nextStep(),
+                ex.details());
     }
 
     @ExceptionHandler(ChatNotFoundException.class)
@@ -36,5 +41,16 @@ public class ChatExceptionHandler {
     public ResponseEntity<Map<String, Object>> conflict(ChatConflictException ex) {
         return ApiErrorResponses.entity(
                 HttpStatus.CONFLICT, "conflict", ex.code(), ex.getMessage(), "reload_thread");
+    }
+
+    @ExceptionHandler(ChatRetrievalException.class)
+    public ResponseEntity<Map<String, Object>> retrieval(ChatRetrievalException ex) {
+        return ApiErrorResponses.entity(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ex.category(),
+                ex.code(),
+                ex.getMessage(),
+                ex.nextStep(),
+                ex.details());
     }
 }

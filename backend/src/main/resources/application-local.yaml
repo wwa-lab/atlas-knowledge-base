@@ -7,6 +7,10 @@ spring:
     password: ""
 
 atlas:
+  chat:
+    classification:
+      # Local fixture policy only; deployed planes require an approved environment value.
+      approved-values: [internal, restricted]
   secrets:
     file-root: ${user.dir}/.local-data/secrets
   session:
@@ -20,3 +24,39 @@ atlas:
   providers:
     # Placeholders until OQ-02 / Security names minimum GitHub and Confluence scopes.
     stub-completes-as-connected: true
+  retrieval:
+    # Local fixture budgets only. Deployed planes must provide evidence-based values.
+    provider-timeouts:
+      dify: 2s
+      git_markdown: 2500ms
+      confluence: 3s
+    provider-concurrency:
+      dify: 4
+      git_markdown: 4
+      confluence: 4
+    # Fixed-window request quotas are fixture-only, not pilot or production decisions.
+    provider-quota-limits:
+      dify: 1000
+      git_markdown: 1000
+      confluence: 1000
+    provider-quota-windows:
+      dify: 1m
+      git_markdown: 1m
+      confluence: 1m
+    provider-enabled:
+      dify: true
+      git_markdown: true
+      confluence: true
+    # Fixture resilience values only; they are intentionally short to keep local tests deterministic.
+    provider-backoffs:
+      dify: 1ms
+      git_markdown: 1ms
+      confluence: 1ms
+    provider-circuit-failure-thresholds:
+      dify: 3
+      git_markdown: 3
+      confluence: 3
+    provider-circuit-open-durations:
+      dify: 1s
+      git_markdown: 1s
+      confluence: 1s

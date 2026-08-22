@@ -5,3 +5,42 @@ spring:
     username: ${ATLAS_DATASOURCE_USERNAME}
     password: ${ATLAS_DATASOURCE_PASSWORD}
     driver-class-name: oracle.jdbc.OracleDriver
+
+atlas:
+  chat:
+    classification:
+      approved-values: ${ATLAS_CHAT_APPROVED_CLASSIFICATIONS}
+  retrieval:
+    # No production defaults: Connector Owners provide approved budgets.
+    provider-timeouts:
+      dify: ${ATLAS_RETRIEVAL_DIFY_TIMEOUT}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_TIMEOUT}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_TIMEOUT}
+    provider-concurrency:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CONCURRENCY}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CONCURRENCY}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CONCURRENCY}
+    provider-quota-limits:
+      dify: ${ATLAS_RETRIEVAL_DIFY_QUOTA_LIMIT}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_QUOTA_LIMIT}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_QUOTA_LIMIT}
+    provider-quota-windows:
+      dify: ${ATLAS_RETRIEVAL_DIFY_QUOTA_WINDOW}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_QUOTA_WINDOW}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_QUOTA_WINDOW}
+    provider-enabled:
+      dify: ${ATLAS_RETRIEVAL_DIFY_ENABLED}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_ENABLED}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_ENABLED}
+    provider-backoffs:
+      dify: ${ATLAS_RETRIEVAL_DIFY_BACKOFF}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_BACKOFF}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_BACKOFF}
+    provider-circuit-failure-thresholds:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CIRCUIT_FAILURE_THRESHOLD}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CIRCUIT_FAILURE_THRESHOLD}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CIRCUIT_FAILURE_THRESHOLD}
+    provider-circuit-open-durations:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CIRCUIT_OPEN_DURATION}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CIRCUIT_OPEN_DURATION}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CIRCUIT_OPEN_DURATION}
