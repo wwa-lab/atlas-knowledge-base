@@ -886,3 +886,12 @@ No blocking fix is required. The smallest follow-up hardening would add paramete
 - The large `ChatView` component will become increasingly difficult to extend if later frontend tasks continue adding transport and state directly.
 
 **Gate A verdict: PASS — no Critical, Major, or architecture P0 findings remain.**
+
+## Gate B — independent security review (verbatim)
+
+Backend and frontend verification passed locally, but the new Chat UI mishandles paginated catalog results and can hide or invalidate valid Chat scopes for users with more than one catalog page.
+
+Review comment:
+
+- [P2] Page through the catalog before deriving chat scope — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/ChatView.vue:279-279
+  When a user has more than the catalog endpoint's default page of visible knowledge bases, this single `/api/v1/knowledge-bases` request only loads the first page and ignores `next_cursor`. Since `chooseInitialScope()` and `validScopeIds()` derive selectable and stale scope state only from `knowledgeBases.value`, any Chat-ready KB beyond that first page cannot be selected and an existing thread scoped to it is incorrectly marked stale/unavailable. Follow catalog pagination, or otherwise fetch all relevant Chat-ready entries, before computing Chat scope.
