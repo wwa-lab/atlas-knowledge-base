@@ -26,3 +26,15 @@ Full review comments:
 
 - [P2] Clear stale preview before loading another file — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:180-182
   After a user previews one file, selecting another file leaves the old `preview` rendered while the new request is in flight, and it also remains visible if the new preview request fails. In the Browse view this can show Markdown for the wrong selected path, which is misleading for source inspection; clear `preview.value` before starting the new request.
+
+## Gate A — fresh rerun after pagination and preview fixes (verbatim)
+
+The patch adds useful catalog UI and fixes cursor pagination, but the new asynchronous detail and preview loading can display stale data for a different route or selected file. These are user-visible correctness issues in the changed UI.
+
+Full review comments:
+
+- [P2] Guard detail loads against stale route responses — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:151-151
+  When users navigate quickly between two knowledge-base detail routes, the earlier `loadDetail()` request can resolve after the later one and overwrite `detail.value`, so `/kbs/B` may render KB A's metadata and actions. Capture the requested `logicalKbId` and only assign the response if it still matches the current route, or cancel the previous request.
+
+- [P2] Prevent older preview responses from replacing the selected file — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:186-188
+  If a user clicks two files in the tree before the first preview request finishes, the first request can resolve last and assign `preview.value` for a path that is no longer `selectedPath`, showing the wrong Markdown under the current selection. Capture the requested path and selected KB before awaiting, then ignore the response unless both still match.

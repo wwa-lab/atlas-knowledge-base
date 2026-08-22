@@ -112,6 +112,8 @@ function resetBrowse(): void {
   tree.value = null
   preview.value = null
   selectedPath.value = ''
+  browseLoading.value = false
+  previewLoading.value = false
 }
 
 async function loadCatalog(reset = true): Promise<void> {
@@ -148,50 +150,64 @@ async function loadDetail(logicalKbId: string | undefined): Promise<void> {
   detailLoading.value = true
   error.value = ''
   try {
-    detail.value = await request<CatalogDetail>(`/api/v1/knowledge-bases/${encodeURIComponent(logicalKbId)}`)
+    const loaded = await request<CatalogDetail>(`/api/v1/knowledge-bases/${encodeURIComponent(logicalKbId)}`)
+    if (selectedId.value === logicalKbId) detail.value = loaded
   } catch (cause) {
-    error.value = cause instanceof CatalogApiError || cause instanceof Error
-      ? cause.message
-      : 'The knowledge-base detail could not be loaded safely.'
+    if (selectedId.value === logicalKbId) {
+      error.value = cause instanceof CatalogApiError || cause instanceof Error
+        ? cause.message
+        : 'The knowledge-base detail could not be loaded safely.'
+    }
   } finally {
-    detailLoading.value = false
+    if (selectedId.value === logicalKbId) detailLoading.value = false
   }
 }
 
 async function loadTree(): Promise<void> {
   if (!selectedId.value || detail.value?.access?.authorized !== true || !detail.value.content?.browse_available) return
+  const requestedKbId = selectedId.value
   browseLoading.value = true
   error.value = ''
   try {
-    tree.value = await request<BrowseTree>(
-      `/api/v1/knowledge-bases/${encodeURIComponent(selectedId.value)}/browse/tree`,
+    const loaded = await request<BrowseTree>(
+      `/api/v1/knowledge-bases/${encodeURIComponent(requestedKbId)}/browse/tree`,
     )
+    if (selectedId.value === requestedKbId) tree.value = loaded
   } catch (cause) {
-    error.value = cause instanceof CatalogApiError || cause instanceof Error
-      ? cause.message
-      : 'The source tree could not be loaded safely.'
+    if (selectedId.value === requestedKbId) {
+      error.value = cause instanceof CatalogApiError || cause instanceof Error
+        ? cause.message
+        : 'The source tree could not be loaded safely.'
+    }
   } finally {
-    browseLoading.value = false
+    if (selectedId.value === requestedKbId) browseLoading.value = false
   }
 }
 
 async function loadPreview(path: string): Promise<void> {
   if (!selectedId.value || !path) return
-  selectedPath.value = path
+  const requestedKbId = selectedId.value
+  const requestedPath = path
+  selectedPath.value = requestedPath
   preview.value = null
   previewLoading.value = true
   error.value = ''
   try {
     const query = new URLSearchParams({ path })
-    preview.value = await request<BrowsePreview>(
-      `/api/v1/knowledge-bases/${encodeURIComponent(selectedId.value)}/browse/preview?${query.toString()}`,
+    const loaded = await request<BrowsePreview>(
+      `/api/v1/knowledge-bases/${encodeURIComponent(requestedKbId)}/browse/preview?${query.toString()}`,
     )
+    if (selectedId.value === requestedKbId && selectedPath.value === requestedPath) preview.value = loaded
   } catch (cause) {
-    error.value = cause instanceof CatalogApiError || cause instanceof Error
-      ? cause.message
-      : 'The source preview could not be loaded safely.'
+    if (selectedId.value === requestedKbId && selectedPath.value === requestedPath) {
+      error.value = cause instanceof CatalogApiError || cause instanceof Error
+        ? cause.message
+        : 'The source preview could not be loaded safely.'
+    }
   } finally {
-    previewLoading.value = false
+    if (selectedId.value === requestedKbId && selectedPath.value === requestedPath) {
+      previewLoading.value = false
+    }
   }
 }
 
