@@ -27,3 +27,15 @@ Full review comments:
 ## Gate A — fresh review rerun (verbatim)
 
 No discrete introduced correctness, security, or maintainability issues were found in the reviewed diff. Static type checking with vue-tsc --noEmit succeeded; Vitest could not run because the read-only sandbox blocked Vite temp-file creation.
+
+## Gate B — fresh review (verbatim)
+
+The patch adds the requested UI surfaces, but the wizard can let a default empty Git source pass current gates, and the Evidence Drawer accepts cleartext original URLs contrary to the evidence navigation contract.
+
+Full review comments:
+
+- [P2] Validate default Git source identity before saving — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/registration/registrationUtils.ts:61-63
+  When an owner leaves the default Git source unchanged, the wizard submits `source_identity: { repo: '', commit: '' }`; the current backend probe treats the presence of `commit` as a stable-version mapping, so Connection Test/Content Audit can pass an empty source and allow an invalid Draft to proceed. Please omit blank placeholder fields or add provider-specific non-blank validation before saving/running gates.
+
+- [P2] Require HTTPS for evidence original links — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/evidence/EvidenceDrawer.vue:86-88
+  If the evidence resolver or adapter configuration returns an `http://` `navigation_url`, this uses the catalog helper that accepts both HTTP and HTTPS and then renders a navigable Continue link. The evidence contract restricts original navigation to trusted HTTPS origins (or the reserved HTTPS fixture origin), so the drawer should use a stricter validator here instead of accepting cleartext URLs.

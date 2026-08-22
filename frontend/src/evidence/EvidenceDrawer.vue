@@ -56,6 +56,11 @@ function showError(cause: unknown, fallback: string): void {
   error.value = code ? `${code}: ${cause instanceof Error ? cause.message : fallback}` : cause instanceof Error ? cause.message : fallback
 }
 
+function safeEvidenceUrl(value: string | undefined): string | undefined {
+  const target = safeExternalUrl(value)
+  return target?.startsWith('https://') ? target : undefined
+}
+
 async function load(): Promise<void> {
   const requestId = ++loadRequestId
   const citationId = props.citationId
@@ -84,7 +89,7 @@ async function openOriginal(): Promise<void> {
   originalUrl.value = ''
   try {
     const result = await request<OpenOriginalResult>(`/api/v1/citations/${encodeURIComponent(citationId)}/open-original`, { method: 'POST' })
-    const target = safeExternalUrl(result.navigation_url)
+    const target = safeEvidenceUrl(result.navigation_url)
     if (!target) throw new Error('The server did not return a safe verified navigation URL.')
     if (requestId === openRequestId && props.citationId === citationId) {
       originalUrl.value = target

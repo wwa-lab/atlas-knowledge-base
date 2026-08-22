@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatCount, newBinding, parseJsonObject, validateBasics, WIZARD_STEPS } from './registrationUtils'
+import { formatCount, newBinding, parseJsonObject, validateBasics, validateSourceIdentity, WIZARD_STEPS } from './registrationUtils'
 
 describe('registration utilities', () => {
   it('keeps the accepted wizard sequence and safe defaults', () => {
@@ -13,6 +13,8 @@ describe('registration utilities', () => {
     expect(validateBasics({ name: '', purpose: 'support', classification: 'internal', discoverability: 'catalog' })).toContain('name')
     expect(parseJsonObject('{"repo":"org/repo"}', 'Source identity').value).toEqual({ repo: 'org/repo' })
     expect(parseJsonObject('[]', 'Source identity').error).toContain('JSON object')
+    expect(validateSourceIdentity('git_markdown', { repo: '', commit: '' }, 'Source 1')).toContain('repository')
+    expect(validateSourceIdentity('git_markdown', { repo: 'org/repo', commit: 'abc123' }, 'Source 1')).toBeUndefined()
   })
 
   it('formats optional audit counts without inventing values', () => {

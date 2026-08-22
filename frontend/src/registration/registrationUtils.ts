@@ -82,6 +82,22 @@ export function parseJsonObject(value: string, label: string): { value?: Record<
   }
 }
 
+export function validateSourceIdentity(
+  provider: string,
+  identity: Record<string, unknown>,
+  label: string,
+): string | undefined {
+  if (Object.keys(identity).length === 0) return `${label} identity is required.`
+  if (provider === 'git_markdown') {
+    const repository = typeof identity.repo === 'string' ? identity.repo.trim() : ''
+    const commit = typeof identity.commit === 'string' ? identity.commit.trim() : ''
+    const commitSha = typeof identity.commit_sha === 'string' ? identity.commit_sha.trim() : ''
+    if (!repository) return `${label} repository is required.`
+    if (!commit && !commitSha) return `${label} commit SHA is required.`
+  }
+  return undefined
+}
+
 export function validateBasics(input: {
   name: string
   purpose: string

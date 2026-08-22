@@ -8,6 +8,7 @@ import {
   newBinding,
   parseJsonObject,
   validateBasics,
+  validateSourceIdentity,
   WIZARD_STEPS,
   type AuditResult,
   type BindingDraft,
@@ -120,6 +121,11 @@ function parsedBindings(): BindingDraft[] | undefined {
     const invalid = parsed.find((item) => item.error)
     if (invalid?.error) {
       error.value = invalid.error
+      return undefined
+    }
+    const sourceIdentityError = validateSourceIdentity(binding.provider_profile, source.value || {}, `Source ${index + 1}`)
+    if (sourceIdentityError) {
+      error.value = sourceIdentityError
       return undefined
     }
     result.push({
