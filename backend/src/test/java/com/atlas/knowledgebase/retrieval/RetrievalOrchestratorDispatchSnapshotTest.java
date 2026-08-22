@@ -226,6 +226,7 @@ class RetrievalOrchestratorDispatchSnapshotTest {
         assertThat(turn.fused()).extracting(hit -> hit.hit().documentId()).containsExactly("safe");
         assertThat(strings(turn, "successful")).containsExactly(binding.bindingId());
         assertThat(strings(turn, "prompt_injection_contained")).containsExactly(binding.bindingId());
+        assertThat(turn.coverage()).containsEntry("partial_coverage", true);
         assertThat(turn.coverage().toString()).doesNotContain("system prompt");
         verify(auditEvents)
                 .insert(

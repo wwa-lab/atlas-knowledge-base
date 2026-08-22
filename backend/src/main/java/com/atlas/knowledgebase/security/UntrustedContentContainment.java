@@ -29,7 +29,8 @@ public final class UntrustedContentContainment {
                     new Rule(
                             "embedded_instruction",
                             Pattern.compile(
-                                    "(?is)\\b(?:reveal|disclose|exfiltrate|print|dump)\\b.{0,100}"
+                                    "(?is)\\b(?:assistant|agent|model|system)\\s*[,!:]\\s*"
+                                            + "(?:please\\s+)?(?:reveal|disclose|exfiltrate|print|dump)\\b.{0,100}"
                                             + "\\b(?:system\\s+prompt|secret|token|credential|password)\\b")),
                     new Rule(
                             "embedded_instruction",

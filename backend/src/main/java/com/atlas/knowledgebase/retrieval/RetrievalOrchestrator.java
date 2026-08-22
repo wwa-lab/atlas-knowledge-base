@@ -610,6 +610,9 @@ public class RetrievalOrchestrator {
         coverage.put("quota_limited", List.copyOf(quotaLimited));
         coverage.put("retry_after", Map.copyOf(retryAfter));
         coverage.put("prompt_injection_contained", List.copyOf(promptInjectionContained));
+        if (!promptInjectionContained.isEmpty()) {
+            coverage.put("partial_coverage", true);
+        }
 
         boolean anyEvidence = !fused.isEmpty();
         BlockSelection selection = selectBlock(blockCandidates, anyEvidence);

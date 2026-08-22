@@ -57,3 +57,15 @@ Review comment:
 
 - [P2] Constrain command-rule matches to assistant-directed text — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:37-39`
   When a valid KB article says something like “you can call this function” or “you can run this shell command,” this rule matches `you ... call/run ... function/command` and `RetrievalOrchestrator` drops the hit before fusion. TASK-028 requires untrusted content not to trigger tool execution, but Atlas still needs to retrieve and cite ordinary API docs and runbooks; constrain this pattern to explicit model/assistant-directed injection attempts to avoid losing common evidence.
+
+## Gate A — follow-up after assistant-directed narrowing
+
+The containment layer is wired before fusion, but one heuristic drops legitimate security documentation and the reporting path is not surfaced as partial coverage for completed answers. These are correctness/reporting regressions for common retrieval scenarios.
+
+Full review comments:
+
+- [P2] Constrain disclosure matches to injection attempts — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/security/UntrustedContentContainment.java:32-33`
+  When a valid security policy or runbook says something like “Do not disclose credentials in logs” or “never print tokens,” this rule matches `disclose|print` plus `credential|token` and the orchestrator drops the hit before fusion. TASK-028 is meant to contain prompt-injection attempts, but this will suppress common, legitimate security documentation unless the pattern is constrained to model-directed disclosure requests.
+
+- [P2] Surface contained hits as partial coverage — `/Users/leo/wwa-lab/GitHub/atlas-knowledge-base/backend/src/main/java/com/atlas/knowledgebase/retrieval/RetrievalOrchestrator.java:612-612`
+  When a retriever returns both safe hits and contained prompt-injection hits, the answer can complete with `prompt_injection_contained` in coverage but without `partial_coverage` or `item_omitted`; the existing client partial-coverage logic only checks failed/timed-out/quota/item-omitted fields, so the containment is hidden and the answer is presented as full coverage. Mark the turn as partial or update the consumer so contained evidence is actually reported on completed answers.
