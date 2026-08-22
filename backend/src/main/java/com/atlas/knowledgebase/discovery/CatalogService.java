@@ -1,5 +1,6 @@
 package com.atlas.knowledgebase.discovery;
 
+import com.atlas.knowledgebase.access.KbAccessService;
 import com.atlas.knowledgebase.adapters.GitBrowse;
 import com.atlas.knowledgebase.registry.BindingRecord;
 import com.atlas.knowledgebase.registry.BindingRepository;
@@ -7,7 +8,6 @@ import com.atlas.knowledgebase.registry.ContentAuditResultRecord;
 import com.atlas.knowledgebase.registry.ContentAuditResultRepository;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRecord;
 import com.atlas.knowledgebase.registry.LogicalKnowledgeBaseRepository;
-import com.atlas.knowledgebase.session.AtlasRoles;
 import com.atlas.knowledgebase.session.AtlasUserRecord;
 import com.atlas.knowledgebase.session.AtlasUserRepository;
 import java.util.ArrayList;
@@ -30,18 +30,21 @@ public class CatalogService {
     private final ContentAuditResultRepository audits;
     private final AtlasUserRepository users;
     private final GitBrowse gitBrowse;
+    private final KbAccessService access;
 
     public CatalogService(
             LogicalKnowledgeBaseRepository knowledgeBases,
             BindingRepository bindings,
             ContentAuditResultRepository audits,
             AtlasUserRepository users,
-            GitBrowse gitBrowse) {
+            GitBrowse gitBrowse,
+            KbAccessService access) {
         this.knowledgeBases = knowledgeBases;
         this.bindings = bindings;
         this.audits = audits;
         this.users = users;
         this.gitBrowse = gitBrowse;
+        this.access = access;
     }
 
     public Map<String, Object> list(AtlasUserRecord user, CatalogQuery query) {
@@ -185,17 +188,11 @@ public class CatalogService {
     }
 
     private boolean authorized(AtlasUserRecord user, LogicalKnowledgeBaseRecord kb) {
-        return user.userId().equals(kb.ownerUserId()) || AtlasRoles.has(user, AtlasRoles.ATLAS_ADMIN);
+        return access.authorized(user, kb);
     }
 
     private boolean visible(AtlasUserRecord user, LogicalKnowledgeBaseRecord kb) {
-        if (authorized(user, kb)) {
-            return true;
-        }
-        if (!"active".equals(kb.lifecycle())) {
-            return false;
-        }
-        return "catalog".equals(kb.discoverability());
+        return access.visible(user, kb);
     }
 
     private boolean matches(LogicalKnowledgeBaseRecord kb, CatalogQuery query) {
