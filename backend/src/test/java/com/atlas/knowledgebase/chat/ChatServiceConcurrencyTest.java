@@ -50,6 +50,8 @@ class ChatServiceConcurrencyTest {
         RetrievalOrchestrator retrieval = mock(RetrievalOrchestrator.class);
         ModelChannel modelChannel = mock(ModelChannel.class);
         AuditEventRepository auditEvents = mock(AuditEventRepository.class);
+        ChatClassificationProperties classificationProperties = new ChatClassificationProperties();
+        classificationProperties.setApprovedValues(java.util.Set.of("internal", "restricted"));
         ChatService service =
                 new ChatService(
                         threads,
@@ -57,6 +59,7 @@ class ChatServiceConcurrencyTest {
                         knowledgeBases,
                         bindings,
                         new KbAccessService(),
+                        new ChatClassificationPolicy(classificationProperties),
                         retrieval,
                         modelChannel,
                         auditEvents,
@@ -138,7 +141,7 @@ class ChatServiceConcurrencyTest {
         CountDownLatch retrievalEntered = new CountDownLatch(1);
         CountDownLatch releaseRetrieval = new CountDownLatch(1);
         AtomicInteger retrievalCalls = new AtomicInteger();
-        when(retrieval.retrieve(any(), anyString(), any()))
+        when(retrieval.retrieve(any(), anyString(), any(), any()))
                 .thenAnswer(
                         ignored -> {
                             retrievalCalls.incrementAndGet();
@@ -185,7 +188,7 @@ class ChatServiceConcurrencyTest {
             assertThat(first.get(2, TimeUnit.SECONDS)).isNotNull();
         }
 
-        verify(retrieval, times(1)).retrieve(any(), anyString(), any());
+        verify(retrieval, times(1)).retrieve(any(), anyString(), any(), any());
         verify(modelChannel, never()).generate(any(), any(ModelChannel.Listener.class));
     }
 

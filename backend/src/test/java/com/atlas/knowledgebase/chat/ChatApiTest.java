@@ -12,6 +12,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atlas.knowledgebase.session.SessionProperties;
 import com.atlas.knowledgebase.session.SessionService;
 import jakarta.servlet.http.Cookie;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +24,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -214,7 +220,57 @@ class ChatApiTest {
     }
 
     @Test
-    void retryFailsClosedWhenTheSelectedClassificationsDriftApart() throws Exception {
+    void unapprovedClassificationFailsClosedAtChatCreation() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Unapproved Create Classification");
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET classification = 'unknown' WHERE logical_kb_id = ?",
+                kbId);
+
+        mockMvc.perform(
+                        post("/api/v1/chats")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_UNAPPROVED"));
+    }
+
+    @Test
+    void unapprovedClassificationFailsClosedWhenAskRevalidatesScope() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId = activateDify(owner, "Unapproved Ask Classification");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+        jdbcTemplate.update(
+                "UPDATE logical_knowledge_base SET classification = 'unknown' WHERE logical_kb_id = ?",
+                kbId);
+
+        mockMvc.perform(
+                        post("/api/v1/chats/" + threadId + "/messages")
+                                .cookie(owner.session())
+                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
+                                .content("{\"question\":\"What changed?\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_UNAPPROVED"));
+    }
+
+    @Test
+    void retryFailsClosedWhenASelectedClassificationBecomesUnapproved() throws Exception {
         LoggedIn owner = loginOwner();
         String firstKb = activateDify(owner, "Retry Classification One");
         String secondKb = activateDify(owner, "Retry Classification Two");
@@ -261,7 +317,7 @@ class ChatApiTest {
                 .andExpect(status().isOk());
         mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk());
         jdbcTemplate.update(
-                "UPDATE logical_knowledge_base SET classification = 'restricted' WHERE logical_kb_id = ?",
+                "UPDATE logical_knowledge_base SET classification = 'unknown' WHERE logical_kb_id = ?",
                 secondKb);
 
         mockMvc.perform(
@@ -270,7 +326,7 @@ class ChatApiTest {
                                 .header(SessionService.CSRF_HEADER, owner.csrf())
                                 .accept(MediaType.TEXT_EVENT_STREAM))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_MISMATCH"));
+                .andExpect(jsonPath("$.error.code").value("CLASSIFICATION_UNAPPROVED"));
         assertThat(
                         jdbcTemplate.queryForObject(
                                 "SELECT status FROM chat_message WHERE message_id = ?",
@@ -409,6 +465,70 @@ class ChatApiTest {
     }
 
     @Test
+    void cancelInterruptsProviderRetrievalForANewAsk() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Cancellable Retrieval",
+                        "{\"dataset_id\":\"ds_cancel\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"cancel_wait\"}");
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<MvcResult> pendingAsk =
+                    executor.submit(
+                            () ->
+                                    mockMvc.perform(
+                                                    post("/api/v1/chats/" + threadId + "/messages")
+                                                            .cookie(owner.session())
+                                                            .header(
+                                                                    SessionService.CSRF_HEADER,
+                                                                    owner.csrf())
+                                                            .contentType(MediaType.APPLICATION_JSON)
+                                                            .accept(MediaType.TEXT_EVENT_STREAM)
+                                                            .content(
+                                                                    "{\"question\":\"Cancel this retrieval\"}"))
+                                            .andReturn());
+            String assistantId = awaitAssistantId(threadId);
+
+            mockMvc.perform(
+                            post(
+                                            "/api/v1/chats/"
+                                                    + threadId
+                                                    + "/messages/"
+                                                    + assistantId
+                                                    + "/cancel")
+                                    .cookie(owner.session())
+                                    .header(SessionService.CSRF_HEADER, owner.csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("incomplete_cancelled"));
+
+            MvcResult ask = pendingAsk.get(2, TimeUnit.SECONDS);
+            assertThat(ask.getRequest().isAsyncStarted()).isTrue();
+            mockMvc.perform(asyncDispatch(ask)).andExpect(status().isOk());
+        }
+
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT status FROM chat_message WHERE thread_id = ? AND message_role = 'assistant'",
+                                String.class,
+                                threadId))
+                .isEqualTo("incomplete_cancelled");
+    }
+
+    @Test
     void allTimeoutsReturnRetrievalErrorWithoutGeneratingAnAnswer() throws Exception {
         LoggedIn owner = loginOwner();
         String kbId =
@@ -433,23 +553,24 @@ class ChatApiTest {
                                 .getContentAsString(),
                         "thread_id");
 
-        mockMvc.perform(
-                        post("/api/v1/chats/" + threadId + "/messages")
-                                .cookie(owner.session())
-                                .header(SessionService.CSRF_HEADER, owner.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .accept(MediaType.TEXT_EVENT_STREAM)
-                                .content("{\"question\":\"What is the runbook?\"}"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.category").value("retrieval"))
-                .andExpect(jsonPath("$.error.code").value("NO_GROUNDED_EVIDENCE"))
-                .andExpect(jsonPath("$.error.next_step").value("retry_or_change_scope"))
-                .andExpect(jsonPath("$.error.details.coverage.timed_out[0]").value(bindingId));
+        String stream = askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+        assertThat(stream)
+                .contains("event:error")
+                .contains("\"category\":\"retrieval\"")
+                .contains("\"code\":\"NO_GROUNDED_EVIDENCE\"")
+                .contains("\"next_step\":\"retry_or_change_scope\"")
+                .contains(bindingId);
 
         Integer messages =
                 jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM chat_message WHERE thread_id = ?", Integer.class, threadId);
-        assertThat(messages).isZero();
+        assertThat(messages).isEqualTo(2);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT status FROM chat_message WHERE thread_id = ? AND message_role = 'assistant'",
+                                String.class,
+                                threadId))
+                .isEqualTo("failed");
     }
 
     @Test
@@ -473,21 +594,59 @@ class ChatApiTest {
                                 .getResponse()
                                 .getContentAsString(),
                         "thread_id");
-        mockMvc.perform(
-                        post("/api/v1/chats/" + threadId + "/messages")
-                                .cookie(owner.session())
-                                .header(SessionService.CSRF_HEADER, owner.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .accept(MediaType.TEXT_EVENT_STREAM)
-                                .content("{\"question\":\"How do we rotate the gateway cert?\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("KB_SECURITY_FAILURE"));
+        String stream =
+                askAndAwaitStreamError(owner, threadId, "How do we rotate the gateway cert?");
+        assertThat(stream)
+                .contains("event:error")
+                .contains("\"category\":\"authorization\"")
+                .contains("\"code\":\"KB_SECURITY_FAILURE\"");
         String lifecycle =
                 jdbcTemplate.queryForObject(
                         "SELECT lifecycle FROM logical_knowledge_base WHERE logical_kb_id = ?",
                         String.class,
                         kbId);
         assertThat(lifecycle).isEqualTo("suspended");
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void quotaFailureStreamsActionableRetryAfterWithoutCallingTheModel() throws Exception {
+        LoggedIn owner = loginOwner();
+        String kbId =
+                activateDify(
+                        owner,
+                        "Quota Limited KB",
+                        "{\"dataset_id\":\"ds_quota\",\"original_version_mapping\":{\"doc_1\":\"v1\"},\"retrieval_fixture\":\"quota\"}");
+        String bindingId =
+                jdbcTemplate.queryForObject(
+                        "SELECT binding_id FROM binding WHERE logical_kb_id = ?", String.class, kbId);
+        String threadId =
+                jsonString(
+                        mockMvc.perform(
+                                        post("/api/v1/chats")
+                                                .cookie(owner.session())
+                                                .header(SessionService.CSRF_HEADER, owner.csrf())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"logical_kb_ids\":[\"" + kbId + "\"]}"))
+                                .andExpect(status().isCreated())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(),
+                        "thread_id");
+
+        String stream = askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+
+        assertThat(stream)
+                .contains("event:error")
+                .contains("\"category\":\"quota\"")
+                .contains("\"code\":\"PROVIDER_QUOTA_EXHAUSTED\"")
+                .contains("\"retry_after\":{\"" + bindingId + "\":\"PT1S\"}");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT status FROM chat_message WHERE thread_id = ? AND message_role = 'assistant'",
+                                String.class,
+                                threadId))
+                .isEqualTo("failed");
     }
 
     @Test
@@ -512,22 +671,23 @@ class ChatApiTest {
                         "thread_id");
         jdbcTemplate.update("UPDATE binding SET feature_flag = 0 WHERE binding_id = ?", bindingId);
 
-        mockMvc.perform(
-                        post("/api/v1/chats/" + threadId + "/messages")
-                                .cookie(owner.session())
-                                .header(SessionService.CSRF_HEADER, owner.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .accept(MediaType.TEXT_EVENT_STREAM)
-                                .content("{\"question\":\"What is the runbook?\"}"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.category").value("retrieval"))
-                .andExpect(jsonPath("$.error.code").value("KB_BINDING_UNAVAILABLE"))
-                .andExpect(jsonPath("$.error.details.coverage.failed[0]").value(bindingId));
+        String stream = askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+        assertThat(stream)
+                .contains("event:error")
+                .contains("\"category\":\"retrieval\"")
+                .contains("\"code\":\"KB_BINDING_UNAVAILABLE\"")
+                .contains(bindingId);
 
         Integer messages =
                 jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM chat_message WHERE thread_id = ?", Integer.class, threadId);
-        assertThat(messages).isZero();
+        assertThat(messages).isEqualTo(2);
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT status FROM chat_message WHERE thread_id = ? AND message_role = 'assistant'",
+                                String.class,
+                                threadId))
+                .isEqualTo("failed");
     }
 
     @Test
@@ -555,17 +715,32 @@ class ChatApiTest {
                                 .getContentAsString(),
                         "thread_id");
 
-        mockMvc.perform(
-                        post("/api/v1/chats/" + threadId + "/messages")
-                                .cookie(owner.session())
-                                .header(SessionService.CSRF_HEADER, owner.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .accept(MediaType.TEXT_EVENT_STREAM)
-                                .content("{\"question\":\"What is the runbook?\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("KB_BINDING_ACCESS_MISSING"))
-                .andExpect(jsonPath("$.error.details.logical_kb_id").value(kbId))
-                .andExpect(jsonPath("$.error.details.binding_id").value(bindingId));
+        String stream = askAndAwaitStreamError(owner, threadId, "What is the runbook?");
+        assertThat(stream)
+                .contains("event:error")
+                .contains("\"category\":\"authorization\"")
+                .contains("\"code\":\"KB_BINDING_ACCESS_MISSING\"")
+                .contains(kbId)
+                .contains(bindingId);
+    }
+
+    private String askAndAwaitStreamError(LoggedIn owner, String threadId, String question)
+            throws Exception {
+        MvcResult pending =
+                mockMvc.perform(
+                                post("/api/v1/chats/" + threadId + "/messages")
+                                        .cookie(owner.session())
+                                        .header(SessionService.CSRF_HEADER, owner.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .accept(MediaType.TEXT_EVENT_STREAM)
+                                        .content("{\"question\":\"" + question + "\"}"))
+                        .andExpect(request().asyncStarted())
+                        .andReturn();
+        return mockMvc.perform(asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
     }
 
     private String activateDify(LoggedIn owner, String name) throws Exception {
@@ -578,6 +753,22 @@ class ChatApiTest {
                   "original_version_mapping": {"doc_1": "v1"}
                 }
                 """);
+    }
+
+    private String awaitAssistantId(String threadId) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            List<String> ids =
+                    jdbcTemplate.queryForList(
+                            "SELECT message_id FROM chat_message WHERE thread_id = ? AND message_role = 'assistant'",
+                            String.class,
+                            threadId);
+            if (!ids.isEmpty()) {
+                return ids.getFirst();
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("assistant message was not reserved before retrieval");
     }
 
     private String activateDify(LoggedIn owner, String name, String sourceIdentityJson) throws Exception {

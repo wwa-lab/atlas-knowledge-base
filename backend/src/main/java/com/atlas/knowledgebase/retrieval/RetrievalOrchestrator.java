@@ -1,6 +1,8 @@
 package com.atlas.knowledgebase.retrieval;
 
 import com.atlas.knowledgebase.access.KbAccessService;
+import com.atlas.knowledgebase.adapters.CancellationSource;
+import com.atlas.knowledgebase.adapters.CancellationToken;
 import com.atlas.knowledgebase.adapters.Retriever;
 import com.atlas.knowledgebase.adapters.RetrieverException;
 import com.atlas.knowledgebase.audit.AuditEventRecord;
@@ -60,12 +62,24 @@ public class RetrievalOrchestrator {
     }
 
     public RetrievalTurn retrieve(AtlasUserRecord user, String question, RetrievalScope scope) {
+        return retrieve(user, question, scope, new CancellationSource());
+    }
+
+    public RetrievalTurn retrieve(
+            AtlasUserRecord user,
+            String question,
+            RetrievalScope scope,
+            CancellationToken cancellation) {
+        cancellation.throwIfCancelled();
         Set<String> successful = new LinkedHashSet<>();
         Set<String> failed = new LinkedHashSet<>();
         Set<String> timedOut = new LinkedHashSet<>();
+        Set<String> quotaLimited = new LinkedHashSet<>();
+        Map<String, String> retryAfter = new LinkedHashMap<>();
         List<ReciprocalRankFusion.RankedList> ranked = new ArrayList<>();
         Set<String> accessDeniedKbs = new LinkedHashSet<>();
         Set<String> unavailableKbs = new LinkedHashSet<>();
+        Set<String> quotaKbs = new LinkedHashSet<>();
         Set<String> securityKbs = new LinkedHashSet<>();
         Set<String> unknownKbs = new LinkedHashSet<>();
         Map<String, List<BindingRecord>> currentBindings = new LinkedHashMap<>();
@@ -74,6 +88,7 @@ public class RetrievalOrchestrator {
 
         List<BindingWork> authorizationWork = new ArrayList<>();
         for (RetrievalScope.KnowledgeBaseSnapshot snapshot : scope.knowledgeBases()) {
+            cancellation.throwIfCancelled();
             LogicalKnowledgeBaseRecord kb = snapshot.knowledgeBase();
             String logicalKbId = kb.logicalKbId();
             if (!access.authorized(user, kb) || !access.chatEligible(user, kb)) {
@@ -108,15 +123,25 @@ public class RetrievalOrchestrator {
                             item,
                             providerExecution.submit(
                                     item.binding().providerProfile(),
-                                    timeout -> authorizeOne(user, item, timeout))));
+                                    cancellation,
+                                    timeout ->
+                                            authorizeOne(
+                                                    user,
+                                                    item,
+                                                    timeout,
+                                                    cancellation))));
         }
         for (PendingAuthorization pending : authorizationCalls) {
+            cancellation.throwIfCancelled();
             BindingAuthorization authorization = awaitAuthorization(pending);
+            cancellation.throwIfCancelled();
             BindingWork item = authorization.item();
             String logicalKbId = item.kb().logicalKbId();
             String bindingId = item.binding().bindingId();
             switch (authorization.result().outcome()) {
-                case AUTHORIZED -> retrievalWork.add(item);
+                case AUTHORIZED -> {
+                    retrievalWork.add(item);
+                }
                 case ACCESS_DENIED -> {
                     failed.add(bindingId);
                     accessDeniedKbs.add(logicalKbId);
@@ -125,7 +150,19 @@ public class RetrievalOrchestrator {
                         blockBinding = bindingId;
                     }
                 }
+                case QUOTA -> {
+                    providerExecution.recordFailure(
+                            item.binding().providerProfile(), authorization.result().retryAfter());
+                    quotaLimited.add(bindingId);
+                    retryAfter.put(bindingId, authorization.result().retryAfter().toString());
+                    quotaKbs.add(logicalKbId);
+                    if (blockKb == null) {
+                        blockKb = logicalKbId;
+                        blockBinding = bindingId;
+                    }
+                }
                 case TIMEOUT -> {
+                    providerExecution.recordFailure(item.binding().providerProfile(), null);
                     timedOut.add(bindingId);
                     unavailableKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -134,6 +171,7 @@ public class RetrievalOrchestrator {
                     }
                 }
                 case FAILED -> {
+                    providerExecution.recordFailure(item.binding().providerProfile(), null);
                     failed.add(bindingId);
                     unavailableKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -152,6 +190,7 @@ public class RetrievalOrchestrator {
                     audit(user.userId(), logicalKbId, bindingId, "authorize", "deny", "fail_closed");
                 }
                 case UNKNOWN -> {
+                    providerExecution.recordFailure(item.binding().providerProfile(), null);
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -179,15 +218,37 @@ public class RetrievalOrchestrator {
                             item,
                             providerExecution.submit(
                                     item.binding().providerProfile(),
-                                    timeout -> retrieveOne(user, question, item, timeout))));
+                                    cancellation,
+                                    timeout ->
+                                            retrieveOne(
+                                                    user,
+                                                    question,
+                                                    item,
+                                                    timeout,
+                                                    cancellation))));
         }
         for (PendingRetrieval pending : retrievalCalls) {
+            cancellation.throwIfCancelled();
             BindingOutcome outcome = awaitRetrieval(pending);
+            cancellation.throwIfCancelled();
             String bindingId = outcome.binding().bindingId();
             String logicalKbId = outcome.logicalKbId();
             switch (outcome.result().outcome()) {
-                case TIMEOUT -> timedOut.add(bindingId);
-                case FAILED -> failed.add(bindingId);
+                case QUOTA -> {
+                    providerExecution.recordFailure(
+                            outcome.binding().providerProfile(), outcome.result().retryAfter());
+                    quotaLimited.add(bindingId);
+                    retryAfter.put(bindingId, outcome.result().retryAfter().toString());
+                    quotaKbs.add(logicalKbId);
+                }
+                case TIMEOUT -> {
+                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
+                    timedOut.add(bindingId);
+                }
+                case FAILED -> {
+                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
+                    failed.add(bindingId);
+                }
                 case SECURITY -> {
                     failed.add(bindingId);
                     securityKbs.add(logicalKbId);
@@ -205,6 +266,7 @@ public class RetrievalOrchestrator {
                             "fail_closed");
                 }
                 case UNKNOWN -> {
+                    providerExecution.recordFailure(outcome.binding().providerProfile(), null);
                     failed.add(bindingId);
                     unknownKbs.add(logicalKbId);
                     if (blockKb == null) {
@@ -220,6 +282,7 @@ public class RetrievalOrchestrator {
                             "unknown");
                 }
                 case SUCCESS -> {
+                    providerExecution.recordSuccess(outcome.binding().providerProfile());
                     if (securityKbs.contains(logicalKbId) || unknownKbs.contains(logicalKbId)) {
                         break;
                     }
@@ -258,11 +321,14 @@ public class RetrievalOrchestrator {
             }
         }
 
+        cancellation.throwIfCancelled();
         List<ReciprocalRankFusion.FusedHit> fused = ReciprocalRankFusion.fuse(ranked);
         Map<String, Object> coverage = new LinkedHashMap<>();
         coverage.put("successful", List.copyOf(successful));
         coverage.put("failed", List.copyOf(failed));
         coverage.put("timed_out", List.copyOf(timedOut));
+        coverage.put("quota_limited", List.copyOf(quotaLimited));
+        coverage.put("retry_after", Map.copyOf(retryAfter));
 
         RetrievalTurn.Block block = RetrievalTurn.Block.NONE;
         boolean anyEvidence = !fused.isEmpty();
@@ -274,6 +340,8 @@ public class RetrievalOrchestrator {
             block = RetrievalTurn.Block.BINDING_ACCESS;
         } else if (!unavailableKbs.isEmpty()) {
             block = RetrievalTurn.Block.BINDING_UNAVAILABLE;
+        } else if (!quotaKbs.isEmpty() && !anyEvidence) {
+            block = RetrievalTurn.Block.QUOTA;
         } else if (!anyEvidence) {
             block = RetrievalTurn.Block.NO_EVIDENCE;
         }
@@ -283,7 +351,11 @@ public class RetrievalOrchestrator {
     }
 
     private BindingAuthorization authorizeOne(
-            AtlasUserRecord user, BindingWork item, Duration timeout) {
+            AtlasUserRecord user,
+            BindingWork item,
+            Duration timeout,
+            CancellationToken cancellation) {
+        cancellation.throwIfCancelled();
         BindingRecord binding = item.binding();
         Retriever retriever = retrievers.find(binding.providerProfile()).orElse(null);
         if (retriever == null) {
@@ -298,12 +370,18 @@ public class RetrievalOrchestrator {
                                 binding.bindingId(),
                                 binding.providerProfile(),
                                 binding.sourceIdentityJson(),
-                                timeout));
+                                timeout,
+                                cancellation));
         return new BindingAuthorization(item, result);
     }
 
     private BindingOutcome retrieveOne(
-            AtlasUserRecord user, String question, BindingWork item, Duration timeout) {
+            AtlasUserRecord user,
+            String question,
+            BindingWork item,
+            Duration timeout,
+            CancellationToken cancellation) {
+        cancellation.throwIfCancelled();
         BindingRecord binding = item.binding();
         LogicalKnowledgeBaseRecord kb = item.kb();
         if (!"chat_ready".equals(kb.capability()) || !kb.modelEligible()) {
@@ -323,7 +401,8 @@ public class RetrievalOrchestrator {
                                 binding.bindingId(),
                                 binding.providerProfile(),
                                 binding.sourceIdentityJson(),
-                                timeout));
+                                timeout,
+                                cancellation));
         return new BindingOutcome(kb.logicalKbId(), binding, result);
     }
 
@@ -368,6 +447,9 @@ public class RetrievalOrchestrator {
         if (cause instanceof TimeoutException) {
             return Retriever.AuthorizationResult.timeout();
         }
+        if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
+            return Retriever.AuthorizationResult.quota(unavailable.retryAfter());
+        }
         if (cause instanceof RetrieverException retrieverException) {
             return switch (retrieverException.outcome()) {
                 case SECURITY -> Retriever.AuthorizationResult.security();
@@ -382,6 +464,9 @@ public class RetrievalOrchestrator {
         Throwable cause = unwrap(error);
         if (cause instanceof TimeoutException) {
             return Retriever.Result.timeout();
+        }
+        if (cause instanceof ProviderExecution.ProviderUnavailableException unavailable) {
+            return Retriever.Result.quota(unavailable.retryAfter());
         }
         if (cause instanceof RetrieverException retrieverException) {
             return switch (retrieverException.outcome()) {

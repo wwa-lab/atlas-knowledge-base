@@ -2,13 +2,20 @@ package com.atlas.knowledgebase.chat;
 
 import com.atlas.knowledgebase.retrieval.RetrievalScope;
 import java.util.List;
+import org.springframework.stereotype.Component;
 
 /** Fail-closed Chat classification boundary until an approved dominance taxonomy exists. */
-final class ChatClassificationPolicy {
+@Component
+public final class ChatClassificationPolicy {
 
-    private ChatClassificationPolicy() {}
+    private final ChatClassificationProperties properties;
 
-    static String resolve(List<RetrievalScope.KnowledgeBaseSnapshot> snapshots) {
+    public ChatClassificationPolicy(ChatClassificationProperties properties) {
+        properties.validate();
+        this.properties = properties;
+    }
+
+    String resolve(List<RetrievalScope.KnowledgeBaseSnapshot> snapshots) {
         String resolved = null;
         for (RetrievalScope.KnowledgeBaseSnapshot snapshot : snapshots) {
             String classification = snapshot.knowledgeBase().classification();
@@ -18,6 +25,11 @@ final class ChatClassificationPolicy {
                         "Every selected knowledge base must have a known security classification.");
             }
             String normalized = classification.trim();
+            if (!properties.approved(normalized)) {
+                throw new ChatValidationException(
+                        "CLASSIFICATION_UNAPPROVED",
+                        "A selected knowledge base has a classification that is not approved for Chat.");
+            }
             if (resolved != null && !resolved.equals(normalized)) {
                 throw new ChatValidationException(
                         "CLASSIFICATION_MISMATCH",

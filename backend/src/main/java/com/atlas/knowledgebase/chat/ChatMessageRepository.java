@@ -68,6 +68,13 @@ public class ChatMessageRepository {
         return findById(message.messageId()).orElseThrow();
     }
 
+    /** Persists the user question and its processing assistant placeholder atomically. */
+    @Transactional
+    public void insertAskPair(ChatMessageRecord userMessage, ChatMessageRecord assistantMessage) {
+        insert(userMessage);
+        insert(assistantMessage);
+    }
+
     public Optional<ChatMessageRecord> findById(String messageId) {
         return jdbcTemplate
                 .query("SELECT * FROM chat_message WHERE message_id = ?", ROW_MAPPER, messageId)

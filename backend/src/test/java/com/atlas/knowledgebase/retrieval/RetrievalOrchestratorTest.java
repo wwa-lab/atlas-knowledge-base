@@ -79,6 +79,68 @@ class RetrievalOrchestratorTest {
     }
 
     @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void quotaOutcomeCarriesRetryAfterAndBlocksOnlyWhenNoSafeEvidenceExists() {
+        Instant now = Instant.parse("2026-08-22T03:00:45Z");
+        AtlasUserRecord user = owner("usr_ret_quota", now);
+        LogicalKnowledgeBaseRecord kb = chatReadyKb("lkb_ret_quota", user.userId(), now);
+        BindingRecord binding =
+                binding(
+                        "bnd_ret_quota",
+                        kb.logicalKbId(),
+                        "dify",
+                        "{\"retrieval_fixture\":\"quota\"}",
+                        now);
+
+        RetrievalTurn turn = retrieve(user, "question", List.of(kb.logicalKbId()));
+
+        assertThat(turn.block()).isEqualTo(RetrievalTurn.Block.QUOTA);
+        assertThat(turn.fused()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
+        assertThat(quotaLimited).containsExactly(binding.bindingId());
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, String> retryAfter =
+                (java.util.Map<String, String>) turn.coverage().get("retry_after");
+        assertThat(retryAfter).containsEntry(binding.bindingId(), "PT1S");
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void quotaOnOneConnectorAllowsUnrelatedSafeEvidenceToContinue() {
+        Instant now = Instant.parse("2026-08-22T03:00:50Z");
+        AtlasUserRecord user = owner("usr_ret_partial_quota", now);
+        LogicalKnowledgeBaseRecord safe =
+                chatReadyKb("lkb_ret_partial_quota_safe", user.userId(), now);
+        LogicalKnowledgeBaseRecord limited =
+                chatReadyKb("lkb_ret_partial_quota_limited", user.userId(), now);
+        BindingRecord safeBinding =
+                binding("bnd_ret_partial_quota_safe", safe.logicalKbId(), "dify", "{}", now);
+        BindingRecord limitedBinding =
+                binding(
+                        "bnd_ret_partial_quota_limited",
+                        limited.logicalKbId(),
+                        "confluence",
+                        "{\"retrieval_fixture\":\"quota\"}",
+                        now);
+
+        RetrievalTurn turn =
+                retrieve(
+                        user,
+                        "question",
+                        List.of(safe.logicalKbId(), limited.logicalKbId()));
+
+        assertThat(turn.blocked()).isFalse();
+        assertThat(turn.fused()).isNotEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> successful = (List<String>) turn.coverage().get("successful");
+        assertThat(successful).contains(safeBinding.bindingId());
+        @SuppressWarnings("unchecked")
+        List<String> quotaLimited = (List<String>) turn.coverage().get("quota_limited");
+        assertThat(quotaLimited).containsExactly(limitedBinding.bindingId());
+    }
+
+    @Test
     void missingBindingAccessExcludesTheWholeKnowledgeBase() {
         Instant now = Instant.parse("2026-08-22T03:01:00Z");
         AtlasUserRecord user = owner("usr_ret_fr47", now);

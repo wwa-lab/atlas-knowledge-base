@@ -7,6 +7,10 @@ spring:
     password: ""
 
 atlas:
+  chat:
+    classification:
+      # Local fixture policy only; deployed planes require an approved environment value.
+      approved-values: [internal, restricted]
   secrets:
     file-root: ${user.dir}/.local-data/secrets
   session:
@@ -34,3 +38,16 @@ atlas:
       dify: true
       git_markdown: true
       confluence: true
+    # Fixture resilience values only; they are intentionally short to keep local tests deterministic.
+    provider-backoffs:
+      dify: 1ms
+      git_markdown: 1ms
+      confluence: 1ms
+    provider-circuit-failure-thresholds:
+      dify: 3
+      git_markdown: 3
+      confluence: 3
+    provider-circuit-open-durations:
+      dify: 1s
+      git_markdown: 1s
+      confluence: 1s

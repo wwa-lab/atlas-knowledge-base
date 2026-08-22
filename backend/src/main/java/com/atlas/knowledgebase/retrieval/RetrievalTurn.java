@@ -25,6 +25,7 @@ public record RetrievalTurn(
         NONE,
         BINDING_ACCESS,
         BINDING_UNAVAILABLE,
+        QUOTA,
         SECURITY,
         NO_EVIDENCE,
         UNKNOWN

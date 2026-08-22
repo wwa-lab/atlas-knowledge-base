@@ -7,6 +7,9 @@ spring:
     driver-class-name: oracle.jdbc.OracleDriver
 
 atlas:
+  chat:
+    classification:
+      approved-values: ${ATLAS_CHAT_APPROVED_CLASSIFICATIONS}
   retrieval:
     # No production defaults: Connector Owners provide approved budgets.
     provider-timeouts:
@@ -21,3 +24,15 @@ atlas:
       dify: ${ATLAS_RETRIEVAL_DIFY_ENABLED}
       git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_ENABLED}
       confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_ENABLED}
+    provider-backoffs:
+      dify: ${ATLAS_RETRIEVAL_DIFY_BACKOFF}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_BACKOFF}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_BACKOFF}
+    provider-circuit-failure-thresholds:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CIRCUIT_FAILURE_THRESHOLD}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CIRCUIT_FAILURE_THRESHOLD}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CIRCUIT_FAILURE_THRESHOLD}
+    provider-circuit-open-durations:
+      dify: ${ATLAS_RETRIEVAL_DIFY_CIRCUIT_OPEN_DURATION}
+      git_markdown: ${ATLAS_RETRIEVAL_GIT_MARKDOWN_CIRCUIT_OPEN_DURATION}
+      confluence: ${ATLAS_RETRIEVAL_CONFLUENCE_CIRCUIT_OPEN_DURATION}

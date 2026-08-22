@@ -3,8 +3,10 @@ package com.atlas.knowledgebase.adapters;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -12,7 +14,7 @@ import org.springframework.stereotype.Component;
 /**
  * Fixture retriever for Dify, Git Markdown, and Confluence. Does not call providers. Controlled by
  * {@code source_identity.retrieval_fixture}: {@code binding_denied}, {@code timeout}, {@code
- * failed}, {@code security}, {@code item_omit}, typed {@code throw_failed}/{@code
+ * quota}, {@code failed}, {@code security}, {@code item_omit}, typed {@code throw_failed}/{@code
  * throw_security}, unknown {@code throw_unknown}, or success (default).
  */
 @Component
@@ -23,7 +25,7 @@ import org.springframework.stereotype.Component;
         matchIfMissing = true)
 public class StubRetriever implements Retriever {
 
-    static final int TOP_K = 5;
+    private static final Duration LOCAL_FIXTURE_RETRY_AFTER = Duration.ofSeconds(1);
 
     private final ObjectMapper objectMapper;
 
@@ -38,9 +40,11 @@ public class StubRetriever implements Retriever {
 
     @Override
     public AuthorizationResult authorize(AuthorizationRequest request) {
+        request.cancellation().throwIfCancelled();
         String fixture = fixture(request.sourceIdentityJson());
         return switch (fixture) {
             case "binding_denied" -> AuthorizationResult.accessDenied();
+            case "authorization_quota" -> AuthorizationResult.quota(LOCAL_FIXTURE_RETRY_AFTER);
             case "authorization_timeout" -> AuthorizationResult.timeout();
             case "authorization_failed" -> AuthorizationResult.failed();
             case "authorization_security" -> AuthorizationResult.security();
@@ -51,8 +55,11 @@ public class StubRetriever implements Retriever {
 
     @Override
     public Result retrieve(Request request) {
+        request.cancellation().throwIfCancelled();
         String fixture = fixture(request.sourceIdentityJson());
         return switch (fixture) {
+            case "cancel_wait" -> waitForCancellation(request);
+            case "quota" -> Result.quota(LOCAL_FIXTURE_RETRY_AFTER);
             case "timeout" -> Result.timeout();
             case "failed" -> Result.failed();
             case "security" -> Result.security();
@@ -67,6 +74,18 @@ public class StubRetriever implements Retriever {
             default -> Result.success(
                     List.of(hit(request, "primary", 1), hit(request, "secondary", 2)), List.of());
         };
+    }
+
+    private Result waitForCancellation(Request request) {
+        try {
+            while (true) {
+                request.cancellation().throwIfCancelled();
+                Thread.sleep(25);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("fixture retrieval cancelled");
+        }
     }
 
     private Hit hit(Request request, String suffix, int rank) {

@@ -13,6 +13,9 @@ public class RetrievalProperties {
     private Map<String, Duration> providerTimeouts = new LinkedHashMap<>();
     private Map<String, Integer> providerConcurrency = new LinkedHashMap<>();
     private Map<String, Boolean> providerEnabled = new LinkedHashMap<>();
+    private Map<String, Duration> providerBackoffs = new LinkedHashMap<>();
+    private Map<String, Integer> providerCircuitFailureThresholds = new LinkedHashMap<>();
+    private Map<String, Duration> providerCircuitOpenDurations = new LinkedHashMap<>();
 
     public Map<String, Duration> getProviderTimeouts() {
         return Map.copyOf(providerTimeouts);
@@ -45,6 +48,41 @@ public class RetrievalProperties {
                         : new LinkedHashMap<>(providerEnabled);
     }
 
+    public Map<String, Duration> getProviderBackoffs() {
+        return Map.copyOf(providerBackoffs);
+    }
+
+    public void setProviderBackoffs(Map<String, Duration> providerBackoffs) {
+        this.providerBackoffs =
+                providerBackoffs == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerBackoffs);
+    }
+
+    public Map<String, Integer> getProviderCircuitFailureThresholds() {
+        return Map.copyOf(providerCircuitFailureThresholds);
+    }
+
+    public void setProviderCircuitFailureThresholds(
+            Map<String, Integer> providerCircuitFailureThresholds) {
+        this.providerCircuitFailureThresholds =
+                providerCircuitFailureThresholds == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerCircuitFailureThresholds);
+    }
+
+    public Map<String, Duration> getProviderCircuitOpenDurations() {
+        return Map.copyOf(providerCircuitOpenDurations);
+    }
+
+    public void setProviderCircuitOpenDurations(
+            Map<String, Duration> providerCircuitOpenDurations) {
+        this.providerCircuitOpenDurations =
+                providerCircuitOpenDurations == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(providerCircuitOpenDurations);
+    }
+
     public boolean enabled(String providerProfile) {
         Boolean enabled = providerEnabled.get(providerProfile);
         if (enabled == null) {
@@ -74,12 +112,45 @@ public class RetrievalProperties {
         return concurrency;
     }
 
+    public Duration backoffFor(String providerProfile) {
+        return positiveDuration(
+                providerBackoffs.get(providerProfile), "retrieval backoff", providerProfile);
+    }
+
+    public int circuitFailureThresholdFor(String providerProfile) {
+        Integer threshold = providerCircuitFailureThresholds.get(providerProfile);
+        if (threshold == null || threshold < 1) {
+            throw new IllegalStateException(
+                    "A positive retrieval circuit failure threshold is required for provider "
+                            + providerProfile);
+        }
+        return threshold;
+    }
+
+    public Duration circuitOpenDurationFor(String providerProfile) {
+        return positiveDuration(
+                providerCircuitOpenDurations.get(providerProfile),
+                "retrieval circuit open duration",
+                providerProfile);
+    }
+
     public void validateProfiles(Set<String> providerProfiles) {
         providerProfiles.forEach(
                 provider -> {
                     timeoutFor(provider);
                     concurrencyFor(provider);
                     enabled(provider);
+                    backoffFor(provider);
+                    circuitFailureThresholdFor(provider);
+                    circuitOpenDurationFor(provider);
                 });
+    }
+
+    private Duration positiveDuration(Duration duration, String name, String providerProfile) {
+        if (duration == null || duration.isZero() || duration.isNegative()) {
+            throw new IllegalStateException(
+                    "A positive " + name + " is required for provider " + providerProfile);
+        }
+        return duration;
     }
 }
