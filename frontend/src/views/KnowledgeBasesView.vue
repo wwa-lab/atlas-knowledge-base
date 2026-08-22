@@ -178,6 +178,7 @@ async function loadTree(): Promise<void> {
 async function loadPreview(path: string): Promise<void> {
   if (!selectedId.value || !path) return
   selectedPath.value = path
+  preview.value = null
   previewLoading.value = true
   error.value = ''
   try {

@@ -14,3 +14,15 @@ Full review comments:
 
 - [P2] Render source scale using the detail response shape — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:408-410
   For authorized details, `CatalogService.sourceProjection` returns each source’s `scale` as a flat object such as `{ paths: 2 }`, but `scaleLines` expects the list-level nested shape `{ git_markdown: { paths: 2 } }`. In the Sources panel this makes `scaleLines(source.scale)` return no lines, so per-source scale is silently hidden for Git/Dify sources; use a flat formatter or normalize the detail response before rendering.
+
+## Gate A — fresh rerun after first fixes (verbatim)
+
+The new catalog Browse UI can omit entries during pagination and can display stale preview content for a different selected file. These are user-visible correctness issues in the changed functionality.
+
+Full review comments:
+
+- [P2] Preserve the boundary item when loading more — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:128-129
+  When the catalog has more than one page, the current backend sets `next_cursor` to the first item not included in the previous response, and its cursor handling resumes after that id. Passing `page.next_cursor` back here therefore skips that boundary knowledge base on every "Load more" click, so users never see some catalog entries. Either align the backend cursor contract or request the next page using a cursor that does not omit the first unseen item.
+
+- [P2] Clear stale preview before loading another file — /Users/leo/wwa-lab/GitHub/atlas-knowledge-base/frontend/src/views/KnowledgeBasesView.vue:180-182
+  After a user previews one file, selecting another file leaves the old `preview` rendered while the new request is in flight, and it also remains visible if the new preview request fails. In the Browse view this can show Markdown for the wrong selected path, which is misleading for source inspection; clear `preview.value` before starting the new request.
